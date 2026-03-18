@@ -44,6 +44,8 @@ import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
+import com.winlator.cmod.saves.Save;
+import com.winlator.cmod.saves.SaveManager;
 
 import java.io.File;
 import java.util.List;
@@ -62,6 +64,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private SharedPreferences sharedPreferences;
     private ContainerManager containerManager;
     private boolean isDarkMode;
+    private SaveManager saveManager;
 
 
     @Override

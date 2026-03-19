@@ -46,8 +46,8 @@ import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
 import com.winlator.cmod.saves.Save;
 import com.winlator.cmod.saves.SaveManager;
-import com.winlator.cmod.contentDialog.SaveEditDialog;
-import com.winlator.cmod.contentDialog.SaveSettingsDialog;
+import com.winlator.cmod.contentdialog.SaveEditDialog;
+import com.winlator.cmod.contentdialog.SaveSettingsDialog;
 
 import java.io.File;
 import java.util.List;

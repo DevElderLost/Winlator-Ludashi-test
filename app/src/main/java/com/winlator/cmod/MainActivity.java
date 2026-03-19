@@ -229,6 +229,32 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 drawerLayout.openDrawer(GravityCompat.START);
             }
             return true;
+        } else if (menuItem.getItemId() == R.id.saves_menu_add) {
+            // Check if we are editing a save
+            Intent intent = getIntent();
+            int editSaveId = intent.getIntExtra("edit_save_id", -1);
+            Save saveToEdit = editSaveId >= 0 ? saveManager.getSaveById(editSaveId) : null;
+
+            // Create and show SaveEditDialog or SaveSettingsDialog as appropriate
+            if (saveToEdit != null) {
+                // Ensure previous dialog is dismissed before showing a new one
+                if (saveEditDialog != null && saveEditDialog.isShowing()) {
+                    saveEditDialog.dismiss();
+                }
+                showSaveEditDialog(saveToEdit); // Use the correct method to show SaveEditDialog
+            } else {
+                saveSettingsDialog = new SaveSettingsDialog(this, saveManager, containerManager);
+
+                // Check for dark mode and set the background accordingly
+                if (isDarkMode) {
+                    saveSettingsDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+                } else {
+                    saveSettingsDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+                }
+
+                saveSettingsDialog.show();
+            }
+            return true;
         } else {
             return super.onOptionsItemSelected(menuItem);
         }
@@ -264,6 +290,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 break;
             case R.id.main_menu_adrenotools_gpu_drivers:
                 show(new AdrenotoolsFragment(), false);
+                break;
+            case R.id.main_menu_saves:
+                show(new SavesFragment(), false);  // Forward animation
                 break;
             case R.id.main_menu_settings:
                 show(new SettingsFragment(), false);  // Forward animation
@@ -396,4 +425,32 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             Log.d("WinActivity", "No dialog found for request code: " + requestCode);
         }
     }
+
+    private void showSavesFragment() {
+    SavesFragment fragment = new SavesFragment();
+    getSupportFragmentManager().beginTransaction()
+            .replace(R.id.FLFragmentContainer, fragment)
+            .commit();
+    }
+    // Method to show SaveEditDialog
+    public void showSaveEditDialog(Save saveToEdit) {
+        saveEditDialog = new SaveEditDialog(this, saveManager, containerManager, saveToEdit);
+
+        // Check for dark mode and set the background accordingly
+        if (isDarkMode) {
+            saveEditDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+        } else {
+            saveEditDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+        }
+
+        saveEditDialog.show();
+    }
+
+    public void onSaveAdded() {
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.FLFragmentContainer);
+        if (currentFragment instanceof SavesFragment) {
+            ((SavesFragment) currentFragment).refreshSavesList();
+        }
+    }
+    
 }

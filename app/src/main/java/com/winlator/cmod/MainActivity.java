@@ -46,6 +46,8 @@ import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
 import com.winlator.cmod.saves.Save;
 import com.winlator.cmod.saves.SaveManager;
+import com.winlator.cmod.contentDialog.SaveEditDialog;
+import com.winlator.cmod.contentDialog.SaveSettingsDialog;
 
 import java.io.File;
 import java.util.List;
@@ -64,6 +66,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private SharedPreferences sharedPreferences;
     private ContainerManager containerManager;
     private boolean isDarkMode;
+    // Add SaveSettingsDialog and SaveEditDialog instances
+    private SaveSettingsDialog saveSettingsDialog;
+    private SaveEditDialog saveEditDialog;
     private SaveManager saveManager;
 
 
@@ -117,6 +122,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (!winlatorDir.exists())
             winlatorDir.mkdirs();
 
+        // Initialize SaveManager and ContainerManager
+        saveManager = new SaveManager(this);
+        
         containerManager = new ContainerManager(this);
 
         Intent intent = getIntent();
@@ -371,11 +379,21 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        Log.d("WinActivity", "onActivityResult called with requestCode: " + requestCode + " and resultCode: " + resultCode);
+        
         if (requestCode == OPEN_IMAGE_REQUEST_CODE && resultCode == RESULT_OK) {
             Bitmap bitmap = ImageUtils.getBitmapFromUri(this, data.getData(), 1280);
             if (bitmap == null) return;
             File userWallpaperFile = WineThemeManager.getUserWallpaperFile(this);
             ImageUtils.save(bitmap, userWallpaperFile, Bitmap.CompressFormat.PNG, 100);
+        } else if (saveSettingsDialog != null && saveSettingsDialog.isShowing()) {
+            Log.d("WinActivity", "Forwarding result to SaveSettingsDialog");
+            saveSettingsDialog.onActivityResult(requestCode, resultCode, data);
+        } else if (saveEditDialog != null && saveEditDialog.isShowing()) {
+            Log.d("WinActivity", "Forwarding result to SaveEditDialog");
+            saveEditDialog.onActivityResult(requestCode, resultCode, data);
+        } else {
+            Log.d("WinActivity", "No dialog found for request code: " + requestCode);
         }
     }
 }

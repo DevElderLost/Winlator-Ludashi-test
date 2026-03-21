@@ -3,51 +3,62 @@ package com.winlator.cmod.saves;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
+
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-import java.io.File;
+
+import com.winlator.cmod.R;
+
+import java.util.List;
 
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
-    private final File[] files;
-    private final OnFileClickListener listener;
+    private final List<FolderPickerDialog.FileItem> items;
+    private final Consumer<FolderPickerDialog.FileItem> onClickListener;
 
-    public interface OnFileClickListener {
-        void onFileClicked(File file);
-    }
-
-    public FileAdapter(File[] files, OnFileClickListener listener) {
-        this.files = files;
-        this.listener = listener;
+    public FileAdapter(List<FolderPickerDialog.FileItem> items, Consumer<FolderPickerDialog.FileItem> onClickListener) {
+        this.items = items;
+        this.onClickListener = onClickListener;
     }
 
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(android.R.layout.simple_list_item_1, parent, false);
+        View view = LayoutInflater.from(parent.getContext())
+                .inflate(R.layout.item_folder, parent, false);
         return new ViewHolder(view);
     }
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        File file = files[position];
-        holder.textView.setText(file.getName());
-        holder.itemView.setOnClickListener(v -> listener.onFileClicked(file));
+        FolderPickerDialog.FileItem item = items.get(position);
+        holder.tvName.setText(item.name);
+
+        if (item.isUp) {
+            holder.ivIcon.setImageResource(R.drawable.icon_open); // atau ic_folder_up
+            holder.tvName.setTextColor(holder.itemView.getContext().getColor(R.color.blue_700));
+        } else {
+            holder.ivIcon.setImageResource(R.drawable.icon_open);
+        }
+
+        holder.itemView.setOnClickListener(v -> onClickListener.accept(item));
     }
 
     @Override
     public int getItemCount() {
-        return files.length;
+        return items.size();
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView textView;
+        ImageView ivIcon;
+        TextView tvName;
 
         ViewHolder(View itemView) {
             super(itemView);
-            textView = itemView.findViewById(android.R.id.text1);
+            ivIcon = itemView.findViewById(R.id.ivIcon);
+            tvName = itemView.findViewById(R.id.tvName);
         }
     }
 }
-

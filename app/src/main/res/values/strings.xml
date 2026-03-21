@@ -637,5 +637,4 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="shutdown">Shutdown</string>
     <string name="no_items_to_display_saves">Save Data Empty</string>
     <string name="select_folder">Select File Location</string>
-    <string name="invalid_path">Invalid Location"</string>
 </resources>

@@ -3,19 +3,6 @@ package com.winlator.cmod.contentdialog;
 import android.app.Activity;
 import android.content.Context;
 import android.view.View;
-import android.widget.Button;
-import android.widget.TextView;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-import com.winlator.cmod.R;
-import java.io.File;
-import java.util.function.Consumer;
-
-package com.winlator.cmod.contentdialog;
-
-import android.app.Activity;
-import android.content.Context;
-import android.view.View;
 import android.widget.TextView;
 
 import androidx.recyclerview.widget.LinearLayoutManager;

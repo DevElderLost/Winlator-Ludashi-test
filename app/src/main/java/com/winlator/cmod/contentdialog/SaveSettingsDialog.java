@@ -162,22 +162,27 @@ public class SaveSettingsDialog extends ContentDialog {
     }
 
     private void openFolderPicker() {
-        if (selectedContainer == null || selectedContainer.getRootDir() == null) {
-            AppUtils.showToast(getContext(), R.string.invalid_container);
-            return;
-        }
-
-        File rootDir = selectedContainer.getRootDir();
-        String dynamicPath = new File(rootDir, ".wine/drive_c/").getAbsolutePath();
-
-        Intent intent = new Intent(activity, CustomFilePickerActivity.class);
-        intent.putExtra("initialDirectory", dynamicPath);
-        intent.putExtra("isEditing", saveToEdit != null); // Pass if we are in edit mode
-        intent.putExtra("editingPath", saveToEdit != null ? saveToEdit.path : dynamicPath); // Pass the current path if editing
-
-        activity.startActivityForResult(intent, REQUEST_CODE_CUSTOM_FILE_PICKER);
+    if (selectedContainer == null) {
+        AppUtils.showToast(getContext(), R.string.select_container_first);
+        return;
     }
 
+    String startPath = new File(selectedContainer.getRootDir(), ".wine/drive_c/").getAbsolutePath();
+    if (saveToEdit != null && saveToEdit.path != null) {
+        startPath = saveToEdit.path;
+    }
+
+    FolderPickerDialog dialog = new FolderPickerDialog(activity, startPath);
+    dialog.setOnFolderSelectedListener(path -> {
+        if (isPathValidForContainer(path)) {
+            updateSelectedPath(path);
+        } else {
+            AppUtils.showToast(getContext(), R.string.invalid_path);
+        }
+    });
+    dialog.show();
+    }
+    
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_CUSTOM_FILE_PICKER && resultCode == Activity.RESULT_OK) {
             String path = data.getStringExtra("selectedDirectory");

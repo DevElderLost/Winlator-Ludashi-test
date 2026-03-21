@@ -123,7 +123,7 @@ public class FolderPickerDialog extends ContentDialog {
     }
 
     // Helper class sederhana
-    private static class FileItem {
+    public static class FileItem {
         String name;
         File file;
         boolean isDirectory;

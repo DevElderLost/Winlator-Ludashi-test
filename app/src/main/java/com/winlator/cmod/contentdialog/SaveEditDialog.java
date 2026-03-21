@@ -16,7 +16,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.core.AppUtils;
-import com.winlator.cmod.saves.CustomFilePickerActivity;
+//import com.winlator.cmod.saves.CustomFilePickerActivity;
 import com.winlator.cmod.saves.Save;
 import com.winlator.cmod.saves.SaveManager;
 
@@ -155,20 +155,25 @@ public class SaveEditDialog extends ContentDialog {
      */
 
     private void openFolderPicker() {
-        if (selectedContainer == null || selectedContainer.getRootDir() == null) {
-            AppUtils.showToast(getContext(), R.string.invalid_container);
-            return;
+    if (selectedContainer == null) {
+        AppUtils.showToast(getContext(), R.string.select_container_first);
+        return;
+    }
+
+    String startPath = new File(selectedContainer.getRootDir(), ".wine/drive_c/").getAbsolutePath();
+    if (saveToEdit != null && saveToEdit.path != null) {
+        startPath = saveToEdit.path;
+    }
+
+    FolderPickerDialog dialog = new FolderPickerDialog(activity, startPath);
+    dialog.setOnFolderSelectedListener(path -> {
+        if (isPathValidForContainer(path)) {
+            updateSelectedPath(path);
+        } else {
+            AppUtils.showToast(getContext(), R.string.invalid_path);
         }
-
-        File rootDir = selectedContainer.getRootDir();
-        String dynamicPath = new File(rootDir, ".wine/drive_c/").getAbsolutePath();
-
-        Intent intent = new Intent(activity, CustomFilePickerActivity.class);
-        intent.putExtra("initialDirectory", dynamicPath);
-        intent.putExtra("isEditing", true); // Indicate that we are editing an existing save
-        intent.putExtra("editingPath", saveToEdit.path); // Pass the current path if editing
-
-        activity.startActivityForResult(intent, REQUEST_CODE_CUSTOM_FILE_PICKER);
+    });
+    dialog.show();
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {

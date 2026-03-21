@@ -1,4 +1,4 @@
-package com.winlator.cmod.saves;  // ← sesuaikan package jika perlu
+package com.winlator.cmod.saves;
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -13,7 +13,6 @@ import com.winlator.cmod.R;
 
 import java.util.List;
 import java.util.function.Consumer;
-import java.io.File;
 
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
@@ -40,11 +39,12 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         holder.tvName.setText(item.name);
 
         if (item.isUp) {
-            holder.ivIcon.setImageResource(R.drawable.ic_open);     // atau ic_chevron_up
-            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.primary_text_light));  // warna berbeda biar kelihatan spesial
-        } else {
-            holder.ivIcon.setImageResource(R.drawable.icon_open);           // ikon folder biasa
+            holder.ivIcon.setImageResource(R.drawable.icon_open);  // atau ic_chevron_up
             holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.primary_text_light));
+        } else {
+            holder.ivIcon.setImageResource(R.drawable.icon_open);
+            holder.tvName.setTextColor(holder.itemView.getContext()
+                    .getColor(android.R.color.primary_text_light));
         }
 
         holder.itemView.setOnClickListener(v -> onItemClickListener.accept(item));
@@ -63,21 +63,6 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
             super(itemView);
             ivIcon = itemView.findViewById(R.id.ivIcon);
             tvName = itemView.findViewById(R.id.tvName);
-        }
-    }
-
-    // Kelas FileItem tetap sama seperti di FolderPickerDialog
-    public static class FileItem {
-        public final String name;
-        public final File file;
-        public final boolean isDirectory;
-        public final boolean isUp;
-
-        public FileItem(String name, File file, boolean isDirectory, boolean isUp) {
-            this.name = name;
-            this.file = file;
-            this.isDirectory = isDirectory;
-            this.isUp = isUp;
         }
     }
 }

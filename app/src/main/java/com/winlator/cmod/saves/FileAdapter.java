@@ -10,6 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.cmod.R;
+import com.winlator.cmod.contentdialog.FolderPickerDialog;
 
 import java.util.List;
 

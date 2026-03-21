@@ -14,7 +14,7 @@
         android:layout_height="32dp"
         android:layout_marginEnd="16dp"
         android:scaleType="centerInside"
-        android:src="@drawable/ic_folder" />
+        android:src="@drawable/icon_open" />
 
     <TextView
         android:id="@+id/tvName"

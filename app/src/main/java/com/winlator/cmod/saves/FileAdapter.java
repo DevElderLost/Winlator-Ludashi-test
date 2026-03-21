@@ -13,6 +13,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.contentdialog.FolderPickerDialog;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 

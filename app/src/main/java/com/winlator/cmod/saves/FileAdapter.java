@@ -1,4 +1,4 @@
-package com.winlator.cmod.saves;
+package com.winlator.cmod.contentdialog;  // ← sesuaikan package jika perlu
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,42 +10,44 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.cmod.R;
-import com.winlator.cmod.contentdialog.FolderPickerDialog;
 
 import java.util.List;
 import java.util.function.Consumer;
 
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
-    private final List<FolderPickerDialog.FileItem> items;
-    private final Consumer<FolderPickerDialog.FileItem> onClickListener;
+    private final List<FileItem> items;
+    private final Consumer<FileItem> onItemClickListener;
 
-    public FileAdapter(List<FolderPickerDialog.FileItem> items, Consumer<FolderPickerDialog.FileItem> onClickListener) {
+    public FileAdapter(List<FileItem> items, Consumer<FileItem> onItemClickListener) {
         this.items = items;
-        this.onClickListener = onClickListener;
+        this.onItemClickListener = onItemClickListener;
     }
 
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_folder, parent, false);
+                .inflate(R.layout.item_folder_picker, parent, false);
         return new ViewHolder(view);
     }
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        FolderPickerDialog.FileItem item = items.get(position);
+        FileItem item = items.get(position);
+
         holder.tvName.setText(item.name);
 
         if (item.isUp) {
-            holder.ivIcon.setImageResource(R.drawable.icon_open); // atau ic_folder_up
-            holder.tvName.setTextColor(holder.itemView.getContext().getColor(R.color.blue_700));
+            holder.ivIcon.setImageResource(R.drawable.ic_open);     // atau ic_chevron_up
+//            holder.tvName.setTextColor(holder.itemView.getContext().getColor(R.color.blue_600));  // warna berbeda biar kelihatan spesial
         } else {
-            holder.ivIcon.setImageResource(R.drawable.icon_open);
+            holder.ivIcon.setImageResource(R.drawable.icon_open);           // ikon folder biasa
+            holder.tvName.setTextColor(holder.itemView.getContext()
+                    .getColor(android.R.color.primary_text_light));
         }
 
-        holder.itemView.setOnClickListener(v -> onClickListener.accept(item));
+        holder.itemView.setOnClickListener(v -> onItemClickListener.accept(item));
     }
 
     @Override
@@ -57,10 +59,25 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         ImageView ivIcon;
         TextView tvName;
 
-        ViewHolder(View itemView) {
+        ViewHolder(@NonNull View itemView) {
             super(itemView);
             ivIcon = itemView.findViewById(R.id.ivIcon);
             tvName = itemView.findViewById(R.id.tvName);
+        }
+    }
+
+    // Kelas FileItem tetap sama seperti di FolderPickerDialog
+    public static class FileItem {
+        public final String name;
+        public final File file;
+        public final boolean isDirectory;
+        public final boolean isUp;
+
+        public FileItem(String name, File file, boolean isDirectory, boolean isUp) {
+            this.name = name;
+            this.file = file;
+            this.isDirectory = isDirectory;
+            this.isUp = isUp;
         }
     }
 }

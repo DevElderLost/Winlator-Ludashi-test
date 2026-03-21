@@ -41,11 +41,10 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
         if (item.isUp) {
             holder.ivIcon.setImageResource(R.drawable.ic_open);     // atau ic_chevron_up
-//            holder.tvName.setTextColor(holder.itemView.getContext().getColor(R.color.blue_600));  // warna berbeda biar kelihatan spesial
+            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.primary_text_light));  // warna berbeda biar kelihatan spesial
         } else {
             holder.ivIcon.setImageResource(R.drawable.icon_open);           // ikon folder biasa
-            holder.tvName.setTextColor(holder.itemView.getContext()
-                    .getColor(android.R.color.primary_text_light));
+            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.primary_text_light));
         }
 
         holder.itemView.setOnClickListener(v -> onItemClickListener.accept(item));

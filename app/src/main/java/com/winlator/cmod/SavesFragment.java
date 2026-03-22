@@ -201,107 +201,117 @@ public class SavesFragment extends Fragment {
 }
 
     private void importSave(Uri archiveUri) {
-        PreloaderDialog preloaderDialog = new PreloaderDialog(getActivity());
-        preloaderDialog.showOnUiThread(R.string.importing_save);
+    PreloaderDialog preloaderDialog = new PreloaderDialog(getActivity());
+    preloaderDialog.showOnUiThread(R.string.importing_save);
 
-        new Thread(() -> {
-            try {
-                File tempDir = new File(getContext().getCacheDir(), "import_temp");
-                if (tempDir.exists()) {
-                    FileUtils.delete(tempDir);
-                }
-                if (!tempDir.mkdirs()) {
-                    AppUtils.showToast(getContext(), "Failed to create temporary directory.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                // Use TarCompressorUtils to extract the archive
-                boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, getContext(), archiveUri, tempDir);
-                if (!success) {
-                    AppUtils.showToast(getContext(), "Failed to decompress archive.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                // Navigate to the extracted directory, assuming there's only one directory inside tempDir
-                File[] extractedFiles = tempDir.listFiles();
-                if (extractedFiles == null || extractedFiles.length != 1 || !extractedFiles[0].isDirectory()) {
-                    AppUtils.showToast(getContext(), "Unexpected archive structure.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                File extractedDir = extractedFiles[0]; // This is the "temp_<savename>_<timestamp>" directory
-
-                // Find the JSON file within the extracted directory
-                File[] jsonFiles = extractedDir.listFiles((dir, name) -> name.endsWith(".json"));
-                if (jsonFiles == null || jsonFiles.length != 1) {
-                    AppUtils.showToast(getContext(), "JSON file not found in the archive.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                File jsonFile = jsonFiles[0]; // Use the found JSON file
-
-                String jsonString = FileUtils.readString(jsonFile);
-                JSONObject saveData = new JSONObject(jsonString);
-                String title = saveData.getString("Title");
-                String savePath = saveData.getString("Path");
-
-                // ... setelah ekstrak berhasil dan dapat json ...
-
-getActivity().runOnUiThread(() -> 
-    showContainerSelectionDialog(
-        R.string.import_save,
-        selectedContainer -> {
-            try {
-                // --- kode copy file dan addSave Anda tetap sama ---
-                File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
-                
-                String relativeSavePath;
-                int driveCIndex = savePath.indexOf("drive_c");
-                if (driveCIndex != -1) {
-                    relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
-                } else {
-                    relativeSavePath = savePath;
-                }
-
-                File destSaveDir = new File(destRootDir, relativeSavePath);
-                
-                if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
-                    AppUtils.showToast(getContext(), "Failed to create directories.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
-                if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
-                    AppUtils.showToast(getContext(), "Failed to copy save files.");
-                    preloaderDialog.closeOnUiThread();
-                    return;
-                }
-
-                saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
-                AppUtils.showToast(getContext(), "Save imported successfully.");
-                loadSavesList();
-            } catch (Exception e) {
-                AppUtils.showToast(getContext(), "Import error: " + e.getMessage());
-            } finally {
+    new Thread(() -> {
+        try {
+            File tempDir = new File(getContext().getCacheDir(), "import_temp");
+            if (tempDir.exists()) {
                 FileUtils.delete(tempDir);
-                preloaderDialog.closeOnUiThread();
             }
-        },
-        () -> preloaderDialog.closeOnUiThread()  // cancel → tutup preloader
-    )
-);
-            } catch (Exception e) {
-                AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
-                e.printStackTrace(); // Log the error to console
+            if (!tempDir.mkdirs()) {
+                AppUtils.showToast(getContext(), "Failed to create temporary directory.");
                 preloaderDialog.closeOnUiThread();
+                return;
             }
-        }).start();
-    }
+
+            // Ekstrak archive
+            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, getContext(), archiveUri, tempDir);
+            if (!success) {
+                AppUtils.showToast(getContext(), "Failed to decompress archive.");
+                preloaderDialog.closeOnUiThread();
+                return;
+            }
+
+            // Cek struktur hasil ekstrak
+            File[] extractedFiles = tempDir.listFiles();
+            if (extractedFiles == null || extractedFiles.length != 1 || !extractedFiles[0].isDirectory()) {
+                AppUtils.showToast(getContext(), "Unexpected archive structure.");
+                preloaderDialog.closeOnUiThread();
+                return;
+            }
+
+            File extractedDir = extractedFiles[0]; // direktori "temp_<savename>_<timestamp>"
+
+            // Cari file JSON
+            File[] jsonFiles = extractedDir.listFiles((dir, name) -> name.endsWith(".json"));
+            if (jsonFiles == null || jsonFiles.length != 1) {
+                AppUtils.showToast(getContext(), "JSON file not found in the archive.");
+                preloaderDialog.closeOnUiThread();
+                return;
+            }
+
+            File jsonFile = jsonFiles[0];
+
+            String jsonString = FileUtils.readString(jsonFile);
+            JSONObject saveData = new JSONObject(jsonString);
+            String title = saveData.getString("Title");
+            String savePath = saveData.getString("Path");
+
+            // Pindah ke UI thread untuk tampilkan dialog pilihan container
+            getActivity().runOnUiThread(() -> {
+                showContainerSelectionDialog(
+                    R.string.import_save,
+                    selectedContainer -> {
+                        try {
+                            File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
+
+                            String relativeSavePath;
+                            int driveCIndex = savePath.indexOf("drive_c");
+                            if (driveCIndex != -1) {
+                                relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
+                            } else {
+                                relativeSavePath = savePath; // fallback
+                            }
+
+                            File destSaveDir = new File(destRootDir, relativeSavePath);
+
+                            // Buat struktur folder jika belum ada
+                            if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
+                                AppUtils.showToast(getContext(), "Failed to create directories.");
+                                return;
+                            }
+
+                            // Lokasi source yang akan di-copy
+                            File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
+
+                            if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
+                                AppUtils.showToast(getContext(), "Failed to copy save files.");
+                                return;
+                            }
+
+                            // Tambah ke save manager
+                            saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
+
+                            AppUtils.showToast(getContext(), "Save imported successfully.");
+                            loadSavesList();
+                        } catch (Exception e) {
+                            AppUtils.showToast(getContext(), "Import error: " + e.getMessage());
+                        } finally {
+                            // Bersihkan tempDir setelah selesai (sukses atau gagal)
+                            FileUtils.delete(tempDir);
+                            preloaderDialog.closeOnUiThread();
+                        }
+                    },
+                    () -> {
+                        // User cancel dialog → tetap hapus tempDir
+                        FileUtils.delete(tempDir);
+                        preloaderDialog.closeOnUiThread();
+                    }
+                );
+            });
+
+        } catch (Exception e) {
+            AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
+            e.printStackTrace();
+            preloaderDialog.closeOnUiThread();
+            // Pastikan tempDir dihapus meski exception di awal
+            File tempDir = new File(getContext().getCacheDir(), "import_temp");
+            FileUtils.delete(tempDir);
+        }
+    }).start();
+}
 
 
 

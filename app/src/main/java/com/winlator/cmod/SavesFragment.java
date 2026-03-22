@@ -23,7 +23,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;          // ← ini yang paling sering kurang
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
@@ -53,9 +53,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-// Opsional (jika pakai stream):
-import java.util.stream.Collectors;
-
 public class SavesFragment extends Fragment {
     private RecyclerView recyclerView;
     private TextView emptyTextView;
@@ -73,7 +70,6 @@ public class SavesFragment extends Fragment {
         setHasOptionsMenu(true);
         containerManager = new ContainerManager(getContext());
 
-        // Initialize isDarkMode based on shared preferences or theme
         isDarkMode = PreferenceManager.getDefaultSharedPreferences(getContext())
                 .getBoolean("dark_mode", false);
     }
@@ -132,8 +128,6 @@ public class SavesFragment extends Fragment {
         startActivityForResult(intent, REQUEST_CODE_IMPORT_ARCHIVE);
     }
 
-
-
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -146,174 +140,157 @@ public class SavesFragment extends Fragment {
         }
     }
 
-
-
+    // Reusable dialog untuk pemilihan container (import & transfer) - tampilan sama seperti di SaveSettingsDialog
     private void showContainerSelectionDialog(
-        String titleResId,                  // misal R.string.import_save atau R.string.save_transfer
-        Callback<Container> onSelected,
-        @Nullable Runnable onCancel) {
+            int titleResId,
+            Callback<Container> onContainerSelected,
+            @Nullable Runnable onCancel) {
 
-    View dialogView = LayoutInflater.from(getContext())
-            .inflate(R.layout.container_selection_dialog, null);
+        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.container_selection_dialog, null);
+        Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
 
-    Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
-
-    List<Container> containers = containerManager.getContainers();
-    if (containers.isEmpty()) {
-        AppUtils.showToast(getContext(), "No containers available");
-        return;
-    }
-
-    ArrayAdapter<String> adapter = new ArrayAdapter<>(
-            getContext(),
-            android.R.layout.simple_spinner_item,
-            containers.stream().map(Container::getName).toList()
-    );
-    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-    spinner.setAdapter(adapter);
-
-    // Penting: set popup background sesuai tema
-    int popupBgRes = isDarkMode 
-            ? R.drawable.content_dialog_background_dark 
-            : R.drawable.content_dialog_background;
-    spinner.setPopupBackgroundResource(popupBgRes);
-
-    AlertDialog dialog = new AlertDialog.Builder(getContext())
-            .setTitle(titleResId)
-            .setView(dialogView)
-            .setPositiveButton(android.R.string.ok, (d, which) -> {
-                int pos = spinner.getSelectedItemPosition();
-                if (pos >= 0 && pos < containers.size()) {
-                    onSelected.call(containers.get(pos));
-                }
-            })
-            .setNegativeButton(android.R.string.cancel, (d, which) -> {
-                if (onCancel != null) onCancel.run();
-            })
-            .create();
-
-    // Set background dialog sesuai tema (sama seperti di SaveSettingsDialog)
-    if (isDarkMode) {
-        dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
-    } else {
-        dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
-    }
-
-    dialog.show();
-}
-
-private void importSave(Uri archiveUri) {
-    PreloaderDialog preloaderDialog = new PreloaderDialog(getActivity());
-    preloaderDialog.showOnUiThread(R.string.importing_save);
-
-    new Thread(() -> {
-        try {
-            File tempDir = new File(getContext().getCacheDir(), "import_temp");
-            if (tempDir.exists()) {
-                FileUtils.delete(tempDir);
-            }
-            if (!tempDir.mkdirs()) {
-                AppUtils.showToast(getContext(), "Failed to create temporary directory.");
-                preloaderDialog.closeOnUiThread();
-                return;
-            }
-
-            // Ekstrak archive
-            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, getContext(), archiveUri, tempDir);
-            if (!success) {
-                AppUtils.showToast(getContext(), "Failed to decompress archive.");
-                preloaderDialog.closeOnUiThread();
-                return;
-            }
-
-            // Cek struktur hasil ekstrak
-            File[] extractedFiles = tempDir.listFiles();
-            if (extractedFiles == null || extractedFiles.length != 1 || !extractedFiles[0].isDirectory()) {
-                AppUtils.showToast(getContext(), "Unexpected archive structure.");
-                preloaderDialog.closeOnUiThread();
-                return;
-            }
-
-            File extractedDir = extractedFiles[0]; // direktori "temp_<savename>_<timestamp>"
-
-            // Cari file JSON
-            File[] jsonFiles = extractedDir.listFiles((dir, name) -> name.endsWith(".json"));
-            if (jsonFiles == null || jsonFiles.length != 1) {
-                AppUtils.showToast(getContext(), "JSON file not found in the archive.");
-                preloaderDialog.closeOnUiThread();
-                return;
-            }
-
-            File jsonFile = jsonFiles[0];
-
-            String jsonString = FileUtils.readString(jsonFile);
-            JSONObject saveData = new JSONObject(jsonString);
-            String title = saveData.getString("Title");
-            String savePath = saveData.getString("Path");
-
-            // Pindah ke UI thread untuk tampilkan dialog pilihan container
-            getActivity().runOnUiThread(() -> {
-                showContainerSelectionDialog(
-                    R.string.import_save,
-                    selectedContainer -> {
-                        try {
-                            File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
-
-                            String relativeSavePath;
-                            int driveCIndex = savePath.indexOf("drive_c");
-                            if (driveCIndex != -1) {
-                                relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
-                            } else {
-                                relativeSavePath = savePath; // fallback
-                            }
-
-                            File destSaveDir = new File(destRootDir, relativeSavePath);
-
-                            // Buat struktur folder jika belum ada
-                            if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
-                                AppUtils.showToast(getContext(), "Failed to create directories.");
-                                return;
-                            }
-
-                            // Lokasi source yang akan di-copy
-                            File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
-
-                            if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
-                                AppUtils.showToast(getContext(), "Failed to copy save files.");
-                                return;
-                            }
-
-                            // Tambah ke save manager
-                            saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
-
-                            AppUtils.showToast(getContext(), "Save imported successfully.");
-                            loadSavesList();
-                        } catch (Exception e) {
-                            AppUtils.showToast(getContext(), "Import error: " + e.getMessage());
-                        } finally {
-                            // Bersihkan tempDir setelah selesai (sukses atau gagal)
-                            FileUtils.delete(tempDir);
-                            preloaderDialog.closeOnUiThread();
-                        }
-                    },
-                    () -> {
-                        // User cancel dialog → tetap hapus tempDir
-                        FileUtils.delete(tempDir);
-                        preloaderDialog.closeOnUiThread();
-                    }
-                );
-            });
-
-        } catch (Exception e) {
-            AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
-            e.printStackTrace();
-            preloaderDialog.closeOnUiThread();
-            // Pastikan tempDir dihapus meski exception di awal
-            File tempDir = new File(getContext().getCacheDir(), "import_temp");
-            FileUtils.delete(tempDir);
+        List<Container> containers = containerManager.getContainers();
+        if (containers.isEmpty()) {
+            AppUtils.showToast(getContext(), "No containers available");
+            return;
         }
-    }).start();
-}
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                getContext(),
+                android.R.layout.simple_spinner_item,
+                containers.stream().map(Container::getName).toList()
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+
+        // Sesuaikan popup background dengan tema dark/light
+        int popupBgRes = isDarkMode
+                ? R.drawable.content_dialog_background_dark
+                : R.drawable.content_dialog_background;
+        spinner.setPopupBackgroundResource(popupBgRes);
+
+        AlertDialog dialog = new AlertDialog.Builder(getContext())
+                .setTitle(getString(titleResId))
+                .setView(dialogView)
+                .setPositiveButton(android.R.string.ok, (dialogInterface, which) -> {
+                    int selectedPosition = spinner.getSelectedItemPosition();
+                    if (selectedPosition >= 0 && selectedPosition < containers.size()) {
+                        onContainerSelected.call(containers.get(selectedPosition));
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, (dialogInterface, which) -> {
+                    if (onCancel != null) {
+                        onCancel.run();
+                    }
+                })
+                .create();
+
+        // Sesuaikan background dialog window dengan tema
+        if (isDarkMode) {
+            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+        } else {
+            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+        }
+
+        dialog.show();
+    }
+
+    private void importSave(Uri archiveUri) {
+        PreloaderDialog preloaderDialog = new PreloaderDialog(getActivity());
+        preloaderDialog.showOnUiThread(R.string.importing_save);
+
+        new Thread(() -> {
+            try {
+                File tempDir = new File(getContext().getCacheDir(), "import_temp");
+                if (tempDir.exists()) {
+                    FileUtils.delete(tempDir);
+                }
+                if (!tempDir.mkdirs()) {
+                    AppUtils.showToast(getContext(), "Failed to create temporary directory.");
+                    preloaderDialog.closeOnUiThread();
+                    return;
+                }
+
+                boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, getContext(), archiveUri, tempDir);
+                if (!success) {
+                    AppUtils.showToast(getContext(), "Failed to decompress archive.");
+                    preloaderDialog.closeOnUiThread();
+                    return;
+                }
+
+                File[] extractedFiles = tempDir.listFiles();
+                if (extractedFiles == null || extractedFiles.length != 1 || !extractedFiles[0].isDirectory()) {
+                    AppUtils.showToast(getContext(), "Unexpected archive structure.");
+                    preloaderDialog.closeOnUiThread();
+                    return;
+                }
+
+                File extractedDir = extractedFiles[0];
+
+                File[] jsonFiles = extractedDir.listFiles((dir, name) -> name.endsWith(".json"));
+                if (jsonFiles == null || jsonFiles.length != 1) {
+                    AppUtils.showToast(getContext(), "JSON file not found in the archive.");
+                    preloaderDialog.closeOnUiThread();
+                    return;
+                }
+
+                File jsonFile = jsonFiles[0];
+                String jsonString = FileUtils.readString(jsonFile);
+                JSONObject saveData = new JSONObject(jsonString);
+                String title = saveData.getString("Title");
+                String savePath = saveData.getString("Path");
+
+                getActivity().runOnUiThread(() -> 
+                    showContainerSelectionDialog(
+                        R.string.import_save,
+                        selectedContainer -> {
+                            try {
+                                File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
+
+                                String relativeSavePath;
+                                int driveCIndex = savePath.indexOf("drive_c");
+                                if (driveCIndex != -1) {
+                                    relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
+                                } else {
+                                    relativeSavePath = savePath;
+                                }
+
+                                File destSaveDir = new File(destRootDir, relativeSavePath);
+
+                                if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
+                                    AppUtils.showToast(getContext(), "Failed to create directories for save path.");
+                                    preloaderDialog.closeOnUiThread();
+                                    return;
+                                }
+
+                                File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
+                                if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
+                                    AppUtils.showToast(getContext(), "Failed to copy save files.");
+                                    preloaderDialog.closeOnUiThread();
+                                    return;
+                                }
+
+                                saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
+
+                                AppUtils.showToast(getContext(), "Save imported successfully.");
+                                loadSavesList();
+                            } catch (IOException e) {
+                                AppUtils.showToast(getContext(), "Failed to import save: " + e.getMessage());
+                            } finally {
+                                FileUtils.delete(tempDir);
+                                preloaderDialog.closeOnUiThread();
+                            }
+                        },
+                        () -> preloaderDialog.closeOnUiThread()  // cancel action
+                    )
+                );
+            } catch (Exception e) {
+                AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
+                e.printStackTrace();
+                preloaderDialog.closeOnUiThread();
+            }
+        }).start();
+    }
 
     public void refreshSavesList() {
         loadSavesList();
@@ -326,13 +303,13 @@ private void importSave(Uri archiveUri) {
             private final ImageButton menuButton;
             private final ImageView imageView;
             private final TextView title;
-            private final TextView containerName; // New TextView for container name
+            private final TextView containerName;
 
             private ViewHolder(View view) {
                 super(view);
                 this.imageView = view.findViewById(R.id.ImageView);
                 this.title = view.findViewById(R.id.TVTitle);
-                this.containerName = view.findViewById(R.id.TVContainerName); // Initialize container name TextView
+                this.containerName = view.findViewById(R.id.TVContainerName);
                 this.menuButton = view.findViewById(R.id.BTMenu);
             }
         }
@@ -351,7 +328,7 @@ private void importSave(Uri archiveUri) {
             final Save item = data.get(position);
             holder.imageView.setImageResource(R.drawable.icon_save);
             holder.title.setText(item.getTitle());
-            holder.containerName.setText(item.container != null ? item.container.getName() : ""); // Set container name
+            holder.containerName.setText(item.container != null ? item.container.getName() : "");
             holder.menuButton.setOnClickListener((view) -> showListItemMenu(view, item));
         }
 
@@ -364,11 +341,11 @@ private void importSave(Uri archiveUri) {
             final Context context = getContext();
             PopupMenu listItemMenu = new PopupMenu(context, anchorView);
             listItemMenu.inflate(R.menu.save_popup_menu);
+            listItemMenu.setForceShowIcon(true);
 
             listItemMenu.setOnMenuItemClickListener((menuItem) -> {
                 switch (menuItem.getItemId()) {
                     case R.id.save_edit:
-                        // Delegate to MainActivity to handle showing SaveEditDialog
                         ((MainActivity) getActivity()).showSaveEditDialog(save);
                         return true;
                     case R.id.save_transfer:
@@ -426,7 +403,7 @@ private void importSave(Uri archiveUri) {
                     }
 
                     String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-                    String archiveName = save.getTitle() + "_" + timestamp + ".tar.xz"; // Use XZ compression as example
+                    String archiveName = save.getTitle() + "_" + timestamp + ".tar.xz";
                     File exportFile = new File(exportDirectory, archiveName);
 
                     File tempExportDir = new File(exportDirectory, "temp_" + save.getTitle() + "_" + timestamp);
@@ -435,7 +412,6 @@ private void importSave(Uri archiveUri) {
                         return;
                     }
 
-                    // Copy the .json file and the save directory to the temp directory
                     File copiedJsonFile = new File(tempExportDir, saveJsonFile.getName());
                     if (!FileUtils.copy(saveJsonFile, copiedJsonFile)) {
                         AppUtils.showToast(getContext(), "Failed to copy .json file.");
@@ -448,11 +424,8 @@ private void importSave(Uri archiveUri) {
                         return;
                     }
 
-                    // Compress the temp directory itself, which now contains the JSON file and save directory
                     TarCompressorUtils.compress(TarCompressorUtils.Type.XZ, tempExportDir, exportFile, 3, null);
 
-
-                    // Clean up the temporary directory
                     FileUtils.delete(tempExportDir);
 
                     AppUtils.showToast(getContext(), "Save exported to " + exportFile.getAbsolutePath());
@@ -470,61 +443,40 @@ private void importSave(Uri archiveUri) {
             }).start();
         }
 
-
-
         private void makeFileVisible(File file) {
-            // Force a media scan so the file becomes visible to other apps
             MediaScannerConnection.scanFile(getContext(),
                     new String[]{file.getAbsolutePath()},
-                    null, // MIME type can be null
-                    (path, uri) -> {
-                        // Scan complete, file should be visible now
-                    });
+                    null,
+                    (path, uri) -> { });
 
-            // Set file permissions for other apps
             file.setReadable(true, false);
             file.setWritable(true, false);
         }
 
         private void shareExportedFile(File exportFile) {
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType("application/octet-stream"); // More general MIME type
+            shareIntent.setType("application/octet-stream");
             Uri fileUri = FileProvider.getUriForFile(getContext(), "com.winlator.fileprovider", exportFile);
             shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
             shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
             startActivity(Intent.createChooser(shareIntent, "Share Save Archive"));
         }
-    }
 
-private void showTransferDialog(Save save) {
-    showContainerSelectionDialog(
-        R.string.save_transfer,
-        selectedContainer -> {
-            try {
-                saveManager.transferSave(save, selectedContainer);
-                loadSavesList();
-                AppUtils.showToast(getContext(), "Transfer complete");
-            } catch (IOException e) {
-                AppUtils.showToast(getContext(), "Transfer failed: " + e.getMessage());
-            }
-        },
-        null  // tidak perlu aksi khusus saat cancel
-    );
-}
-        
-        private void transferSaveFiles(Save save, Container container) {
-            // Clone the save directory to the container's directory
-            File sourceDir = new File(save.path);
-            File targetDir = new File(container.getRootDir(), "xuser-" + container.id);
-
-            boolean success = FileUtils.copy(sourceDir, targetDir);
-            if (success) {
-                // Optionally, notify the user of the successful transfer
-                AppUtils.showToast(getContext(), R.string.transfer_complete);
-            } else {
-                AppUtils.showToast(getContext(), R.string.transfer_failed);
-            }
+        private void showTransferDialog(Save save) {
+            showContainerSelectionDialog(
+                    R.string.save_transfer,
+                    selectedContainer -> {
+                        try {
+                            saveManager.transferSave(save, selectedContainer);
+                            loadSavesList();
+                            AppUtils.showToast(getContext(), "Transfer complete");
+                        } catch (IOException e) {
+                            AppUtils.showToast(getContext(), "Transfer failed: " + e.getMessage());
+                        }
+                    },
+                    null  // no special cancel action needed
+            );
         }
     }
-
+}

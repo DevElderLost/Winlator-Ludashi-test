@@ -13,6 +13,12 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Paint;
+import android.graphics.Canvas;
+
 import androidx.preference.PreferenceManager;
 
 import androidx.core.content.ContextCompat;

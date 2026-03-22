@@ -334,6 +334,7 @@ public class SavesFragment extends Fragment {
             final Context context = getContext();
             PopupMenu listItemMenu = new PopupMenu(context, anchorView);
             listItemMenu.inflate(R.menu.save_popup_menu);
+            listItemMenu.setForceShowIcon(true);
 
             listItemMenu.setOnMenuItemClickListener((menuItem) -> {
                 switch (menuItem.getItemId()) {

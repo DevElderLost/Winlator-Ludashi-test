@@ -495,6 +495,7 @@ private void importSave(Uri archiveUri) {
 
             startActivity(Intent.createChooser(shareIntent, "Share Save Archive"));
         }
+    }
 
 private void showTransferDialog(Save save) {
     showContainerSelectionDialog(

@@ -21,6 +21,10 @@ import android.widget.PopupMenu;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
+import android.media.ThumbnailUtils;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -333,13 +337,68 @@ public class SavesFragment extends Fragment {
         }
 
         @Override
-        public void onBindViewHolder(final ViewHolder holder, int position) {
-            final Save item = data.get(position);
-            holder.imageView.setImageResource(R.drawable.icon_save);
-            holder.title.setText(item.getTitle());
-            holder.containerName.setText(item.container != null ? item.container.getName() : "");
-            holder.menuButton.setOnClickListener((view) -> showListItemMenu(view, item));
+public void onBindViewHolder(final ViewHolder holder, int position) {
+    final Save item = data.get(position);
+
+    // ─── DEFAULT ICON ─────────────────────────────────────
+    holder.imageView.setImageResource(R.drawable.icon_save);
+
+    // ─── LOGIKA CUSTOM ICON dari .local/share/icons/hicolor/32x32/apps/ ───────
+    if (item.container != null) {
+        File containerRoot = item.container.getRootDir();
+
+        // Lokasi icon: langsung di root container (satu level dengan .wine)
+        File iconsDir = new File(containerRoot, ".local/share/icons/hicolor/32x32/apps");
+
+        if (iconsDir.exists() && iconsDir.isDirectory()) {
+            String titleLower = item.getTitle().toLowerCase(Locale.getDefault());
+
+            File[] pngFiles = iconsDir.listFiles((dir, name) ->
+                    name.toLowerCase(Locale.getDefault()).endsWith(".png"));
+
+            if (pngFiles != null && pngFiles.length > 0) {
+                for (File pngFile : pngFiles) {
+                    String fileNameLower = pngFile.getName().toLowerCase(Locale.getDefault());
+                    if (fileNameLower.length() <= 4) continue;
+
+                    String baseName = fileNameLower.substring(0, fileNameLower.length() - 4);
+
+                    // Cocok jika nama file (tanpa .png) mirip dengan judul save
+                    if (baseName.equals(titleLower) ||
+                        fileNameLower.contains(titleLower) ||
+                        titleLower.contains(baseName)) {
+
+                        try {
+                            Bitmap fullBitmap = BitmapFactory.decodeFile(pngFile.getAbsolutePath());
+                            if (fullBitmap != null) {
+                                Bitmap thumbnail = ThumbnailUtils.extractThumbnail(
+                                        fullBitmap,
+                                        128, 128,
+                                        ThumbnailUtils.OPTIONS_RECYCLE_INPUT
+                                );
+                                holder.imageView.setImageBitmap(thumbnail);
+
+                                // Opsional: atur scale type agar terlihat bagus di list
+                                holder.imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                                // atau CENTER_INSIDE / FIT_CENTER sesuai selera
+
+                                break; // cukup pakai satu icon yang cocok
+                            }
+                        } catch (Exception e) {
+                            // Jika decode gagal (corrupt file, dll) → skip ke default
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // ─── Bagian lain tetap sama ───────────────────────────
+    holder.title.setText(item.getTitle());
+    holder.containerName.setText(item.container != null ? item.container.getName() : "");
+    holder.menuButton.setOnClickListener((view) -> showListItemMenu(view, item));
+}
 
         @Override
         public final int getItemCount() {

@@ -15,6 +15,8 @@ import android.widget.TextView;
 
 import androidx.preference.PreferenceManager;
 
+import androidx.core.content.ContextCompat;
+
 import com.winlator.cmod.MainActivity;
 import com.winlator.cmod.R;
 import com.winlator.cmod.container.Container;
@@ -96,6 +98,7 @@ public class SaveSettingsDialog extends ContentDialog {
 
         // ImageButton listener
         ImageButton btnPickPath = findViewById(R.id.BTPickPath);
+        btnPickPath.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
         btnPickPath.setOnClickListener(v -> {
             if (selectedContainer != null) {
                 openFolderPicker();

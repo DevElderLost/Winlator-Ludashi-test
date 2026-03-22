@@ -145,8 +145,8 @@ public class SettingsFragment extends Fragment {
         });
 
         // Initialize Big Picture Mode Checkbox
-        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
-        cbEnableBigPictureMode.setChecked(preferences.getBoolean("enable_big_picture_mode", false));
+//        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
+//        cbEnableBigPictureMode.setChecked(preferences.getBoolean("enable_big_picture_mode", false));
 
         initCustomApiKeySettings(view);
 

@@ -5,6 +5,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.content.Context;
 
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -42,6 +43,7 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        final Context context = getContext();
         FileItem item = items.get(position);
 
         holder.tvName.setText(item.name);

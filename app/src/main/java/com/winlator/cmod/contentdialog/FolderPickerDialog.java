@@ -95,6 +95,8 @@ public class FolderPickerDialog extends ContentDialog {
 
         fileAdapter = new FileAdapter(items, this::onItemClicked);
         recyclerView.setAdapter(fileAdapter);
+
+        adjustRecyclerViewHeight();
     }
 
     private void onItemClicked(FileItem item) {
@@ -109,6 +111,28 @@ public class FolderPickerDialog extends ContentDialog {
         if (item.file.isDirectory()) {
             loadFiles(item.file);
         }
+    }
+
+    private void adjustRecyclerViewHeight() {
+    if (fileAdapter == null) return;
+
+    int itemCount = fileAdapter.getItemCount();
+    int desiredItemCount = Math.min(itemCount, 8); // maksimal tampil 8 item tanpa scroll
+    int itemHeightApprox = (int) (56 * getContext().getResources().getDisplayMetrics().density); // \~56dp per item
+
+    int targetHeight = desiredItemCount * itemHeightApprox + 32; // + padding
+
+    // Batasi maksimal
+    int maxAllowed = (int) (360 * getContext().getResources().getDisplayMetrics().density);
+    targetHeight = Math.min(targetHeight, maxAllowed);
+
+    // Set minimal juga
+    int minHeight = (int) (160 * getContext().getResources().getDisplayMetrics().density);
+    targetHeight = Math.max(targetHeight, minHeight);
+
+    RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) recyclerView.getLayoutParams();
+    params.height = targetHeight;
+    recyclerView.setLayoutParams(params);
     }
 
     private void updatePathDisplay() {

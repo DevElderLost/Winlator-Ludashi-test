@@ -43,7 +43,7 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        final Context context = getContext();
+        final Context context = holder.getContext();
         FileItem item = items.get(position);
 
         holder.tvName.setText(item.name);

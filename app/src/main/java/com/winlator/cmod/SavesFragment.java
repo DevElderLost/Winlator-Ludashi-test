@@ -18,6 +18,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
+import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
@@ -148,6 +149,14 @@ public class SavesFragment extends Fragment {
         ContentDialog dialog = new ContentDialog(getContext(), R.layout.container_selection_dialog);
         dialog.setTitle(titleResId);
 //        dialog.setIcon(R.drawable.icon_container);
+
+    // ─── Tambahkan ini ────────────────────────────────
+    LinearLayout llContent = dialog.findViewById(R.id.LLContent);
+    if (llContent != null) {
+        llContent.getLayoutParams().width = AppUtils.getPreferredDialogWidth(getContext());
+    }
+    // ──────────────────────────────────────────────────
+        
 
         Spinner spinner = dialog.findViewById(R.id.SContainer);
 

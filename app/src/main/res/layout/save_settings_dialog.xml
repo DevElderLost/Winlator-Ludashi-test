@@ -11,51 +11,66 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/save_title"
-        android:textSize="16sp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/save_title"
+            android:textSize="16sp" />
 
-    <EditText
-        android:id="@+id/ETTitle"
-        style="@style/EditText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:inputType="textCapSentences"
-        android:textSize="16sp" />
+        <EditText
+            android:id="@+id/ETTitle"
+            style="@style/EditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:inputType="textCapSentences"
+            android:textSize="16sp" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/container"
-        android:textSize="16sp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/container"
+            android:textSize="16sp" />
 
-    <Spinner
-        style="@style/ComboBox"
-        android:id="@+id/SContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp" />
+        <!-- Spinner + ImageButton secara horizontal -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
 
-    <TextView
-        android:id="@+id/TVPath"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:padding="4dp"
-        android:text="@string/save_path"
-        android:textColor="@color/black"
-        android:textSize="14sp"
-    android:visibility="gone" />
+            <Spinner
+                style="@style/ComboBox"
+                android:id="@+id/SContainer"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp" />
 
-    <Button
-        android:id="@+id/BTPickPath"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/select_save_path"
-        android:textSize="16sp" />
+            <ImageButton
+                android:id="@+id/BTPickPath"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/select_save_path"
+                android:src="@drawable/icon_settings"
+                android:scaleType="centerInside"
+                android:padding="8dp" />
 
-</LinearLayout>
-    </ScrollView>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/TVPath"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:padding="4dp"
+            android:text="@string/save_path"
+            android:textColor="@color/black"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+</ScrollView>

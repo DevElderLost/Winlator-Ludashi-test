@@ -108,14 +108,12 @@ public class ControlElement {
             bindings[1] = Binding.KEY_D;
             bindings[2] = Binding.KEY_S;
             bindings[3] = Binding.KEY_A;
-        }
-        else if (type == Type.TRACKPAD) {
+        } else if (type == Type.TRACKPAD) {
             bindings[0] = Binding.MOUSE_MOVE_UP;
             bindings[1] = Binding.MOUSE_MOVE_RIGHT;
             bindings[2] = Binding.MOUSE_MOVE_DOWN;
             bindings[3] = Binding.MOUSE_MOVE_LEFT;
-        }
-        else if (type == Type.RANGE_BUTTON) {
+        } else if (type == Type.RANGE_BUTTON) {
             scroller = new RangeScroller(inputControlsView, this);
         }
 
@@ -364,7 +362,6 @@ public class ControlElement {
                 float cx = boundingBox.centerX();
                 float cy = boundingBox.centerY();
 
-                // === BACKGROUND SHAPE (stroke / fill) ===
                 paint.setColor(baseColor);
                 paint.setStrokeWidth(strokeWidth);
                 if (pressed) {
@@ -392,8 +389,7 @@ public class ControlElement {
                     }
                 }
 
-                // === PENTING: RESET PAINT AGAR ICON/TEXT TIDAK TERPENGARUH ===
-                // (ini yang mencegah crash & hilangnya icon saat pressed)
+                // Reset paint agar icon/text tidak terpengaruh (mencegah crash/hilang)
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(primaryColor);
 
@@ -467,7 +463,7 @@ public class ControlElement {
             }
 
             case RANGE_BUTTON: {
-                // (logika asli tetap sama persis)
+                // List horizontal (orientation == 0) tetap stroke saja, tidak ada fill
                 Range range = getRange();
                 int oldColor = paint.getColor();
                 float radius = snappingSize * 0.75f * scale;
@@ -477,6 +473,10 @@ public class ControlElement {
                 byte[] rangeIndex = scroller.getRangeIndex();
                 Path path = inputControlsView.getPath();
                 path.reset();
+
+                paint.setColor(baseColor);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(strokeWidth);
 
                 if (orientation == 0) {
                     float lineTop = boundingBox.top + strokeWidth * 0.5f;
@@ -494,7 +494,8 @@ public class ControlElement {
                         paint.setStyle(Paint.Style.STROKE);
                         paint.setColor(oldColor);
 
-                        if (startX > boundingBox.left && startX < boundingBox.right) canvas.drawLine(startX, lineTop, startX, lineBottom, paint);
+                        if (startX > boundingBox.left && startX < boundingBox.right)
+                            canvas.drawLine(startX, lineTop, startX, lineBottom, paint);
                         String text = getRangeTextForIndex(range, index);
 
                         if (startX < boundingBox.right && startX + elementSize > boundingBox.left) {
@@ -525,7 +526,8 @@ public class ControlElement {
                         paint.setStyle(Paint.Style.STROKE);
                         paint.setColor(oldColor);
 
-                        if (startY > boundingBox.top && startY < boundingBox.bottom) canvas.drawLine(lineLeft, startY, lineRight, startY, paint);
+                        if (startY > boundingBox.top && startY < boundingBox.bottom)
+                            canvas.drawLine(lineLeft, startY, lineRight, startY, paint);
                         String text = getRangeTextForIndex(range, i);
 
                         if (startY < boundingBox.bottom && startY + elementSize > boundingBox.top) {
@@ -645,7 +647,7 @@ public class ControlElement {
         if (currentPointerId == -1 && containsPoint(x, y)) {
             currentPointerId = pointerId;
             isPressed = true;
-            inputControlsView.invalidate();   // update visual langsung
+            inputControlsView.invalidate();
 
             if (type == Type.BUTTON) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
@@ -698,23 +700,51 @@ public class ControlElement {
                 if (currentPosition == null) currentPosition = new PointF();
                 currentPosition.x = boundingBox.left + deltaX * radius + radius;
                 currentPosition.y = boundingBox.top + deltaY * radius + radius;
-                final boolean[] states = {deltaY <= -STICK_DEAD_ZONE, deltaX >= STICK_DEAD_ZONE, deltaY >= STICK_DEAD_ZONE, deltaX <= -STICK_DEAD_ZONE};
+
+                // === PERBAIKAN UTAMA: cegah "lengket" & "terkunci ke satu arah" ===
+                // Sebelumnya states hanya di-set true, tapi tidak pernah di-release saat arah berubah.
+                // Sekarang kita cek perubahan state setiap move dan kirim release (false) jika melewati deadzone.
+                final boolean[] newStates = {
+                        deltaY <= -STICK_DEAD_ZONE,
+                        deltaX >= STICK_DEAD_ZONE,
+                        deltaY >= STICK_DEAD_ZONE,
+                        deltaX <= -STICK_DEAD_ZONE
+                };
 
                 for (byte i = 0; i < 4; i++) {
-                    float value = i == 1 || i == 3 ? deltaX : deltaY;
+                    float value = (i == 1 || i == 3) ? deltaX : deltaY;
                     Binding binding = getBindingAt(i);
+
                     if (binding.isGamepad()) {
-                        value = Mathf.clamp(Math.max(0, Math.abs(value) - 0.01f) * Mathf.sign(value) * STICK_SENSITIVITY, -1, 1);
-                        inputControlsView.handleInputEvent(binding, true, value);
-                        this.states[i] = true;
+                        float gamepadValue = Mathf.clamp(
+                                Math.max(0, Math.abs(value) - 0.01f) * Mathf.sign(value) * STICK_SENSITIVITY,
+                                -1, 1
+                        );
+                        boolean isActiveNow = Math.abs(gamepadValue) > 0.01f;
+
+                        if (isActiveNow != this.states[i]) {
+                            // Kirim release atau press baru
+                            inputControlsView.handleInputEvent(binding, isActiveNow, isActiveNow ? gamepadValue : 0f);
+                            this.states[i] = isActiveNow;
+                        } else if (isActiveNow) {
+                            // Update nilai analog (agar smooth)
+                            inputControlsView.handleInputEvent(binding, true, gamepadValue);
+                        }
                     } else {
-                        boolean state = binding.isMouseMove() ? (states[i] || states[(i + 2) % 4]) : states[i];
-                        inputControlsView.handleInputEvent(binding, state, value);
-                        this.states[i] = state;
+                        boolean state = binding.isMouseMove()
+                                ? (newStates[i] || newStates[(i + 2) % 4])
+                                : newStates[i];
+
+                        if (state != this.states[i]) {
+                            inputControlsView.handleInputEvent(binding, state, value);
+                            this.states[i] = state;
+                        }
                     }
                 }
+
                 inputControlsView.invalidate();
             } else if (type == Type.TRACKPAD) {
+                // ... (logika TRACKPAD tetap sama)
                 final boolean[] states = {deltaY <= -TRACKPAD_MIN_SPEED, deltaX >= TRACKPAD_MIN_SPEED, deltaY >= TRACKPAD_MIN_SPEED, deltaX <= -TRACKPAD_MIN_SPEED};
                 int cursorDx = 0;
                 int cursorDy = 0;
@@ -750,6 +780,7 @@ public class ControlElement {
                         inputControlsView.getXServer().injectPointerMoveDelta(cursorDx, cursorDy);
                 }
             } else {
+                // D-Pad (tetap sama)
                 final boolean[] states = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 
                 for (byte i = 0; i < 4; i++) {
@@ -771,7 +802,7 @@ public class ControlElement {
     public boolean handleTouchUp(int pointerId) {
         if (pointerId == currentPointerId) {
             isPressed = false;
-            inputControlsView.invalidate();   // kembalikan visual
+            inputControlsView.invalidate();
 
             if (type == Type.BUTTON) {
                 Binding binding = getBindingAt(0);

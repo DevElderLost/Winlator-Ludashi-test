@@ -8,6 +8,7 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -19,7 +20,6 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.core.AppUtils;
-//import com.winlator.cmod.saves.CustomFilePickerActivity;
 import com.winlator.cmod.saves.Save;
 import com.winlator.cmod.saves.SaveManager;
 
@@ -40,7 +40,6 @@ public class SaveSettingsDialog extends ContentDialog {
 
     private boolean isDarkMode;
 
-
     public SaveSettingsDialog(Activity activity, SaveManager saveManager, ContainerManager containerManager) {
         super(activity, R.layout.save_settings_dialog);
         this.activity = activity;
@@ -51,15 +50,11 @@ public class SaveSettingsDialog extends ContentDialog {
 
         createContentView();
 
-
         // Reload spinner data whenever the dialog is shown
         setOnShowListener(dialog -> {
             Spinner sContainer = findViewById(R.id.SContainer);
-
             sContainer.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
-
             loadContainerSpinner(sContainer);
-
 
             // Set the selected container if in edit mode
             if (saveToEdit != null && selectedContainer != null) {
@@ -73,7 +68,7 @@ public class SaveSettingsDialog extends ContentDialog {
 
     public SaveSettingsDialog(Activity activity, SaveManager saveManager, ContainerManager containerManager, Save saveToEdit) {
         this(activity, saveManager, containerManager);
-        this.saveToEdit = saveToEdit; // Set the save object being edited
+        this.saveToEdit = saveToEdit;
 
         if (saveToEdit != null) {
             etTitle.setText(saveToEdit.getTitle());
@@ -94,20 +89,23 @@ public class SaveSettingsDialog extends ContentDialog {
         llContent.getLayoutParams().width = AppUtils.getPreferredDialogWidth(context);
 
         etTitle = findViewById(R.id.ETTitle);
-
-        // Set the background resource based on isDarkMode
         etTitle.setBackgroundResource(isDarkMode ? R.drawable.edit_text_dark : R.drawable.edit_text);
 
         tvSavePath = findViewById(R.id.TVPath);
         tvSavePath.setVisibility(View.GONE);
 
-        findViewById(R.id.BTPickPath).setOnClickListener((v) -> {
+        // ImageButton listener
+        ImageButton btnPickPath = findViewById(R.id.BTPickPath);
+        btnPickPath.setOnClickListener(v -> {
             if (selectedContainer != null) {
                 openFolderPicker();
             } else {
                 AppUtils.showToast(context, R.string.select_container_first);
             }
         });
+
+        // Tooltip (muncul saat ditekan lama) – opsional tapi membantu UX
+//        btnPickPath.setTooltipText(getString(R.string.select_save_path));
 
         setOnConfirmCallback(() -> {
             String title = etTitle.getText().toString().trim();
@@ -132,7 +130,7 @@ public class SaveSettingsDialog extends ContentDialog {
         selectedPath = path;
         tvSavePath.setText(path);
         tvSavePath.setVisibility(View.VISIBLE);
-        Log.d("SaveSettingsDialog", "Selected Path Updated in UI: " + path); // Debug log
+        Log.d("SaveSettingsDialog", "Selected Path Updated in UI: " + path);
     }
 
     private void loadContainerSpinner(Spinner sContainer) {
@@ -162,33 +160,33 @@ public class SaveSettingsDialog extends ContentDialog {
     }
 
     private void openFolderPicker() {
-    if (selectedContainer == null) {
-        AppUtils.showToast(getContext(), R.string.select_container_first);
-        return;
-    }
-
-    String startPath = new File(selectedContainer.getRootDir(), ".wine/drive_c/").getAbsolutePath();
-    if (saveToEdit != null && saveToEdit.path != null) {
-        startPath = saveToEdit.path;
-    }
-
-    FolderPickerDialog dialog = new FolderPickerDialog(activity, startPath);
-    dialog.setOnFolderSelectedListener(path -> {
-        if (isPathValidForContainer(path)) {
-            updateSelectedPath(path);
-        } else {
-            AppUtils.showToast(getContext(), R.string.invalid_path);
+        if (selectedContainer == null) {
+            AppUtils.showToast(getContext(), R.string.select_container_first);
+            return;
         }
-    });
-    dialog.show();
+
+        String startPath = new File(selectedContainer.getRootDir(), ".wine/drive_c/").getAbsolutePath();
+        if (saveToEdit != null && saveToEdit.path != null) {
+            startPath = saveToEdit.path;
+        }
+
+        FolderPickerDialog dialog = new FolderPickerDialog(activity, startPath);
+        dialog.setOnFolderSelectedListener(path -> {
+            if (isPathValidForContainer(path)) {
+                updateSelectedPath(path);
+            } else {
+                AppUtils.showToast(getContext(), R.string.invalid_path);
+            }
+        });
+        dialog.show();
     }
-    
+
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE_CUSTOM_FILE_PICKER && resultCode == Activity.RESULT_OK) {
             String path = data.getStringExtra("selectedDirectory");
-            Log.d("SaveSettingsDialog", "Returned Path from Picker: " + path); // Debug log
+            Log.d("SaveSettingsDialog", "Returned Path from Picker: " + path);
             if (path != null && isPathValidForContainer(path)) {
-                activity.runOnUiThread(() -> updateSelectedPath(path));  // Ensure UI updates happen on the main thread
+                activity.runOnUiThread(() -> updateSelectedPath(path));
                 Log.d("SaveSettingsDialog", "Path selected: " + path);
             } else {
                 AppUtils.showToast(getContext(), R.string.invalid_path);

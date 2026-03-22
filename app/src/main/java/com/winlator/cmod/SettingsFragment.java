@@ -148,7 +148,7 @@ public class SettingsFragment extends Fragment {
 //        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
 //        cbEnableBigPictureMode.setChecked(preferences.getBoolean("enable_big_picture_mode", false));
 
-        initCustomApiKeySettings(view);
+//        initCustomApiKeySettings(view);
 
         // Initialize the cursor lock checkbox
         cbCursorLock = view.findViewById(R.id.CBCursorLock);
@@ -336,7 +336,7 @@ public class SettingsFragment extends Fragment {
             else if (preferences.contains("wine_debug_channels")) editor.remove("wine_debug_channels");
 
             // Save Big Picture Mode setting
-            editor.putBoolean("enable_big_picture_mode", ((CheckBox) view.findViewById(R.id.CBEnableBigPictureMode)).isChecked());
+//            editor.putBoolean("enable_big_picture_mode", ((CheckBox) view.findViewById(R.id.CBEnableBigPictureMode)).isChecked());
             saveCustomApiKeySettings(editor);
 
             if (editor.commit()) {

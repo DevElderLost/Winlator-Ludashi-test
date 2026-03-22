@@ -32,7 +32,7 @@ public class ControlElement {
     public static final short BUTTON_MIN_TIME_TO_KEEP_PRESSED = 300;
 
     public enum Type {
-        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD;
+        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE;
 
         public static String[] names() {
             Type[] types = values();
@@ -115,6 +115,11 @@ public class ControlElement {
             bindings[3] = Binding.MOUSE_MOVE_LEFT;
         } else if (type == Type.RANGE_BUTTON) {
             scroller = new RangeScroller(inputControlsView, this);
+        } else if (type == Type.TOUCHSCREEN_TOGGLE) {
+            // Tidak perlu binding apa pun
+            setBinding(Binding.NONE);
+            text = "";
+            iconId = 0;
         }
 
         text = "";
@@ -259,6 +264,7 @@ public class ControlElement {
 
         switch (type) {
             case BUTTON:
+            case TOUCHSCREEN_TOGGLE:
                 switch (shape) {
                     case RECT:
                     case ROUND_RECT:
@@ -353,18 +359,29 @@ public class ControlElement {
         int secondaryColor = inputControlsView.getSecondaryColor();
 
         int baseColor = selected ? secondaryColor : primaryColor;
-        boolean pressed = isPressed && (type == Type.BUTTON || type == Type.D_PAD || type == Type.STICK);
         float strokeWidth = snappingSize * 0.25f;
         Rect boundingBox = getBoundingBox();
 
         switch (type) {
-            case BUTTON: {
+            case BUTTON:
+            case TOUCHSCREEN_TOGGLE: {
                 float cx = boundingBox.centerX();
                 float cy = boundingBox.centerY();
 
                 paint.setColor(baseColor);
                 paint.setStrokeWidth(strokeWidth);
-                if (pressed) {
+
+                boolean shouldFill;
+
+                if (type == Type.TOUCHSCREEN_TOGGLE) {
+                    // ON = fill+stroke, OFF = stroke saja
+                    shouldFill = selected;
+                } else {
+                    // tombol biasa: fill hanya saat ditekan
+                    shouldFill = isPressed;
+                }
+
+                if (shouldFill) {
                     paint.setStyle(Paint.Style.FILL_AND_STROKE);
                 } else {
                     paint.setStyle(Paint.Style.STROKE);
@@ -389,13 +406,13 @@ public class ControlElement {
                     }
                 }
 
-                // Reset paint agar icon/text tidak terpengaruh (mencegah crash/hilang)
+                // Reset paint agar icon/text tidak terpengaruh
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(primaryColor);
 
                 if (iconId > 0) {
                     drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
-                } else {
+                } else if (type != Type.TOUCHSCREEN_TOGGLE) {  // tidak tampilkan teks untuk toggle
                     String text = getDisplayText();
                     paint.setTextSize(Math.min(getTextSizeForWidth(paint, text, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));
                     paint.setTextAlign(Paint.Align.CENTER);
@@ -423,7 +440,7 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, boundingBox.top);
                 path.lineTo(cx + offsetX, cy - offsetY);
                 path.close();
-                paint.setStyle((states[0] && pressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states[0] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // RIGHT
@@ -434,7 +451,7 @@ public class ControlElement {
                 path.lineTo(boundingBox.right, cy + offsetX);
                 path.lineTo(cx + offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle((states[1] && pressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states[1] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // DOWN
@@ -445,7 +462,7 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, boundingBox.bottom);
                 path.lineTo(cx + offsetX, cy + offsetY);
                 path.close();
-                paint.setStyle((states[2] && pressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states[2] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // LEFT
@@ -456,14 +473,13 @@ public class ControlElement {
                 path.lineTo(boundingBox.left, cy + offsetX);
                 path.lineTo(cx - offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle((states[3] && pressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states[3] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 break;
             }
 
             case RANGE_BUTTON: {
-                // List horizontal (orientation == 0) tetap stroke saja, tidak ada fill
                 Range range = getRange();
                 int oldColor = paint.getColor();
                 float radius = snappingSize * 0.75f * scale;
@@ -563,7 +579,7 @@ public class ControlElement {
                 float thumbstickY = getCurrentPosition().y;
                 short thumbRadius = (short) (snappingSize * 3.5f * scale);
 
-                if (pressed) {
+                if (isPressed) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(baseColor);
                 } else {
@@ -628,6 +644,12 @@ public class ControlElement {
                 elementJSONObject.put("range", range.name());
                 if (orientation != 0) elementJSONObject.put("orientation", orientation);
             }
+
+            // Simpan status toggle jika tipe TOUCHSCREEN_TOGGLE
+            if (type == Type.TOUCHSCREEN_TOGGLE) {
+                elementJSONObject.put("selected", selected);
+            }
+
             return elementJSONObject;
         } catch (JSONException e) {
             return null;
@@ -649,7 +671,7 @@ public class ControlElement {
             isPressed = true;
             inputControlsView.invalidate();
 
-            if (type == Type.BUTTON) {
+            if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
                 if (!toggleSwitch || !selected) inputControlsView.handleInputEvent(getBindingAt(0), true);
                 return true;
@@ -701,9 +723,6 @@ public class ControlElement {
                 currentPosition.x = boundingBox.left + deltaX * radius + radius;
                 currentPosition.y = boundingBox.top + deltaY * radius + radius;
 
-                // === PERBAIKAN UTAMA: cegah "lengket" & "terkunci ke satu arah" ===
-                // Sebelumnya states hanya di-set true, tapi tidak pernah di-release saat arah berubah.
-                // Sekarang kita cek perubahan state setiap move dan kirim release (false) jika melewati deadzone.
                 final boolean[] newStates = {
                         deltaY <= -STICK_DEAD_ZONE,
                         deltaX >= STICK_DEAD_ZONE,
@@ -723,11 +742,9 @@ public class ControlElement {
                         boolean isActiveNow = Math.abs(gamepadValue) > 0.01f;
 
                         if (isActiveNow != this.states[i]) {
-                            // Kirim release atau press baru
                             inputControlsView.handleInputEvent(binding, isActiveNow, isActiveNow ? gamepadValue : 0f);
                             this.states[i] = isActiveNow;
                         } else if (isActiveNow) {
-                            // Update nilai analog (agar smooth)
                             inputControlsView.handleInputEvent(binding, true, gamepadValue);
                         }
                     } else {
@@ -744,7 +761,6 @@ public class ControlElement {
 
                 inputControlsView.invalidate();
             } else if (type == Type.TRACKPAD) {
-                // ... (logika TRACKPAD tetap sama)
                 final boolean[] states = {deltaY <= -TRACKPAD_MIN_SPEED, deltaX >= TRACKPAD_MIN_SPEED, deltaY >= TRACKPAD_MIN_SPEED, deltaX <= -TRACKPAD_MIN_SPEED};
                 int cursorDx = 0;
                 int cursorDy = 0;
@@ -780,7 +796,6 @@ public class ControlElement {
                         inputControlsView.getXServer().injectPointerMoveDelta(cursorDx, cursorDy);
                 }
             } else {
-                // D-Pad (tetap sama)
                 final boolean[] states = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 
                 for (byte i = 0; i < 4; i++) {
@@ -803,6 +818,19 @@ public class ControlElement {
         if (pointerId == currentPointerId) {
             isPressed = false;
             inputControlsView.invalidate();
+
+            if (type == Type.TOUCHSCREEN_TOGGLE) {
+                TouchpadView tp = inputControlsView.getTouchpadView();
+                if (tp != null) {
+                    boolean current = tp.isSimTouchScreen();
+                    boolean next = !current;
+                    tp.setSimTouchScreen(next);
+                    selected = next;  // update visual: fill jika ON, stroke jika OFF
+                    inputControlsView.invalidate();
+                }
+                currentPointerId = -1;
+                return true;
+            }
 
             if (type == Type.BUTTON) {
                 Binding binding = getBindingAt(0);

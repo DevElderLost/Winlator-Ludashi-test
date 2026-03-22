@@ -7,6 +7,7 @@ import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.preference.PreferenceManager;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -14,7 +15,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
@@ -23,16 +23,12 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
-import androidx.preference.PreferenceManager;
-import androidx.recyclerview.widget.DividerItemDecoration;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.cmod.R;
+import com.winlator.cmod.contentdialog.ContentDialog;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.Callback;
 import com.winlator.cmod.core.FileUtils;
@@ -52,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public class SavesFragment extends Fragment {
     private RecyclerView recyclerView;
@@ -85,7 +82,7 @@ public class SavesFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        FrameLayout frameLayout = (FrameLayout) inflater.inflate(R.layout.saves_fragment, container, false);
+        View frameLayout = inflater.inflate(R.layout.saves_fragment, container, false);
         recyclerView = frameLayout.findViewById(R.id.RecyclerView);
         emptyTextView = frameLayout.findViewById(R.id.TVEmptyText);
         recyclerView.setLayoutManager(new LinearLayoutManager(recyclerView.getContext()));
@@ -111,7 +108,6 @@ public class SavesFragment extends Fragment {
     @Override
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         if (menuItem.getItemId() == R.id.saves_menu_add) {
-            // SaveSettingsDialog or similar logic for adding a new save
             return true;
         } else if (menuItem.getItemId() == R.id.saves_menu_import) {
             selectArchiveForImport();
@@ -140,56 +136,56 @@ public class SavesFragment extends Fragment {
         }
     }
 
-    // Reusable dialog untuk pemilihan container (import & transfer) - tampilan sama seperti di SaveSettingsDialog
     private void showContainerSelectionDialog(
             int titleResId,
             Callback<Container> onContainerSelected,
             @Nullable Runnable onCancel) {
 
-        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.container_selection_dialog, null);
-        Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
+        ContentDialog dialog = new ContentDialog(getContext(), R.layout.container_selection_dialog);
+        dialog.setTitle(titleResId);
+//        dialog.setIcon(R.drawable.icon_container);
+
+        Spinner spinner = dialog.findViewById(R.id.SContainer);
 
         List<Container> containers = containerManager.getContainers();
         if (containers.isEmpty()) {
-            AppUtils.showToast(getContext(), "No containers available");
+            AppUtils.showToast(getContext(), R.string.no_containers_available);
+            dialog.dismiss();
             return;
         }
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 getContext(),
                 android.R.layout.simple_spinner_item,
-                containers.stream().map(Container::getName).toList()
+                containers.stream().map(Container::getName).collect(Collectors.toList())
         );
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
 
-        // Sesuaikan popup background dengan tema dark/light
-        int popupBgRes = isDarkMode
-                ? R.drawable.content_dialog_background_dark
-                : R.drawable.content_dialog_background;
-        spinner.setPopupBackgroundResource(popupBgRes);
+        spinner.setPopupBackgroundResource(
+                isDarkMode ? R.drawable.content_dialog_background_dark
+                           : R.drawable.content_dialog_background
+        );
 
-        AlertDialog dialog = new AlertDialog.Builder(getContext())
-                .setTitle(getString(titleResId))
-                .setView(dialogView)
-                .setPositiveButton(android.R.string.ok, (dialogInterface, which) -> {
-                    int selectedPosition = spinner.getSelectedItemPosition();
-                    if (selectedPosition >= 0 && selectedPosition < containers.size()) {
-                        onContainerSelected.call(containers.get(selectedPosition));
-                    }
-                })
-                .setNegativeButton(android.R.string.cancel, (dialogInterface, which) -> {
-                    if (onCancel != null) {
-                        onCancel.run();
-                    }
-                })
-                .create();
+        if (!containers.isEmpty()) {
+            spinner.setSelection(0);
+        }
 
-        // Sesuaikan background dialog window dengan tema
-        if (isDarkMode) {
-            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+        dialog.setOnConfirmCallback(() -> {
+            int selectedPosition = spinner.getSelectedItemPosition();
+            if (selectedPosition >= 0 && selectedPosition < containers.size()) {
+                onContainerSelected.call(containers.get(selectedPosition));
+            }
+            dialog.dismiss();
+        });
+
+        if (onCancel != null) {
+            dialog.setOnCancelCallback(() -> {
+                onCancel.run();
+                dialog.dismiss();
+            });
         } else {
-            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+            dialog.setOnCancelCallback(dialog::dismiss);
         }
 
         dialog.show();
@@ -240,49 +236,49 @@ public class SavesFragment extends Fragment {
                 String title = saveData.getString("Title");
                 String savePath = saveData.getString("Path");
 
-                getActivity().runOnUiThread(() -> 
-                    showContainerSelectionDialog(
-                        R.string.import_save,
-                        selectedContainer -> {
-                            try {
-                                File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
+                getActivity().runOnUiThread(() ->
+                        showContainerSelectionDialog(
+                                R.string.import_save,
+                                selectedContainer -> {
+                                    try {
+                                        File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
 
-                                String relativeSavePath;
-                                int driveCIndex = savePath.indexOf("drive_c");
-                                if (driveCIndex != -1) {
-                                    relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
-                                } else {
-                                    relativeSavePath = savePath;
-                                }
+                                        String relativeSavePath;
+                                        int driveCIndex = savePath.indexOf("drive_c");
+                                        if (driveCIndex != -1) {
+                                            relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
+                                        } else {
+                                            relativeSavePath = savePath;
+                                        }
 
-                                File destSaveDir = new File(destRootDir, relativeSavePath);
+                                        File destSaveDir = new File(destRootDir, relativeSavePath);
 
-                                if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
-                                    AppUtils.showToast(getContext(), "Failed to create directories for save path.");
-                                    preloaderDialog.closeOnUiThread();
-                                    return;
-                                }
+                                        if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
+                                            AppUtils.showToast(getContext(), "Failed to create directories for save path.");
+                                            preloaderDialog.closeOnUiThread();
+                                            return;
+                                        }
 
-                                File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
-                                if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
-                                    AppUtils.showToast(getContext(), "Failed to copy save files.");
-                                    preloaderDialog.closeOnUiThread();
-                                    return;
-                                }
+                                        File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
+                                        if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
+                                            AppUtils.showToast(getContext(), "Failed to copy save files.");
+                                            preloaderDialog.closeOnUiThread();
+                                            return;
+                                        }
 
-                                saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
+                                        saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
 
-                                AppUtils.showToast(getContext(), "Save imported successfully.");
-                                loadSavesList();
-                            } catch (IOException e) {
-                                AppUtils.showToast(getContext(), "Failed to import save: " + e.getMessage());
-                            } finally {
-                                FileUtils.delete(tempDir);
-                                preloaderDialog.closeOnUiThread();
-                            }
-                        },
-                        () -> preloaderDialog.closeOnUiThread()  // cancel action
-                    )
+                                        AppUtils.showToast(getContext(), "Save imported successfully.");
+                                        loadSavesList();
+                                    } catch (IOException e) {
+                                        AppUtils.showToast(getContext(), "Failed to import save: " + e.getMessage());
+                                    } finally {
+                                        FileUtils.delete(tempDir);
+                                        preloaderDialog.closeOnUiThread();
+                                    }
+                                },
+                                () -> preloaderDialog.closeOnUiThread()
+                        )
                 );
             } catch (Exception e) {
                 AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
@@ -367,15 +363,43 @@ public class SavesFragment extends Fragment {
             listItemMenu.show();
         }
 
+        // ────────────────────────────────────────────────
+        //  Perubahan utama: Lokasi export mengikuti Settings
+        // ────────────────────────────────────────────────
         private File getExportDirectory() {
-            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            File winlatorSavesDir = new File(downloadsDir, "Winlator/Saves");
-
-            if (!winlatorSavesDir.exists()) {
-                winlatorSavesDir.mkdirs();
+            Context ctx = getContext();
+            if (ctx == null) {
+                // Fallback jika context hilang (jarang terjadi)
+                File def = new File(Environment.getExternalStorageDirectory(), "Winlator/Saves");
+                if (!def.exists()) def.mkdirs();
+                return def;
             }
 
-            return winlatorSavesDir;
+            android.content.SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ctx);
+            String uriString = prefs.getString("shortcuts_export_path_uri", null);
+
+            File baseDir;
+
+            if (uriString != null) {
+                Uri uri = Uri.parse(uriString);
+                String path = FileUtils.getFilePathFromUri(ctx, uri);
+                if (path != null && !path.isEmpty()) {
+                    baseDir = new File(path);
+                } else {
+                    // URI invalid → fallback
+                    baseDir = new File(Environment.getExternalStorageDirectory(), "Winlator");
+                }
+            } else {
+                // Tidak ada pengaturan custom → default
+                baseDir = new File(Environment.getExternalStorageDirectory(), "Winlator");
+            }
+
+            File savesDir = new File(baseDir, "Saves");
+            if (!savesDir.exists()) {
+                savesDir.mkdirs();
+            }
+
+            return savesDir;
         }
 
         private void exportSave(Save save, boolean shareAfterExport) {
@@ -396,11 +420,7 @@ public class SavesFragment extends Fragment {
                         return;
                     }
 
-                    File exportDirectory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Winlator/Saves");
-                    if (!exportDirectory.exists() && !exportDirectory.mkdirs()) {
-                        AppUtils.showToast(getContext(), "Failed to create export directory.");
-                        return;
-                    }
+                    File exportDirectory = getExportDirectory();  // ← menggunakan path dari Settings
 
                     String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
                     String archiveName = save.getTitle() + "_" + timestamp + ".tar.xz";
@@ -436,7 +456,7 @@ public class SavesFragment extends Fragment {
                         shareExportedFile(exportFile);
                     }
                 } catch (Exception e) {
-                    AppUtils.showToast(getContext(), "Failed to export save.");
+                    AppUtils.showToast(getContext(), "Failed to export save: " + e.getLocalizedMessage());
                 } finally {
                     preloaderDialog.closeOnUiThread();
                 }
@@ -475,7 +495,7 @@ public class SavesFragment extends Fragment {
                             AppUtils.showToast(getContext(), "Transfer failed: " + e.getMessage());
                         }
                     },
-                    null  // no special cancel action needed
+                    null
             );
         }
     }

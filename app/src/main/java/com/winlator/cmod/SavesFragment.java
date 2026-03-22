@@ -1,7 +1,6 @@
 package com.winlator.cmod;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.media.MediaScannerConnection;
@@ -14,16 +13,17 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.Spinner;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;          // ← ini yang paling sering kurang
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
@@ -52,6 +52,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+
+// Opsional (jika pakai stream):
+import java.util.stream.Collectors;
 
 public class SavesFragment extends Fragment {
     private RecyclerView recyclerView;
@@ -143,41 +146,59 @@ public class SavesFragment extends Fragment {
         }
     }
 
-    private void showContainerSelectionDialog(Callback<Container> onContainerSelected, Runnable onCancel) {
-        View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.container_selection_dialog, null);
-        Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
+    private void showContainerSelectionDialog(
+        String titleResId,                  // misal R.string.import_save atau R.string.save_transfer
+        Callback<Container> onSelected,
+        @Nullable Runnable onCancel) {
 
-        List<Container> containers = containerManager.getContainers();
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_item);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+    View dialogView = LayoutInflater.from(getContext())
+            .inflate(R.layout.container_selection_dialog, null);
 
-        for (Container container : containers) {
-            adapter.add(container.getName());
-        }
-        spinner.setAdapter(adapter);
+    Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
 
-        AlertDialog dialog = new AlertDialog.Builder(getContext())
-                .setTitle(R.string.import_save)
-                .setView(dialogView)
-                .setPositiveButton(android.R.string.ok, (dialogInterface, which) -> {
-                    int selectedPosition = spinner.getSelectedItemPosition();
-                    Container selectedContainer = containers.get(selectedPosition);
-                    onContainerSelected.call(selectedContainer);
-                })
-                .setNegativeButton(android.R.string.cancel, (dialogInterface, which) -> {
-                    onCancel.run(); // Run the cancel callback
-                })
-                .create();
-
-        // Apply background based on isDarkMode
-        if (isDarkMode) {
-            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
-        } else {
-            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
-        }
-
-        dialog.show();
+    List<Container> containers = containerManager.getContainers();
+    if (containers.isEmpty()) {
+        AppUtils.showToast(getContext(), "No containers available");
+        return;
     }
+
+    ArrayAdapter<String> adapter = new ArrayAdapter<>(
+            getContext(),
+            android.R.layout.simple_spinner_item,
+            containers.stream().map(Container::getName).toList()
+    );
+    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+    spinner.setAdapter(adapter);
+
+    // Penting: set popup background sesuai tema
+    int popupBgRes = isDarkMode 
+            ? R.drawable.content_dialog_background_dark 
+            : R.drawable.content_dialog_background;
+    spinner.setPopupBackgroundResource(popupBgRes);
+
+    AlertDialog dialog = new AlertDialog.Builder(getContext())
+            .setTitle(titleResId)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, (d, which) -> {
+                int pos = spinner.getSelectedItemPosition();
+                if (pos >= 0 && pos < containers.size()) {
+                    onSelected.call(containers.get(pos));
+                }
+            })
+            .setNegativeButton(android.R.string.cancel, (d, which) -> {
+                if (onCancel != null) onCancel.run();
+            })
+            .create();
+
+    // Set background dialog sesuai tema (sama seperti di SaveSettingsDialog)
+    if (isDarkMode) {
+        dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+    } else {
+        dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+    }
+
+    dialog.show();
+}
 
     private void importSave(Uri archiveUri) {
         PreloaderDialog preloaderDialog = new PreloaderDialog(getActivity());
@@ -228,52 +249,52 @@ public class SavesFragment extends Fragment {
                 String title = saveData.getString("Title");
                 String savePath = saveData.getString("Path");
 
-                getActivity().runOnUiThread(() -> showContainerSelectionDialog((selectedContainer) -> {
-                    try {
-                        // Adjust the save path based on the selected container
-                        File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
+                // ... setelah ekstrak berhasil dan dapat json ...
 
-                        // Ensure savePath starts relative to drive_c
-                        String relativeSavePath;
-                        int driveCIndex = savePath.indexOf("drive_c");
-                        if (driveCIndex != -1) {
-                            relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
-                        } else {
-                            relativeSavePath = savePath;  // If drive_c is not found, use the path as-is (fallback)
-                        }
+getActivity().runOnUiThread(() -> 
+    showContainerSelectionDialog(
+        R.string.import_save,
+        selectedContainer -> {
+            try {
+                // --- kode copy file dan addSave Anda tetap sama ---
+                File destRootDir = new File(selectedContainer.getRootDir(), ".wine/drive_c");
+                
+                String relativeSavePath;
+                int driveCIndex = savePath.indexOf("drive_c");
+                if (driveCIndex != -1) {
+                    relativeSavePath = savePath.substring(driveCIndex + "drive_c/".length());
+                } else {
+                    relativeSavePath = savePath;
+                }
 
-                        File destSaveDir = new File(destRootDir, relativeSavePath);
-
-                        // Ensure the full directory structure exists
-                        if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
-                            AppUtils.showToast(getContext(), "Failed to create directories for save path.");
-                            preloaderDialog.closeOnUiThread();
-                            return;
-                        }
-
-                        // Copy the contents of the extracted directory to the correct location
-                        File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
-                        if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
-                            AppUtils.showToast(getContext(), "Failed to copy save files.");
-                            preloaderDialog.closeOnUiThread();
-                            return;
-                        }
-
-                        // Create the new save with the adjusted path
-                        saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
-
-                        AppUtils.showToast(getContext(), "Save imported successfully.");
-                        loadSavesList();
-                    } catch (IOException e) {
-                        AppUtils.showToast(getContext(), "Failed to import save: " + e.getMessage());
-                    } finally {
-                        FileUtils.delete(tempDir);
-                        preloaderDialog.closeOnUiThread();
-                    }
-                }, () -> {
-                    // Handle user canceling the container selection
+                File destSaveDir = new File(destRootDir, relativeSavePath);
+                
+                if (!destSaveDir.getParentFile().exists() && !destSaveDir.getParentFile().mkdirs()) {
+                    AppUtils.showToast(getContext(), "Failed to create directories.");
                     preloaderDialog.closeOnUiThread();
-                }));
+                    return;
+                }
+
+                File saveDirectoryToCopy = new File(extractedDir, new File(savePath).getName());
+                if (!FileUtils.copy(saveDirectoryToCopy, destSaveDir)) {
+                    AppUtils.showToast(getContext(), "Failed to copy save files.");
+                    preloaderDialog.closeOnUiThread();
+                    return;
+                }
+
+                saveManager.addSave(title, destSaveDir.getAbsolutePath(), selectedContainer);
+                AppUtils.showToast(getContext(), "Save imported successfully.");
+                loadSavesList();
+            } catch (Exception e) {
+                AppUtils.showToast(getContext(), "Import error: " + e.getMessage());
+            } finally {
+                FileUtils.delete(tempDir);
+                preloaderDialog.closeOnUiThread();
+            }
+        },
+        () -> preloaderDialog.closeOnUiThread()  // cancel → tutup preloader
+    )
+);
             } catch (Exception e) {
                 AppUtils.showToast(getContext(), "Import failed: " + e.getMessage());
                 e.printStackTrace(); // Log the error to console
@@ -343,7 +364,7 @@ public class SavesFragment extends Fragment {
                         ((MainActivity) getActivity()).showSaveEditDialog(save);
                         return true;
                     case R.id.save_transfer:
-                        showContainerSelectionDialog(save);
+                        showTransferDialog(save);
                         return true;
                     case R.id.save_export:
                         exportSave(save, false);
@@ -468,62 +489,21 @@ public class SavesFragment extends Fragment {
         }
 
 
-        private void showContainerSelectionDialog(Save save) {
-            View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.container_selection_dialog, null);
-            Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
-
-            List<Container> containers = containerManager.getContainers();
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_item);
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-
-            for (Container container : containers) {
-                adapter.add(container.getName());
-            }
-            spinner.setAdapter(adapter);
-
-            new AlertDialog.Builder(getContext())
-                    .setTitle(R.string.save_transfer)
-                    .setView(dialogView)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                        int selectedPosition = spinner.getSelectedItemPosition();
-                        Container selectedContainer = containers.get(selectedPosition);
-
-                        try {
-                            saveManager.transferSave(save, selectedContainer);
-                            loadSavesList();
-                            AppUtils.showToast(getContext(), "Transfer complete");
-                        } catch (IOException e) {
-                            AppUtils.showToast(getContext(), "Transfer failed: " + e.getMessage());
-                        }
-                    })
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show();
-        }
-    }
-
-
-
-
         private void showTransferDialog(Save save) {
-            // Create a simple dialog with a Spinner for selecting a container
-            View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.container_selection_dialog, null);
-            Spinner spinner = dialogView.findViewById(R.id.spinner_container_selection);
-
-            List<Container> containers = containerManager.getContainers();
-            ArrayAdapter<Container> adapter = new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_item, containers);
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            spinner.setAdapter(adapter);
-
-            new androidx.appcompat.app.AlertDialog.Builder(getContext())
-                    .setTitle(R.string.select_container)
-                    .setView(dialogView)
-                    .setPositiveButton(R.string.transfer, (dialog, which) -> {
-                        Container selectedContainer = (Container) spinner.getSelectedItem();
-                        transferSaveFiles(save, selectedContainer);
-                    })
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show();
-        }
+    showContainerSelectionDialog(
+        R.string.save_transfer,
+        selectedContainer -> {
+            try {
+                saveManager.transferSave(save, selectedContainer);
+                loadSavesList();
+                AppUtils.showToast(getContext(), "Transfer complete");
+            } catch (IOException e) {
+                AppUtils.showToast(getContext(), "Transfer failed: " + e.getMessage());
+            }
+        },
+        null  // tidak perlu aksi khusus saat cancel
+    );
+}
 
         private void transferSaveFiles(Save save, Container container) {
             // Clone the save directory to the container's directory

@@ -337,7 +337,7 @@ public class SettingsFragment extends Fragment {
 
             // Save Big Picture Mode setting
 //            editor.putBoolean("enable_big_picture_mode", ((CheckBox) view.findViewById(R.id.CBEnableBigPictureMode)).isChecked());
-            saveCustomApiKeySettings(editor);
+//            saveCustomApiKeySettings(editor);
 
             if (editor.commit()) {
                 NavigationView navigationView = getActivity().findViewById(R.id.NavigationView);

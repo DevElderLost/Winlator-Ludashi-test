@@ -88,9 +88,9 @@ public class SettingsFragment extends Fragment {
     // Disable or enable Xinput Processing
     private CheckBox cbXinputToggle;
 
-    private CheckBox cbEnableBigPictureMode;
-    private CheckBox cbEnableCustomApiKey;
-    private EditText etCustomApiKey;
+//    private CheckBox cbEnableBigPictureMode;
+//    private CheckBox cbEnableCustomApiKey;
+//    private EditText etCustomApiKey;
 
     private CheckBox cbDarkMode;
     boolean isDarkMode;
@@ -391,11 +391,11 @@ public class SettingsFragment extends Fragment {
         TextView shortcutSettingsLabel = view.findViewById(R.id.TVShortcutSettings);
         applyFieldSetLabelStyle(shortcutSettingsLabel, isDarkMode);
 
-        TextView bigPictureModeLabel = view.findViewById(R.id.TVBigPictureMode);
-        applyFieldSetLabelStyle(bigPictureModeLabel, isDarkMode);
+//        TextView bigPictureModeLabel = view.findViewById(R.id.TVBigPictureMode);
+//        applyFieldSetLabelStyle(bigPictureModeLabel, isDarkMode);
 
-        TextView tvCustomApiKey = view.findViewById(R.id.TVCustomApiKey);
-        applyFieldSetLabelStyle(tvCustomApiKey, isDarkMode);
+//        TextView tvCustomApiKey = view.findViewById(R.id.TVCustomApiKey);
+//        applyFieldSetLabelStyle(tvCustomApiKey, isDarkMode);
 
 //        TextView shortcutSettingsLabel = view.findViewById(R.id.TVShortcutSettings);
 //        applyFieldSetLabelStyle(shortcutSettingsLabel, isDarkMode);
@@ -430,44 +430,44 @@ public class SettingsFragment extends Fragment {
         }
     }
 
-    private void initCustomApiKeySettings(View view) {
-        cbEnableCustomApiKey = view.findViewById(R.id.CBEnableCustomApiKey);
-        etCustomApiKey = view.findViewById(R.id.ETCustomApiKey);
+//    private void initCustomApiKeySettings(View view) {
+//        cbEnableCustomApiKey = view.findViewById(R.id.CBEnableCustomApiKey);
+//        etCustomApiKey = view.findViewById(R.id.ETCustomApiKey);
 
         // Load saved preferences
-        boolean isCustomApiKeyEnabled = preferences.getBoolean("enable_custom_api_key", false);
-        String customApiKey = preferences.getString("custom_api_key", "");
+ //       boolean isCustomApiKeyEnabled = preferences.getBoolean("enable_custom_api_key", false);
+//        String customApiKey = preferences.getString("custom_api_key", "");
 
-        cbEnableCustomApiKey.setChecked(isCustomApiKeyEnabled);
-        etCustomApiKey.setText(customApiKey);
+//        cbEnableCustomApiKey.setChecked(isCustomApiKeyEnabled);
+//        etCustomApiKey.setText(customApiKey);
 
         // Show/hide the EditText based on checkbox state
-        etCustomApiKey.setVisibility(isCustomApiKeyEnabled ? View.VISIBLE : View.GONE);
+//        etCustomApiKey.setVisibility(isCustomApiKeyEnabled ? View.VISIBLE : View.GONE);
 
-        cbEnableCustomApiKey.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            etCustomApiKey.setVisibility(isChecked ? View.VISIBLE : View.GONE);
-        });
+//        cbEnableCustomApiKey.setOnCheckedChangeListener((buttonView, isChecked) -> {
+//            etCustomApiKey.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+//        });
 
-        // Help button listener to open API documentation
-        view.findViewById(R.id.BTHelpApiKey).setOnClickListener(v -> {
-            String url = "https://www.steamgriddb.com/profile/preferences/api";
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            startActivity(intent);
-        });
-    }
+        // Help button listener to open API documentation/
+//	view.findViewById(R.id.BTHelpApiKey).setOnClickListener(v -> {
+ //           String url = "https://www.steamgriddb.com/profile/preferences/api";
+//            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+//            startActivity(intent);
+//        });
+//    }
 
-    private void saveCustomApiKeySettings(SharedPreferences.Editor editor) {
+//    private void saveCustomApiKeySettings(SharedPreferences.Editor editor) {
         // Save custom API key preferences
-        boolean isCustomApiKeyEnabled = cbEnableCustomApiKey.isChecked();
-        editor.putBoolean("enable_custom_api_key", isCustomApiKeyEnabled);
+//        boolean isCustomApiKeyEnabled = cbEnableCustomApiKey.isChecked();
+//        editor.putBoolean("enable_custom_api_key", isCustomApiKeyEnabled);
 
-        if (isCustomApiKeyEnabled) {
-            String customApiKey = etCustomApiKey.getText().toString().trim();
-            editor.putString("custom_api_key", customApiKey);
-        } else {
-            editor.remove("custom_api_key");
-        }
-    }
+//        if (isCustomApiKeyEnabled) {
+//            String customApiKey = etCustomApiKey.getText().toString().trim();
+//            editor.putString("custom_api_key", customApiKey);
+//        } else {
+//            editor.remove("custom_api_key");
+//        }
+//    }
 
     private void loadBox64PresetSpinners(View view, final Spinner sBox64Preset) {
         final ArrayMap<String, Spinner> spinners = new ArrayMap<String, Spinner>() {{

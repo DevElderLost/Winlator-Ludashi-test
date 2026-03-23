@@ -346,31 +346,29 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
     final Context context = holder.itemView.getContext();
     final Save item = data.get(position);
 
-    // ─── DEFAULT ICON ─────────────────────────────────────
-    holder.imageView.setImageResource(R.drawable.icon_save);
-    holder.imageView.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+    // Reset dulu supaya aman
+    holder.imageView.clearColorFilter();
+    holder.imageView.setColorFilter(null);   // atau bisa pakai setImageTintList(null) di API 21+
 
-    // ─── LOGIKA CUSTOM ICON dari .local/share/icons/hicolor/32x32/apps/ ───────
+    boolean useCustomIcon = false;
+
+    // ─── LOGIKA CUSTOM ICON ────────────────────────────────
     if (item.container != null) {
-        File containerRoot = item.container.getRootDir();
-
-        // Lokasi icon: langsung di root container (satu level dengan .wine)
-        File iconsDir = new File(containerRoot, ".local/share/icons/hicolor/32x32/apps");
+        File iconsDir = new File(item.container.getRootDir(), ".local/share/icons/hicolor/32x32/apps");
 
         if (iconsDir.exists() && iconsDir.isDirectory()) {
             String titleLower = item.getTitle().toLowerCase(Locale.getDefault());
 
             File[] pngFiles = iconsDir.listFiles((dir, name) ->
-                    name.toLowerCase(Locale.getDefault()).endsWith(".png"));
+                    name.toLowerCase().endsWith(".png"));
 
-            if (pngFiles != null && pngFiles.length > 0) {
+            if (pngFiles != null) {
                 for (File pngFile : pngFiles) {
-                    String fileNameLower = pngFile.getName().toLowerCase(Locale.getDefault());
+                    String fileNameLower = pngFile.getName().toLowerCase();
                     if (fileNameLower.length() <= 4) continue;
 
                     String baseName = fileNameLower.substring(0, fileNameLower.length() - 4);
 
-                    // Cocok jika nama file (tanpa .png) mirip dengan judul save
                     if (baseName.equals(titleLower) ||
                         fileNameLower.contains(titleLower) ||
                         titleLower.contains(baseName)) {
@@ -379,32 +377,29 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
                             Bitmap fullBitmap = BitmapFactory.decodeFile(pngFile.getAbsolutePath());
                             if (fullBitmap != null) {
                                 Bitmap thumbnail = ThumbnailUtils.extractThumbnail(
-                                        fullBitmap,
-                                        128, 128,
-                                        ThumbnailUtils.OPTIONS_RECYCLE_INPUT
-                                );
+                                        fullBitmap, 128, 128, ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
+
                                 holder.imageView.setImageBitmap(thumbnail);
-
-                                // Opsional: atur scale type agar terlihat bagus di list
                                 holder.imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                // atau CENTER_INSIDE / FIT_CENTER sesuai selera
-
-                                break; // cukup pakai satu icon yang cocok
+                                useCustomIcon = true;
+                                break;
                             }
-                        } catch (Exception e) {
-                            // Jika decode gagal (corrupt file, dll) → skip ke default
-                            e.printStackTrace();
-                        }
+                        } catch (Exception ignored) {}
                     }
                 }
             }
         }
     }
 
-    // ─── Bagian lain tetap sama ───────────────────────────
-    holder.title.setText(item.getTitle());
-    holder.containerName.setText(item.container != null ? item.container.getName() : "");
-    holder.menuButton.setOnClickListener((view) -> showListItemMenu(view, item));
+    // ─── Jika TIDAK pakai custom icon → baru apply tint ───
+    if (!useCustomIcon) {
+        holder.imageView.setImageResource(R.drawable.icon_save);
+        holder.imageView.setColorFilter(
+            ContextCompat.getColor(context, R.color.colorPrimary),
+            PorterDuff.Mode.SRC_IN
+        );
+        holder.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE); // atau CENTER
+    }
 }
 
         @Override

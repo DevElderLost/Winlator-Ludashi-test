@@ -364,62 +364,64 @@ public class ControlElement {
 
         switch (type) {
             case BUTTON:
-            case TOUCHSCREEN_TOGGLE: {
-                float cx = boundingBox.centerX();
-                float cy = boundingBox.centerY();
+case TOUCHSCREEN_TOGGLE: {
+    float cx = boundingBox.centerX();
+    float cy = boundingBox.centerY();
 
-                paint.setColor(baseColor);
-                paint.setStrokeWidth(strokeWidth);
+    paint.setColor(baseColor);
+    paint.setStrokeWidth(strokeWidth);
 
-                boolean shouldFill;
+    boolean shouldFill = (type == Type.TOUCHSCREEN_TOGGLE) ? selected : isPressed;
 
-                if (type == Type.TOUCHSCREEN_TOGGLE) {
-                    // ON = fill+stroke, OFF = stroke saja
-                    shouldFill = selected;
-                } else {
-                    // tombol biasa: fill hanya saat ditekan
-                    shouldFill = isPressed;
-                }
+    if (shouldFill) {
+        paint.setStyle(Paint.Style.FILL_AND_STROKE);
+    } else {
+        paint.setStyle(Paint.Style.STROKE);
+    }
 
-                if (shouldFill) {
-                    paint.setStyle(Paint.Style.FILL_AND_STROKE);
-                } else {
-                    paint.setStyle(Paint.Style.STROKE);
-                }
+    // Gambar bentuk (circle, rect, round rect, square) - kode tetap sama
+    switch (shape) {
+        case CIRCLE:
+            canvas.drawCircle(cx, cy, boundingBox.width() * 0.5f, paint);
+            break;
+        case RECT:
+            canvas.drawRect(boundingBox, paint);
+            break;
+        case ROUND_RECT: {
+            float radius = boundingBox.height() * 0.5f;
+            canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
+            break;
+        }
+        case SQUARE: {
+            float radius = snappingSize * 0.75f * scale;
+            canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
+            break;
+        }
+    }
 
-                switch (shape) {
-                    case CIRCLE:
-                        canvas.drawCircle(cx, cy, boundingBox.width() * 0.5f, paint);
-                        break;
-                    case RECT:
-                        canvas.drawRect(boundingBox, paint);
-                        break;
-                    case ROUND_RECT: {
-                        float radius = boundingBox.height() * 0.5f;
-                        canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
-                        break;
-                    }
-                    case SQUARE: {
-                        float radius = snappingSize * 0.75f * scale;
-                        canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
-                        break;
-                    }
-                }
+    // Reset paint untuk icon & text
+    paint.setStyle(Paint.Style.FILL);
+    paint.setColor(primaryColor);
 
-                // Reset paint agar icon/text tidak terpengaruh
-                paint.setStyle(Paint.Style.FILL);
-                paint.setColor(primaryColor);
+    // Sekarang icon DAN/ATAU text boleh muncul di kedua tipe
+    if (iconId > 0) {
+        drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
+    } 
+    
+    // Opsional: tampilkan text juga (jika ada)
+    // Hapus kondisi type != TOUCHSCREEN_TOGGLE agar text juga bisa muncul
+    if (!text.isEmpty() || getBindingAt(0) != Binding.NONE) {
+        String displayText = getDisplayText();
+        if (!displayText.isEmpty()) {
+            paint.setTextSize(Math.min(getTextSizeForWidth(paint, displayText, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));
+            paint.setTextAlign(Paint.Align.CENTER);
+            float textY = cy - ((paint.descent() + paint.ascent()) * 0.5f);
+            canvas.drawText(displayText, cx, textY, paint);
+        }
+    }
 
-                if (iconId > 0) {
-                    drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
-                } else if (type != Type.TOUCHSCREEN_TOGGLE) {  // tidak tampilkan teks untuk toggle
-                    String text = getDisplayText();
-                    paint.setTextSize(Math.min(getTextSizeForWidth(paint, text, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));
-                    paint.setTextAlign(Paint.Align.CENTER);
-                    canvas.drawText(text, x, (y - ((paint.descent() + paint.ascent()) * 0.5f)), paint);
-                }
-                break;
-            }
+    break;
+}
 
             case D_PAD: {
                 float cx = boundingBox.centerX();

@@ -356,7 +356,7 @@ public class ControlElement {
         int snappingSize = inputControlsView.getSnappingSize();
         Paint paint = inputControlsView.getPaint();
         int primaryColor = inputControlsView.getPrimaryColor();
-        int secondaryColor = inputControlsView.getSecondaryColor();
+        int secondaryColor = inputControlsView.getPrimaryColor();
 
         int baseColor = selected ? secondaryColor : primaryColor;
         float strokeWidth = snappingSize * 0.25f;

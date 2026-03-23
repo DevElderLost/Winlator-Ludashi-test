@@ -390,13 +390,14 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
         }
     }
 
-    // Default icon + tint hanya jika tidak ada custom
+    // ─── Jika TIDAK pakai custom icon → baru apply tint ───
     if (!useCustomIcon) {
         holder.imageView.setImageResource(R.drawable.icon_save);
-        holder.imageView.setImageTintList(
-            ColorStateList.valueOf(ContextCompat.getColor(context, R.color.colorPrimary))
+        holder.imageView.setColorFilter(
+            ContextCompat.getColor(context, R.color.colorPrimary),
+            PorterDuff.Mode.SRC_IN
         );
-        holder.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        holder.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE); // atau CENTER
     }
 
     // Selalu set text (ini yang hilang di kode kamu)

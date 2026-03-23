@@ -25,6 +25,11 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.media.ThumbnailUtils;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Paint;
+import android.graphics.Canvas;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -338,10 +343,12 @@ public class SavesFragment extends Fragment {
 
         @Override
 public void onBindViewHolder(final ViewHolder holder, int position) {
+    final Context context = holder.itemView.getContext();
     final Save item = data.get(position);
 
     // ─── DEFAULT ICON ─────────────────────────────────────
     holder.imageView.setImageResource(R.drawable.icon_save);
+    holder.imageView.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
 
     // ─── LOGIKA CUSTOM ICON dari .local/share/icons/hicolor/32x32/apps/ ───────
     if (item.container != null) {

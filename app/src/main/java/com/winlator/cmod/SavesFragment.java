@@ -346,21 +346,20 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
     final Context context = holder.itemView.getContext();
     final Save item = data.get(position);
 
-    // Reset dulu supaya aman
+    // Reset tint supaya aman
     holder.imageView.clearColorFilter();
-    holder.imageView.setColorFilter(null);   // atau bisa pakai setImageTintList(null) di API 21+
+    holder.imageView.setImageTintList(null);  // lebih modern & direkomendasikan (API 21+)
 
     boolean useCustomIcon = false;
 
-    // ─── LOGIKA CUSTOM ICON ────────────────────────────────
+    // ─── Custom icon logic ────────────────────────────────
     if (item.container != null) {
         File iconsDir = new File(item.container.getRootDir(), ".local/share/icons/hicolor/32x32/apps");
 
         if (iconsDir.exists() && iconsDir.isDirectory()) {
             String titleLower = item.getTitle().toLowerCase(Locale.getDefault());
-
-            File[] pngFiles = iconsDir.listFiles((dir, name) ->
-                    name.toLowerCase().endsWith(".png"));
+            File[] pngFiles = iconsDir.listFiles((dir, name) -> 
+                name.toLowerCase().endsWith(".png"));
 
             if (pngFiles != null) {
                 for (File pngFile : pngFiles) {
@@ -377,7 +376,7 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
                             Bitmap fullBitmap = BitmapFactory.decodeFile(pngFile.getAbsolutePath());
                             if (fullBitmap != null) {
                                 Bitmap thumbnail = ThumbnailUtils.extractThumbnail(
-                                        fullBitmap, 128, 128, ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
+                                    fullBitmap, 128, 128, ThumbnailUtils.OPTIONS_RECYCLE_INPUT);
 
                                 holder.imageView.setImageBitmap(thumbnail);
                                 holder.imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -391,15 +390,23 @@ public void onBindViewHolder(final ViewHolder holder, int position) {
         }
     }
 
-    // ─── Jika TIDAK pakai custom icon → baru apply tint ───
+    // Default icon + tint hanya jika tidak ada custom
     if (!useCustomIcon) {
         holder.imageView.setImageResource(R.drawable.icon_save);
-        holder.imageView.setColorFilter(
-            ContextCompat.getColor(context, R.color.colorPrimary),
-            PorterDuff.Mode.SRC_IN
+        holder.imageView.setImageTintList(
+            ColorStateList.valueOf(ContextCompat.getColor(context, R.color.colorPrimary))
         );
-        holder.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE); // atau CENTER
+        holder.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
     }
+
+    // Selalu set text (ini yang hilang di kode kamu)
+    holder.title.setText(item.getTitle());
+    holder.containerName.setText(
+        item.container != null ? item.container.getName() : ""
+    );
+
+    // Pasang listener menu (jangan lupa!)
+    holder.menuButton.setOnClickListener(v -> showListItemMenu(v, item));
 }
 
         @Override

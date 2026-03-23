@@ -351,7 +351,7 @@
     <string name="graphics_driver_available_extensions">Available Extensions</string>
     <string name="add_to_homescreen">Add to Homescreen</string>
     <string name="add_save">Add Save</string>
-    <string name="saves">Saves</string>
+    <string name="saves">Saves Data Manager</string>
     <string name="import_save">Import Save</string>
     <string name="transfer">Transfer</string>
     <string name="share">Share</string>

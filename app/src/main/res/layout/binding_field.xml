@@ -36,7 +36,6 @@
             android:src="@drawable/icon_remove"
             app:tint="@color/colorPrimaryDark"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/remove_binding"
             android:padding="8dp" />
             
     </LinearLayout>

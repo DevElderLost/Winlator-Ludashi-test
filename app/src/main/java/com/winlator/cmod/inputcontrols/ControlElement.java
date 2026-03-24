@@ -446,9 +446,8 @@ public class ControlElement {
 
                 if (iconId > 0) {
                     drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
-                }
-
-                if (!text.isEmpty() || getBindingAt(0) != Binding.NONE) {
+                } 
+                else if (!text.isEmpty() || getBindingAt(0) != Binding.NONE) {
                     String displayText = getDisplayText();
                     if (!displayText.isEmpty()) {
                         paint.setTextSize(Math.min(getTextSizeForWidth(paint, displayText, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));

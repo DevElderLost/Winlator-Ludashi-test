@@ -20,7 +20,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ControlElement {
     public static final float STICK_DEAD_ZONE = 0.15f;
@@ -73,7 +74,7 @@ public class ControlElement {
     private final InputControlsView inputControlsView;
     private Type type = Type.BUTTON;
     private Shape shape = Shape.CIRCLE;
-    private Binding[] bindings = {Binding.NONE, Binding.NONE, Binding.NONE, Binding.NONE};
+    private List<Binding> bindings = new ArrayList<>();
     private float scale = 1.0f;
     private short x;
     private short y;
@@ -81,7 +82,7 @@ public class ControlElement {
     private boolean toggleSwitch = false;
     private int currentPointerId = -1;
     private final Rect boundingBox = new Rect();
-    private boolean[] states = new boolean[4];
+    private boolean[] states = new boolean[0];
     private boolean boundingBoxNeedsUpdate = true;
     private String text = "";
     private byte iconId;
@@ -100,26 +101,33 @@ public class ControlElement {
     }
 
     private void reset() {
-        setBinding(Binding.NONE);
+        bindings.clear();
+        states = new boolean[0];
         scroller = null;
 
         if (type == Type.D_PAD || type == Type.STICK) {
-            bindings[0] = Binding.KEY_W;
-            bindings[1] = Binding.KEY_D;
-            bindings[2] = Binding.KEY_S;
-            bindings[3] = Binding.KEY_A;
+            bindings.add(Binding.KEY_W);
+            bindings.add(Binding.KEY_D);
+            bindings.add(Binding.KEY_S);
+            bindings.add(Binding.KEY_A);
+            states = new boolean[4];
         } else if (type == Type.TRACKPAD) {
-            bindings[0] = Binding.MOUSE_MOVE_UP;
-            bindings[1] = Binding.MOUSE_MOVE_RIGHT;
-            bindings[2] = Binding.MOUSE_MOVE_DOWN;
-            bindings[3] = Binding.MOUSE_MOVE_LEFT;
+            bindings.add(Binding.MOUSE_MOVE_UP);
+            bindings.add(Binding.MOUSE_MOVE_RIGHT);
+            bindings.add(Binding.MOUSE_MOVE_DOWN);
+            bindings.add(Binding.MOUSE_MOVE_LEFT);
+            states = new boolean[4];
         } else if (type == Type.RANGE_BUTTON) {
             scroller = new RangeScroller(inputControlsView, this);
         } else if (type == Type.TOUCHSCREEN_TOGGLE) {
-            // Tidak perlu binding apa pun
-            setBinding(Binding.NONE);
+            bindings.add(Binding.NONE);
+            states = new boolean[1];
             text = "";
             iconId = 0;
+        } else {
+            // BUTTON dan tipe lain default 1 binding
+            bindings.add(Binding.NONE);
+            states = new boolean[1];
         }
 
         text = "";
@@ -138,13 +146,19 @@ public class ControlElement {
     }
 
     public int getBindingCount() {
-        return bindings.length;
+        return bindings.size();
     }
 
-    public void setBindingCount(int bindingCount) {
-        bindings = new Binding[bindingCount];
-        setBinding(Binding.NONE);
-        states = new boolean[bindingCount];
+    public void setBindingCount(int count) {
+        while (bindings.size() > count) {
+            bindings.remove(bindings.size() - 1);
+        }
+        while (bindings.size() < count) {
+            bindings.add(Binding.NONE);
+        }
+        boolean[] newStates = new boolean[count];
+        System.arraycopy(states, 0, newStates, 0, Math.min(states.length, count));
+        states = newStates;
         boundingBoxNeedsUpdate = true;
     }
 
@@ -183,22 +197,51 @@ public class ControlElement {
     }
 
     public Binding getBindingAt(int index) {
-        return index < bindings.length ? bindings[index] : Binding.NONE;
+        return (index >= 0 && index < bindings.size()) ? bindings.get(index) : Binding.NONE;
     }
 
     public void setBindingAt(int index, Binding binding) {
-        if (index >= bindings.length) {
-            int oldLength = bindings.length;
-            bindings = Arrays.copyOf(bindings, index + 1);
-            Arrays.fill(bindings, oldLength - 1, bindings.length, Binding.NONE);
-            states = new boolean[bindings.length];
+        while (bindings.size() <= index) {
+            bindings.add(Binding.NONE);
+        }
+        bindings.set(index, binding != null ? binding : Binding.NONE);
+
+        if (states.length <= index) {
+            boolean[] newStates = new boolean[index + 1];
+            System.arraycopy(states, 0, newStates, 0, states.length);
+            states = newStates;
+        }
+        boundingBoxNeedsUpdate = true;
+    }
+
+    public void addBinding(Binding binding) {
+        bindings.add(binding != null ? binding : Binding.NONE);
+        boolean[] newStates = new boolean[states.length + 1];
+        System.arraycopy(states, 0, newStates, 0, states.length);
+        states = newStates;
+        boundingBoxNeedsUpdate = true;
+    }
+
+    public void removeBinding(int index) {
+        if (index >= 0 && index < bindings.size()) {
+            bindings.remove(index);
+            if (index < states.length) {
+                boolean[] newStates = new boolean[states.length - 1];
+                System.arraycopy(states, 0, newStates, 0, index);
+                if (index + 1 < states.length) {
+                    System.arraycopy(states, index + 1, newStates, index, states.length - index - 1);
+                }
+                states = newStates;
+            }
             boundingBoxNeedsUpdate = true;
         }
-        bindings[index] = binding;
     }
 
     public void setBinding(Binding binding) {
-        Arrays.fill(bindings, binding);
+        bindings.clear();
+        bindings.add(binding != null ? binding : Binding.NONE);
+        states = new boolean[1];
+        boundingBoxNeedsUpdate = true;
     }
 
     public float getScale() {
@@ -293,7 +336,7 @@ public class ControlElement {
                 break;
             }
             case RANGE_BUTTON: {
-                halfWidth = snappingSize * ((bindings.length * 4) / 2);
+                halfWidth = snappingSize * ((getBindingCount() * 4) / 2);
                 halfHeight = snappingSize * 2;
 
                 if (orientation == 1) {
@@ -364,64 +407,59 @@ public class ControlElement {
 
         switch (type) {
             case BUTTON:
-case TOUCHSCREEN_TOGGLE: {
-    float cx = boundingBox.centerX();
-    float cy = boundingBox.centerY();
+            case TOUCHSCREEN_TOGGLE: {
+                float cx = boundingBox.centerX();
+                float cy = boundingBox.centerY();
 
-    paint.setColor(baseColor);
-    paint.setStrokeWidth(strokeWidth);
+                paint.setColor(baseColor);
+                paint.setStrokeWidth(strokeWidth);
 
-    boolean shouldFill = (type == Type.TOUCHSCREEN_TOGGLE) ? selected : isPressed;
+                boolean shouldFill = (type == Type.TOUCHSCREEN_TOGGLE) ? selected : isPressed;
 
-    if (shouldFill) {
-        paint.setStyle(Paint.Style.FILL_AND_STROKE);
-    } else {
-        paint.setStyle(Paint.Style.STROKE);
-    }
+                if (shouldFill) {
+                    paint.setStyle(Paint.Style.FILL_AND_STROKE);
+                } else {
+                    paint.setStyle(Paint.Style.STROKE);
+                }
 
-    // Gambar bentuk (circle, rect, round rect, square) - kode tetap sama
-    switch (shape) {
-        case CIRCLE:
-            canvas.drawCircle(cx, cy, boundingBox.width() * 0.5f, paint);
-            break;
-        case RECT:
-            canvas.drawRect(boundingBox, paint);
-            break;
-        case ROUND_RECT: {
-            float radius = boundingBox.height() * 0.5f;
-            canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
-            break;
-        }
-        case SQUARE: {
-            float radius = snappingSize * 0.75f * scale;
-            canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
-            break;
-        }
-    }
+                switch (shape) {
+                    case CIRCLE:
+                        canvas.drawCircle(cx, cy, boundingBox.width() * 0.5f, paint);
+                        break;
+                    case RECT:
+                        canvas.drawRect(boundingBox, paint);
+                        break;
+                    case ROUND_RECT: {
+                        float radius = boundingBox.height() * 0.5f;
+                        canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
+                        break;
+                    }
+                    case SQUARE: {
+                        float radius = snappingSize * 0.75f * scale;
+                        canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
+                        break;
+                    }
+                }
 
-    // Reset paint untuk icon & text
-    paint.setStyle(Paint.Style.FILL);
-    paint.setColor(primaryColor);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(primaryColor);
 
-    // Sekarang icon DAN/ATAU text boleh muncul di kedua tipe
-    if (iconId > 0) {
-        drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
-    } 
-    
-    // Opsional: tampilkan text juga (jika ada)
-    // Hapus kondisi type != TOUCHSCREEN_TOGGLE agar text juga bisa muncul
-    if (!text.isEmpty() || getBindingAt(0) != Binding.NONE) {
-        String displayText = getDisplayText();
-        if (!displayText.isEmpty()) {
-            paint.setTextSize(Math.min(getTextSizeForWidth(paint, displayText, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));
-            paint.setTextAlign(Paint.Align.CENTER);
-            float textY = cy - ((paint.descent() + paint.ascent()) * 0.5f);
-            canvas.drawText(displayText, cx, textY, paint);
-        }
-    }
+                if (iconId > 0) {
+                    drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), iconId);
+                }
 
-    break;
-}
+                if (!text.isEmpty() || getBindingAt(0) != Binding.NONE) {
+                    String displayText = getDisplayText();
+                    if (!displayText.isEmpty()) {
+                        paint.setTextSize(Math.min(getTextSizeForWidth(paint, displayText, boundingBox.width() - strokeWidth * 2), snappingSize * 2 * scale));
+                        paint.setTextAlign(Paint.Align.CENTER);
+                        float textY = cy - ((paint.descent() + paint.ascent()) * 0.5f);
+                        canvas.drawText(displayText, cx, textY, paint);
+                    }
+                }
+
+                break;
+            }
 
             case D_PAD: {
                 float cx = boundingBox.centerX();
@@ -442,7 +480,7 @@ case TOUCHSCREEN_TOGGLE: {
                 path.lineTo(cx + offsetX, boundingBox.top);
                 path.lineTo(cx + offsetX, cy - offsetY);
                 path.close();
-                paint.setStyle((states[0] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states.length > 0 && states[0] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // RIGHT
@@ -453,7 +491,7 @@ case TOUCHSCREEN_TOGGLE: {
                 path.lineTo(boundingBox.right, cy + offsetX);
                 path.lineTo(cx + offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle((states[1] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states.length > 1 && states[1] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // DOWN
@@ -464,7 +502,7 @@ case TOUCHSCREEN_TOGGLE: {
                 path.lineTo(cx + offsetX, boundingBox.bottom);
                 path.lineTo(cx + offsetX, cy + offsetY);
                 path.close();
-                paint.setStyle((states[2] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states.length > 2 && states[2] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 // LEFT
@@ -475,13 +513,14 @@ case TOUCHSCREEN_TOGGLE: {
                 path.lineTo(boundingBox.left, cy + offsetX);
                 path.lineTo(cx - offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle((states[3] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                paint.setStyle((states.length > 3 && states[3] && isPressed) ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                 canvas.drawPath(path, paint);
 
                 break;
             }
 
             case RANGE_BUTTON: {
+                // kode RANGE_BUTTON tetap sama seperti aslinya
                 Range range = getRange();
                 int oldColor = paint.getColor();
                 float radius = snappingSize * 0.75f * scale;
@@ -570,13 +609,11 @@ case TOUCHSCREEN_TOGGLE: {
                 int cy = boundingBox.centerY();
                 int oldColor = paint.getColor();
 
-                // Outer circle selalu stroke
                 paint.setColor(baseColor);
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(strokeWidth);
                 canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
 
-                // Inner thumbstick
                 float thumbstickX = getCurrentPosition().x;
                 float thumbstickY = getCurrentPosition().y;
                 short thumbRadius = (short) (snappingSize * 3.5f * scale);
@@ -590,7 +627,6 @@ case TOUCHSCREEN_TOGGLE: {
                 }
                 canvas.drawCircle(thumbstickX, thumbstickY, thumbRadius, paint);
 
-                // Border thumbstick
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setColor(oldColor);
                 paint.setStrokeWidth(strokeWidth * 0.5f);
@@ -632,7 +668,9 @@ case TOUCHSCREEN_TOGGLE: {
             elementJSONObject.put("shape", shape.name());
 
             JSONArray bindingsJSONArray = new JSONArray();
-            for (Binding binding : bindings) bindingsJSONArray.put(binding.name());
+            for (Binding binding : bindings) {
+                bindingsJSONArray.put(binding.name());
+            }
 
             elementJSONObject.put("bindings", bindingsJSONArray);
             elementJSONObject.put("scale", Float.valueOf(scale));
@@ -647,7 +685,6 @@ case TOUCHSCREEN_TOGGLE: {
                 if (orientation != 0) elementJSONObject.put("orientation", orientation);
             }
 
-            // Simpan status toggle jika tipe TOUCHSCREEN_TOGGLE
             if (type == Type.TOUCHSCREEN_TOGGLE) {
                 elementJSONObject.put("selected", selected);
             }
@@ -675,7 +712,16 @@ case TOUCHSCREEN_TOGGLE: {
 
             if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
-                if (!toggleSwitch || !selected) inputControlsView.handleInputEvent(getBindingAt(0), true);
+
+                // Tekan SEMUA binding
+                for (int i = 0; i < bindings.size(); i++) {
+                    Binding b = bindings.get(i);
+                    if (b != Binding.NONE) {
+                        if (!toggleSwitch || !selected) {
+                            inputControlsView.handleInputEvent(b, true);
+                        }
+                    }
+                }
                 return true;
             } else if (type == Type.RANGE_BUTTON) {
                 scroller.handleTouchDown(x, y);
@@ -763,7 +809,7 @@ case TOUCHSCREEN_TOGGLE: {
 
                 inputControlsView.invalidate();
             } else if (type == Type.TRACKPAD) {
-                final boolean[] states = {deltaY <= -TRACKPAD_MIN_SPEED, deltaX >= TRACKPAD_MIN_SPEED, deltaY >= TRACKPAD_MIN_SPEED, deltaX <= -TRACKPAD_MIN_SPEED};
+                final boolean[] newStates = {deltaY <= -TRACKPAD_MIN_SPEED, deltaX >= TRACKPAD_MIN_SPEED, deltaY >= TRACKPAD_MIN_SPEED, deltaX <= -TRACKPAD_MIN_SPEED};
                 int cursorDx = 0;
                 int cursorDy = 0;
 
@@ -784,8 +830,8 @@ case TOUCHSCREEN_TOGGLE: {
                         } else if (binding == Binding.MOUSE_MOVE_UP || binding == Binding.MOUSE_MOVE_DOWN) {
                             cursorDy = Mathf.roundPoint(value);
                         } else {
-                            inputControlsView.handleInputEvent(binding, states[i], value);
-                            this.states[i] = states[i];
+                            inputControlsView.handleInputEvent(binding, newStates[i], value);
+                            this.states[i] = newStates[i];
                         }
                     }
                 }
@@ -798,12 +844,12 @@ case TOUCHSCREEN_TOGGLE: {
                         inputControlsView.getXServer().injectPointerMoveDelta(cursorDx, cursorDy);
                 }
             } else {
-                final boolean[] states = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
+                final boolean[] newStates = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 
                 for (byte i = 0; i < 4; i++) {
                     float value = i == 1 || i == 3 ? deltaX : deltaY;
                     Binding binding = getBindingAt(i);
-                    boolean state = binding.isMouseMove() ? (states[i] || states[(i + 2) % 4]) : states[i];
+                    boolean state = binding.isMouseMove() ? (newStates[i] || newStates[(i + 2) % 4]) : newStates[i];
                     inputControlsView.handleInputEvent(binding, state, value);
                     this.states[i] = state;
                 }
@@ -827,7 +873,7 @@ case TOUCHSCREEN_TOGGLE: {
                     boolean current = tp.isSimTouchScreen();
                     boolean next = !current;
                     tp.setSimTouchScreen(next);
-                    selected = next;  // update visual: fill jika ON, stroke jika OFF
+                    selected = next;
                     inputControlsView.invalidate();
                 }
                 currentPointerId = -1;
@@ -835,20 +881,32 @@ case TOUCHSCREEN_TOGGLE: {
             }
 
             if (type == Type.BUTTON) {
-                Binding binding = getBindingAt(0);
+                Binding firstBinding = getBindingAt(0);
                 if (isKeepButtonPressedAfterMinTime() && touchTime != null) {
                     selected = (System.currentTimeMillis() - (long) touchTime) > BUTTON_MIN_TIME_TO_KEEP_PRESSED;
-                    if (!selected) inputControlsView.handleInputEvent(binding, false);
+                    if (!selected) {
+                        inputControlsView.handleInputEvent(firstBinding, false);
+                    }
                     touchTime = null;
                     inputControlsView.invalidate();
-                } else if (!toggleSwitch || selected) inputControlsView.handleInputEvent(binding, false);
+                } else {
+                    // Lepaskan SEMUA binding
+                    for (int i = 0; i < bindings.size(); i++) {
+                        Binding b = bindings.get(i);
+                        if (b != Binding.NONE) {
+                            if (!toggleSwitch || selected) {
+                                inputControlsView.handleInputEvent(b, false);
+                            }
+                        }
+                    }
+                }
 
                 if (toggleSwitch) {
                     selected = !selected;
                     inputControlsView.invalidate();
                 }
             } else if (type == Type.RANGE_BUTTON || type == Type.D_PAD || type == Type.STICK || type == Type.TRACKPAD) {
-                for (byte i = 0; i < states.length; i++) {
+                for (int i = 0; i < states.length; i++) {
                     if (states[i]) inputControlsView.handleInputEvent(getBindingAt(i), false);
                     states[i] = false;
                 }

@@ -244,21 +244,19 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.VISIBLE);
 
+            if (element.getBindingCount() == 0) {
+                element.addBinding(Binding.NONE);   // tambahkan binding default
+                profile.save();                     // simpan agar tidak hilang
+            }
+            
             btnAddBinding.setOnClickListener(v -> {
                 if (element.getBindingCount() >= 8) {
                     AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
                     return;
                 }
-                element.addBinding(Binding.NONE);
-                profile.save();
                 addNewBindingRow(element, container, element.getBindingCount() - 1);
                 inputControlsView.invalidate();
             });
-
-            if (element.getBindingCount() == 0) {
-                element.addBinding(Binding.NONE);   // tambahkan binding default
-                profile.save();                     // simpan agar tidak hilang
-            }
 
             // Tampilkan semua binding yang sudah ada (minimal 1)
             for (int i = 0; i < element.getBindingCount(); i++) {

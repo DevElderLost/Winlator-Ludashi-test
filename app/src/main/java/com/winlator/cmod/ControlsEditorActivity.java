@@ -255,6 +255,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 inputControlsView.invalidate();
             });
 
+            if (element.getBindingCount() == 0) {
+                element.addBinding(Binding.NONE);   // tambahkan binding default
+                profile.save();                     // simpan agar tidak hilang
+            }
+
             // Tampilkan semua binding yang sudah ada (minimal 1)
             for (int i = 0; i < element.getBindingCount(); i++) {
                 addNewBindingRow(element, container, i);

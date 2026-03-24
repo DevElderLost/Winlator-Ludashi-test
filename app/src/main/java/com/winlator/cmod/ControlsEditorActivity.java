@@ -254,6 +254,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
                     return;
                 }
+                element.addBinding(Binding.NONE);
+                profile.save();
                 addNewBindingRow(element, container, element.getBindingCount() - 1);
                 inputControlsView.invalidate();
             });

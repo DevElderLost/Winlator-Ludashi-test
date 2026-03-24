@@ -2,7 +2,6 @@ package com.winlator.cmod;
 
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.AdapterView;
@@ -38,6 +37,7 @@ import java.io.InputStream;
 import java.util.Arrays;
 
 public class ControlsEditorActivity extends AppCompatActivity implements View.OnClickListener {
+
     private InputControlsView inputControlsView;
     private ControlsProfile profile;
 
@@ -51,7 +51,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         inputControlsView.setEditMode(true);
         inputControlsView.setOverlayOpacity(0.6f);
 
-        profile = InputControlsManager.loadProfile(this, ControlsProfile.getProfileFile(this, getIntent().getIntExtra("profile_id", 0)));
+        profile = InputControlsManager.loadProfile(this, 
+                ControlsProfile.getProfileFile(this, getIntent().getIntExtra("profile_id", 0)));
+
         ((TextView) findViewById(R.id.TVProfileName)).setText(profile.getName());
         inputControlsView.setProfile(profile);
 
@@ -93,6 +95,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         final Runnable updateLayout = () -> {
             ControlElement.Type type = element.getType();
+
             view.findViewById(R.id.LLShape).setVisibility(View.GONE);
             view.findViewById(R.id.CBToggleSwitch).setVisibility(View.GONE);
             view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.GONE);
@@ -150,7 +153,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {}
-
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
@@ -229,100 +231,53 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ControlElement.Type type = element.getType();
 
-        // Tambahkan tombol + di paling atas untuk tipe yang mendukung multi binding
+        // Tombol Add Binding (dari XML)
         if (type == ControlElement.Type.BUTTON) {
-            addAddBindingButton(container, element);
+            ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
+            btnAddBinding.setVisibility(View.VISIBLE);
+            btnAddBinding.setOnClickListener(v -> {
+                if (element.getBindingCount() >= 8) {
+                    AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
+                    return;
+                }
+                element.addBinding(Binding.NONE);
+                profile.save();
+                addNewBindingRow(element, container, element.getBindingCount() - 1);
+                inputControlsView.invalidate();
+            });
         }
 
-        // Isi daftar binding
+        // Isi binding rows
         if (type == ControlElement.Type.BUTTON) {
             for (int i = 0; i < element.getBindingCount(); i++) {
-                boolean removable = (i > 0);
-                createAndSetupBindingRow(element, container, i,
-                        i == 0 ? R.string.binding : R.string.binding_additional,
-                        removable);
+                addNewBindingRow(element, container, i);
             }
         } else if (type == ControlElement.Type.D_PAD ||
                    type == ControlElement.Type.STICK ||
                    type == ControlElement.Type.TRACKPAD) {
-            createAndSetupBindingRow(element, container, 0, R.string.binding_up, false);
-            createAndSetupBindingRow(element, container, 1, R.string.binding_right, false);
-            createAndSetupBindingRow(element, container, 2, R.string.binding_down, false);
-            createAndSetupBindingRow(element, container, 3, R.string.binding_left, false);
+            addNewBindingRow(element, container, 0); // Up
+            addNewBindingRow(element, container, 1); // Right
+            addNewBindingRow(element, container, 2); // Down
+            addNewBindingRow(element, container, 3); // Left
         }
     }
 
-    private void addAddBindingButton(LinearLayout container, ControlElement element) {
-        LinearLayout addContainer = new LinearLayout(this);
-        addContainer.setOrientation(LinearLayout.HORIZONTAL);
-        addContainer.setGravity(Gravity.CENTER);
-        addContainer.setPadding(0, 16, 0, 16);
-
-        ImageButton btnAdd = new ImageButton(this);
-        btnAdd.setImageResource(R.drawable.icon_add);
-        btnAdd.setBackground(null);
-        btnAdd.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        btnAdd.setPadding(12, 12, 12, 12);
-
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        btnAdd.setLayoutParams(btnParams);
-
-        TextView tvLabel = new TextView(this);
-        tvLabel.setText("Tambah binding");
-        tvLabel.setTextSize(16f);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        labelParams.leftMargin = (int) UnitUtils.dpToPx(12);
-        tvLabel.setLayoutParams(labelParams);
-
-        addContainer.addView(btnAdd);
-        addContainer.addView(tvLabel);
-
-        btnAdd.setOnClickListener(v -> {
-            if (element.getBindingCount() >= 8) {
-                AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
-                return;
-            }
-
-            element.addBinding(Binding.NONE);
-            profile.save();
-
-            int newIndex = element.getBindingCount() - 1;
-            createAndSetupBindingRow(element, container, newIndex, R.string.binding_additional, true);
-
-            inputControlsView.invalidate();
-        });
-
-        container.addView(addContainer);
-    }
-
-    private void createAndSetupBindingRow(final ControlElement element, final LinearLayout container,
-                                          final int index, int titleResId, boolean removable) {
+    // Method baru yang dinamis untuk menambahkan satu baris binding
+    private void addNewBindingRow(final ControlElement element, final LinearLayout container, final int index) {
         View row = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
-        ((TextView) row.findViewById(R.id.TVTitle)).setText(titleResId);
 
-        final Spinner sBindingType = row.findViewById(R.id.SBindingType);
-        final Spinner sBinding = row.findViewById(R.id.SBinding);
+        Spinner sBindingType = row.findViewById(R.id.SBindingType);
+        Spinner sBinding = row.findViewById(R.id.SBinding);
+        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-        Runnable update = () -> {
+        // Setup Binding Type & Binding
+        Runnable updateBindingSpinner = () -> {
             String[] bindingEntries = null;
             switch (sBindingType.getSelectedItemPosition()) {
-                case 0:
-                    bindingEntries = Binding.keyboardBindingLabels();
-                    break;
-                case 1:
-                    bindingEntries = Binding.mouseBindingLabels();
-                    break;
-                case 2:
-                    bindingEntries = Binding.gamepadBindingLabels();
-                    break;
+                case 0: bindingEntries = Binding.keyboardBindingLabels(); break;
+                case 1: bindingEntries = Binding.mouseBindingLabels(); break;
+                case 2: bindingEntries = Binding.gamepadBindingLabels(); break;
             }
-
             if (bindingEntries != null) {
                 sBinding.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bindingEntries));
                 AppUtils.setSpinnerSelectionFromValue(sBinding, element.getBindingAt(index).toString());
@@ -332,81 +287,50 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                update.run();
+                updateBindingSpinner.run();
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        Binding selectedBinding = element.getBindingAt(index);
-        if (selectedBinding.isKeyboard()) {
-            sBindingType.setSelection(0, false);
-        } else if (selectedBinding.isMouse()) {
-            sBindingType.setSelection(1, false);
-        } else if (selectedBinding.isGamepad()) {
-            sBindingType.setSelection(2, false);
-        }
+        // Set initial Binding Type
+        Binding currentBinding = element.getBindingAt(index);
+        if (currentBinding.isKeyboard()) sBindingType.setSelection(0, false);
+        else if (currentBinding.isMouse()) sBindingType.setSelection(1, false);
+        else if (currentBinding.isGamepad()) sBindingType.setSelection(2, false);
 
         sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                Binding binding = Binding.NONE;
+                Binding newBinding = Binding.NONE;
                 switch (sBindingType.getSelectedItemPosition()) {
-                    case 0:
-                        binding = Binding.keyboardBindingValues()[position];
-                        break;
-                    case 1:
-                        binding = Binding.mouseBindingValues()[position];
-                        break;
-                    case 2:
-                        binding = Binding.gamepadBindingValues()[position];
-                        break;
+                    case 0: newBinding = Binding.keyboardBindingValues()[position]; break;
+                    case 1: newBinding = Binding.mouseBindingValues()[position]; break;
+                    case 2: newBinding = Binding.gamepadBindingValues()[position]; break;
                 }
-
-                if (binding != element.getBindingAt(index)) {
-                    element.setBindingAt(index, binding);
+                if (newBinding != element.getBindingAt(index)) {
+                    element.setBindingAt(index, newBinding);
                     profile.save();
                     inputControlsView.invalidate();
                 }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        update.run();
+        updateBindingSpinner.run();
 
-        // Tambahkan tombol delete di samping kanan BARIS (sebagai sibling terpisah)
-        if (removable && row instanceof LinearLayout) {
-            LinearLayout rootRow = (LinearLayout) row;
-
-            ImageButton btnDelete = new ImageButton(this);
-            btnDelete.setImageResource(R.drawable.icon_remove);
-            btnDelete.setBackground(null);
-            btnDelete.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            btnDelete.setPadding(16, 16, 16, 16);
-            btnDelete.setContentDescription("Hapus binding ini");
-
-            LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-            );
-            deleteParams.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
-            deleteParams.leftMargin = (int) UnitUtils.dpToPx(16);
-            btnDelete.setLayoutParams(deleteParams);
-
-            btnDelete.setOnClickListener(v -> {
+        // Tombol Remove
+        if (element.getType() == ControlElement.Type.BUTTON && index > 0) {
+            btnRemove.setVisibility(View.VISIBLE);
+            btnRemove.setOnClickListener(v -> {
                 element.removeBinding(index);
                 profile.save();
                 container.removeView(row);
                 inputControlsView.invalidate();
             });
-
-            // Tambahkan langsung ke root LinearLayout vertical
-            // Karena root vertical → tombol akan berada di bawah spinner
-            // Jika ingin di kanan atas, perlu ubah layout menjadi horizontal atau RelativeLayout
-            rootRow.addView(btnDelete);
+        } else {
+            btnRemove.setVisibility(View.GONE); // Tidak bisa dihapus untuk D-Pad, Stick, atau binding pertama BUTTON
         }
 
         container.addView(row);
@@ -453,7 +377,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             imageView.setBackgroundResource(R.drawable.icon_background);
             imageView.setTag(id);
             imageView.setSelected(id == selectedId);
-            imageView.setOnClickListener((v) -> {
+            imageView.setOnClickListener(v -> {
                 for (int i = 0; i < parent.getChildCount(); i++) {
                     parent.getChildAt(i).setSelected(false);
                 }

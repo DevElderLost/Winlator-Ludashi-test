@@ -28,5 +28,15 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:spinnerMode="dialog" />
+
+        <ImageButton
+            android:id="@+id/btnRemoveBinding"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/icon_remove"   
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/remove_binding"
+            android:padding="8dp" />
+            
     </LinearLayout>
 </LinearLayout>

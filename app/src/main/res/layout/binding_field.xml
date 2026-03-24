@@ -33,7 +33,8 @@
             android:id="@+id/btnRemoveBinding"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:src="@drawable/icon_remove"   
+            android:src="@drawable/icon_remove"
+            app:tint="@color/colorPrimaryDark"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/remove_binding"
             android:padding="8dp" />

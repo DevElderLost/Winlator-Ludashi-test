@@ -123,7 +123,7 @@ public class ControlElement {
             bindings.add(Binding.NONE);
             states = new boolean[1];
             text = "";
-            iconId = 17;
+            iconId = 0;
         } else {
             // BUTTON dan tipe lain default 1 binding
             bindings.add(Binding.NONE);

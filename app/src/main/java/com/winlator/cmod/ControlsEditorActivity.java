@@ -96,20 +96,31 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         final Runnable updateLayout = () -> {
             ControlElement.Type type = element.getType();
 
+            // Reset visibility
             view.findViewById(R.id.LLShape).setVisibility(View.GONE);
             view.findViewById(R.id.CBToggleSwitch).setVisibility(View.GONE);
             view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.GONE);
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
+            view.findViewById(R.id.LLBindings).setVisibility(View.GONE);   // default sembunyikan dulu
 
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.CBToggleSwitch).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
-            } else if (type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
+                view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
+            } 
+            else if (type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
-            } else if (type == ControlElement.Type.RANGE_BUTTON) {
+                // Binding sengaja disembunyikan
+            } 
+            else if (type == ControlElement.Type.RANGE_BUTTON) {
                 view.findViewById(R.id.LLRangeOptions).setVisibility(View.VISIBLE);
+            } 
+            else if (type == ControlElement.Type.D_PAD || 
+                     type == ControlElement.Type.STICK || 
+                     type == ControlElement.Type.TRACKPAD) {
+                view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
             }
 
             loadBindingSpinners(element, view);
@@ -150,7 +161,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     inputControlsView.invalidate();
                 }
             }
-
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override
@@ -203,7 +213,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 callback.run();
                 inputControlsView.invalidate();
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -219,7 +228,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 profile.save();
                 inputControlsView.invalidate();
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -231,10 +239,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ControlElement.Type type = element.getType();
 
-        // Tombol Add Binding (dari XML)
+        // Hanya BUTTON yang boleh pakai tombol Add dan multiple binding
         if (type == ControlElement.Type.BUTTON) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.VISIBLE);
+
             btnAddBinding.setOnClickListener(v -> {
                 if (element.getBindingCount() >= 8) {
                     AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
@@ -245,24 +254,33 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 addNewBindingRow(element, container, element.getBindingCount() - 1);
                 inputControlsView.invalidate();
             });
-        }
 
-        // Isi binding rows
-        if (type == ControlElement.Type.BUTTON) {
+            // Tampilkan semua binding yang sudah ada (minimal 1)
             for (int i = 0; i < element.getBindingCount(); i++) {
                 addNewBindingRow(element, container, i);
             }
-        } else if (type == ControlElement.Type.D_PAD ||
-                   type == ControlElement.Type.STICK ||
-                   type == ControlElement.Type.TRACKPAD) {
+        } 
+        else if (type == ControlElement.Type.D_PAD || 
+                 type == ControlElement.Type.STICK || 
+                 type == ControlElement.Type.TRACKPAD) {
+            // Sembunyikan tombol Add
+            ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
+            btnAddBinding.setVisibility(View.GONE);
+
+            // 4 arah tetap ditampilkan
             addNewBindingRow(element, container, 0); // Up
             addNewBindingRow(element, container, 1); // Right
             addNewBindingRow(element, container, 2); // Down
             addNewBindingRow(element, container, 3); // Left
+        } 
+        else {
+            // Untuk TOUCHSCREEN_TOGGLE dan tipe lain yang tidak butuh binding
+            ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
+            btnAddBinding.setVisibility(View.GONE);
+            // container sudah di-removeAllViews() di atas, jadi kosong
         }
     }
 
-    // Method baru yang dinamis untuk menambahkan satu baris binding
     private void addNewBindingRow(final ControlElement element, final LinearLayout container, final int index) {
         View row = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
 
@@ -270,7 +288,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         Spinner sBinding = row.findViewById(R.id.SBinding);
         ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-        // Setup Binding Type & Binding
+        // Setup spinner binding
         Runnable updateBindingSpinner = () -> {
             String[] bindingEntries = null;
             switch (sBindingType.getSelectedItemPosition()) {
@@ -293,11 +311,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        // Set initial Binding Type
-        Binding currentBinding = element.getBindingAt(index);
-        if (currentBinding.isKeyboard()) sBindingType.setSelection(0, false);
-        else if (currentBinding.isMouse()) sBindingType.setSelection(1, false);
-        else if (currentBinding.isGamepad()) sBindingType.setSelection(2, false);
+        Binding current = element.getBindingAt(index);
+        if (current.isKeyboard()) sBindingType.setSelection(0, false);
+        else if (current.isMouse()) sBindingType.setSelection(1, false);
+        else if (current.isGamepad()) sBindingType.setSelection(2, false);
 
         sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -308,11 +325,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     case 1: newBinding = Binding.mouseBindingValues()[position]; break;
                     case 2: newBinding = Binding.gamepadBindingValues()[position]; break;
                 }
-                if (newBinding != element.getBindingAt(index)) {
-                    element.setBindingAt(index, newBinding);
-                    profile.save();
-                    inputControlsView.invalidate();
-                }
+                element.setBindingAt(index, newBinding);
+                profile.save();
+                inputControlsView.invalidate();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -320,8 +335,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         updateBindingSpinner.run();
 
-        // Tombol Remove
-        if (element.getType() == ControlElement.Type.BUTTON && index > 0) {
+        // Logika Remove: hanya untuk BUTTON dan index >= 1
+        if (element.getType() == ControlElement.Type.BUTTON && index >= 1) {
             btnRemove.setVisibility(View.VISIBLE);
             btnRemove.setOnClickListener(v -> {
                 element.removeBinding(index);
@@ -330,7 +345,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 inputControlsView.invalidate();
             });
         } else {
-            btnRemove.setVisibility(View.GONE); // Tidak bisa dihapus untuk D-Pad, Stick, atau binding pertama BUTTON
+            btnRemove.setVisibility(View.GONE);
         }
 
         container.addView(row);
@@ -346,7 +361,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 profile.save();
                 inputControlsView.invalidate();
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });

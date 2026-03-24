@@ -122,6 +122,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical" />
+            
+        <ImageButton
+            android:id="@+id/btnAddBinding"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:src="@drawable/icon_add"
+            app:tint="@color/colorPrimaryDark"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp" />
 
         <LinearLayout
             android:id="@+id/LLDPadBindings"

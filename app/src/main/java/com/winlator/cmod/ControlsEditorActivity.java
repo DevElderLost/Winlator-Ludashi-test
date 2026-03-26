@@ -101,27 +101,35 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             view.findViewById(R.id.CBToggleSwitch).setVisibility(View.GONE);
             view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.GONE);
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
-            view.findViewById(R.id.LLBindings).setVisibility(View.GONE);   // default sembunyikan dulu
+            view.findViewById(R.id.LLBindings).setVisibility(View.GONE);
+            view.findViewById(R.id.LLSlotIcons).setVisibility(View.GONE);
 
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.CBToggleSwitch).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
-            } 
+            }
             else if (type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
-                // Binding sengaja disembunyikan
-            } 
+            }
             else if (type == ControlElement.Type.RANGE_BUTTON) {
                 view.findViewById(R.id.LLRangeOptions).setVisibility(View.VISIBLE);
-            } 
-            else if (type == ControlElement.Type.D_PAD || 
-                     type == ControlElement.Type.STICK || 
-                     type == ControlElement.Type.TRACKPAD || 
-                     type == ControlElement.Type.RIGHT_STICK) {
+            }
+            else if (type == ControlElement.Type.D_PAD) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
+                loadSlotIconsUI(view, element, new String[]{"↑ Up", "→ Right", "↓ Down", "← Left"}, 4);
+            }
+            else if (type == ControlElement.Type.STICK || type == ControlElement.Type.RIGHT_STICK) {
+                view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
+                loadSlotIconsUI(view, element, new String[]{"Outer Circle", "Inner Thumb"}, 2);
+            }
+            else if (type == ControlElement.Type.TRACKPAD) {
+                view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
             }
 
             loadBindingSpinners(element, view);
@@ -198,10 +206,128 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
             element.setText(text);
             element.setIconId(iconId);
+
+            // Simpan slot icons jika panel slot icons ada dan visible
+            LinearLayout llSlotIcons = view.findViewById(R.id.LLSlotIcons);
+            if (llSlotIcons != null && llSlotIcons.getVisibility() == View.VISIBLE) {
+                // Setiap slot direpresentasikan sebagai LinearLayout child di LLSlotIcons
+                for (int slot = 0; slot < llSlotIcons.getChildCount(); slot++) {
+                    View slotRow = llSlotIcons.getChildAt(slot);
+                    if (!(slotRow instanceof LinearLayout)) continue;
+                    LinearLayout iconRow = (LinearLayout) slotRow;
+                    // Child pertama adalah TextView label, sisanya adalah ImageView icon
+                    byte selectedSlotIcon = 0;
+                    for (int c = 1; c < iconRow.getChildCount(); c++) {
+                        View child = iconRow.getChildAt(c);
+                        if (child.isSelected() && child.getTag() instanceof Byte) {
+                            selectedSlotIcon = (byte) child.getTag();
+                            break;
+                        }
+                    }
+                    element.setSlotIconId(slot, selectedSlotIcon);
+                }
+            }
+
             profile.save();
             inputControlsView.invalidate();
         });
     }
+
+    /**
+     * Membangun UI pemilih icon per-slot di dalam LLSlotIcons.
+     * slotLabels: nama tiap slot (misal "↑ Up", "→ Right", dll)
+     * slotCount: jumlah slot yang ditampilkan
+     */
+    private void loadSlotIconsUI(View settingsView, ControlElement element, String[] slotLabels, int slotCount) {
+        LinearLayout llSlotIcons = settingsView.findViewById(R.id.LLSlotIcons);
+        llSlotIcons.removeAllViews();
+
+        byte[] availableIconIds = new byte[0];
+        try {
+            String[] filenames = getAssets().list("inputcontrols/icons/");
+            availableIconIds = new byte[filenames.length];
+            for (int i = 0; i < filenames.length; i++) {
+                availableIconIds[i] = Byte.parseByte(com.winlator.cmod.core.FileUtils.getBasename(filenames[i]));
+            }
+        } catch (IOException e) {}
+        java.util.Arrays.sort(availableIconIds);
+
+        int iconSize = (int) com.winlator.cmod.core.UnitUtils.dpToPx(36);
+        int iconMargin = (int) com.winlator.cmod.core.UnitUtils.dpToPx(2);
+        int iconPadding = (int) com.winlator.cmod.core.UnitUtils.dpToPx(3);
+
+        for (int slot = 0; slot < slotCount; slot++) {
+            // Row container per slot
+            LinearLayout slotRow = new LinearLayout(this);
+            slotRow.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowParams.setMargins(0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(4), 0, 0);
+            slotRow.setLayoutParams(rowParams);
+
+            // Label nama slot
+            TextView tvLabel = new TextView(this);
+            tvLabel.setText(slotLabels[slot]);
+            tvLabel.setTextSize(12);
+            tvLabel.setPadding(0, 0, 0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(2));
+            slotRow.addView(tvLabel);
+
+            // Horizontal scroll untuk daftar icon
+            android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+            hsv.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            LinearLayout iconRow = new LinearLayout(this);
+            iconRow.setOrientation(LinearLayout.HORIZONTAL);
+
+            final byte currentSlotIcon = element.getSlotIconId(slot);
+            final int finalSlot = slot;
+
+            // Opsi "None" (tidak ada icon)
+            ImageView noneView = new ImageView(this);
+            LinearLayout.LayoutParams noneParams = new LinearLayout.LayoutParams(iconSize, iconSize);
+            noneParams.setMargins(iconMargin, 0, iconMargin, 0);
+            noneView.setLayoutParams(noneParams);
+            noneView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+            noneView.setBackgroundResource(R.drawable.icon_background);
+            noneView.setTag((byte) 0);
+            noneView.setSelected(currentSlotIcon == 0);
+            noneView.setOnClickListener(v -> {
+                for (int c = 0; c < iconRow.getChildCount(); c++) iconRow.getChildAt(c).setSelected(false);
+                noneView.setSelected(true);
+                element.setSlotIconId(finalSlot, (byte) 0);
+                profile.save();
+                inputControlsView.invalidate();
+            });
+            iconRow.addView(noneView);
+
+            // Daftar icon dari assets
+            for (final byte id : availableIconIds) {
+                ImageView imageView = new ImageView(this);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(iconSize, iconSize);
+                params.setMargins(iconMargin, 0, iconMargin, 0);
+                imageView.setLayoutParams(params);
+                imageView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+                imageView.setBackgroundResource(R.drawable.icon_background);
+                imageView.setTag(id);
+                imageView.setSelected(id == currentSlotIcon);
+                imageView.setOnClickListener(v -> {
+                    for (int c = 0; c < iconRow.getChildCount(); c++) iconRow.getChildAt(c).setSelected(false);
+                    imageView.setSelected(true);
+                    element.setSlotIconId(finalSlot, id);
+                    profile.save();
+                    inputControlsView.invalidate();
+                });
+                try (java.io.InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
+                    imageView.setImageBitmap(android.graphics.BitmapFactory.decodeStream(is));
+                } catch (IOException e) {}
+                iconRow.addView(imageView);
+            }
+
+            hsv.addView(iconRow);
+            slotRow.addView(hsv);
+            llSlotIcons.addView(slotRow);
+        }
 
     private void loadTypeSpinner(final ControlElement element, Spinner spinner, Runnable callback) {
         spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Type.names()));
@@ -268,7 +394,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         } 
         else if (type == ControlElement.Type.D_PAD || 
                  type == ControlElement.Type.STICK || 
-                 type == ControlElement.Type.TRACKPAD) {
+                 type == ControlElement.Type.TRACKPAD ||
+                 type == ControlElement.Type.RIGHT_STICK) {
             // Sembunyikan tombol Add
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.GONE);

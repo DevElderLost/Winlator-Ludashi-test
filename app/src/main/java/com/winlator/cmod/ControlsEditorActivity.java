@@ -118,9 +118,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLRangeOptions).setVisibility(View.VISIBLE);
             }
             else if (type == ControlElement.Type.D_PAD) {
+                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"↑ Up", "→ Right", "↓ Down", "← Left"}, 4);
+                loadSlotIconsUI(view, element, new String[]{"Up", "Right", "Down", "Left"}, 4);
             }
             else if (type == ControlElement.Type.STICK || type == ControlElement.Type.RIGHT_STICK) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);

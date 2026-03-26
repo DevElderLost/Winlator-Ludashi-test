@@ -19,6 +19,7 @@ import android.os.Handler;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Log;
+import android.util.SparseArray;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.PointerIcon;
@@ -64,7 +65,7 @@ public class InputControlsView extends View {
     private float overlayOpacity = DEFAULT_OVERLAY_OPACITY;
     private TouchpadView touchpadView;
     private XServer xServer;
-    private final Bitmap[] icons = new Bitmap[17];
+    private final SparseArray<Bitmap> icons = new SparseArray<>();
     private Timer mouseMoveTimer;
     private final PointF mouseMoveOffset = new PointF();
     private boolean showTouchscreenControls = true;
@@ -770,14 +771,20 @@ public class InputControlsView extends View {
     }
 
     public Bitmap getIcon(byte id) {
-        if (id <= 0 || id >= icons.length) return null;
-        if (icons[id] == null) {
+        if (id <= 0) return null;
+        Bitmap cached = icons.get(id);
+        if (cached == null || cached.isRecycled()) {
             Context context = getContext();
             try (InputStream is = context.getAssets().open("inputcontrols/icons/"+id+".png")) {
-                icons[id] = BitmapFactory.decodeStream(is);
+                Bitmap bitmap = BitmapFactory.decodeStream(is);
+                if (bitmap != null) {
+                    icons.put(id, bitmap);
+                    return bitmap;
+                }
             }
             catch (Exception e) {}
+            return null;
         }
-        return icons[id];
+        return cached;
     }
 }

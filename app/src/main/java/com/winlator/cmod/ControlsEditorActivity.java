@@ -119,7 +119,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             } 
             else if (type == ControlElement.Type.D_PAD || 
                      type == ControlElement.Type.STICK || 
-                     type == ControlElement.Type.TRACKPAD) {
+                     type == ControlElement.Type.TRACKPAD || 
+                     type == ControlElement.Type.RIGHT_STICK) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
             }
 

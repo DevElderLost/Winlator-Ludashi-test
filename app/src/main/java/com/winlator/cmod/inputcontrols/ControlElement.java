@@ -33,7 +33,7 @@ public class ControlElement {
     public static final short BUTTON_MIN_TIME_TO_KEEP_PRESSED = 300;
 
     public enum Type {
-        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE;
+        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE, RIGHT_STICK;
 
         public static String[] names() {
             Type[] types = values();
@@ -89,6 +89,7 @@ public class ControlElement {
     private Range range;
     private byte orientation;
     private PointF currentPosition;
+    private PointF visualThumbPosition; // posisi visual thumbstick RIGHT_STICK (terpisah dari currentPosition yang dipakai input)
     private RangeScroller scroller;
     private CubicBezierInterpolator interpolator;
     private Object touchTime;
@@ -111,11 +112,18 @@ public class ControlElement {
             bindings.add(Binding.KEY_S);
             bindings.add(Binding.KEY_A);
             states = new boolean[4];
-        } else if (type == Type.TRACKPAD) {
-            bindings.add(Binding.MOUSE_MOVE_UP);
-            bindings.add(Binding.MOUSE_MOVE_RIGHT);
-            bindings.add(Binding.MOUSE_MOVE_DOWN);
-            bindings.add(Binding.MOUSE_MOVE_LEFT);
+        } else if (type == Type.TRACKPAD || type == Type.RIGHT_STICK) {
+            if (type == Type.RIGHT_STICK) {
+                bindings.add(Binding.GAMEPAD_RIGHT_THUMB_UP);
+                bindings.add(Binding.GAMEPAD_RIGHT_THUMB_RIGHT);
+                bindings.add(Binding.GAMEPAD_RIGHT_THUMB_DOWN);
+                bindings.add(Binding.GAMEPAD_RIGHT_THUMB_LEFT);
+            } else {
+                bindings.add(Binding.MOUSE_MOVE_UP);
+                bindings.add(Binding.MOUSE_MOVE_RIGHT);
+                bindings.add(Binding.MOUSE_MOVE_DOWN);
+                bindings.add(Binding.MOUSE_MOVE_LEFT);
+            }
             states = new boolean[4];
         } else if (type == Type.RANGE_BUTTON) {
             scroller = new RangeScroller(inputControlsView, this);
@@ -330,7 +338,8 @@ public class ControlElement {
                 break;
             }
             case TRACKPAD:
-            case STICK: {
+            case STICK:
+            case RIGHT_STICK: {
                 halfWidth = snappingSize * 6;
                 halfHeight = snappingSize * 6;
                 break;
@@ -633,6 +642,53 @@ public class ControlElement {
                 break;
             }
 
+            case RIGHT_STICK: {
+                int cx = boundingBox.centerX();
+                int cy = boundingBox.centerY();
+                int oldColor = paint.getColor();
+
+                paint.setColor(baseColor);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(strokeWidth);
+                canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
+
+                // Gunakan visualThumbPosition jika tersedia (saat disentuh),
+                // fallback ke center jika idle
+                float thumbstickX, thumbstickY;
+                if (isPressed && visualThumbPosition != null) {
+                    thumbstickX = visualThumbPosition.x;
+                    thumbstickY = visualThumbPosition.y;
+                } else {
+                    thumbstickX = cx;
+                    thumbstickY = cy;
+                }
+                short thumbRadius = (short) (snappingSize * 3.5f * scale);
+
+                if (isPressed) {
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(baseColor);
+                } else {
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(ColorUtils.setAlphaComponent(primaryColor, 50));
+                }
+                canvas.drawCircle(thumbstickX, thumbstickY, thumbRadius, paint);
+
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setColor(oldColor);
+                paint.setStrokeWidth(strokeWidth * 0.5f);
+                canvas.drawCircle(thumbstickX, thumbstickY, thumbRadius + strokeWidth * 0.5f, paint);
+
+                // Label "R" di sudut outer circle untuk membedakan dari Left Stick
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(primaryColor);
+                float labelSize = snappingSize * 1.8f * scale;
+                paint.setTextSize(labelSize);
+                paint.setTextAlign(Paint.Align.CENTER);
+                float labelOffset = boundingBox.height() * 0.5f - labelSize * 0.6f;
+                canvas.drawText("R", cx + labelOffset, cy - labelOffset + labelSize * 0.4f, paint);
+                break;
+            }
+
             case TRACKPAD: {
                 float radius = boundingBox.height() * 0.15f;
                 canvas.drawRoundRect(boundingBox.left, boundingBox.top, boundingBox.right, boundingBox.bottom, radius, radius, paint);
@@ -648,14 +704,37 @@ public class ControlElement {
     }
 
     private void drawIcon(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
-        Paint paint = inputControlsView.getPaint();
+        // Pola defensif seperti TouchAreaButton: cek null sebelum akses bitmap
         Bitmap icon = inputControlsView.getIcon((byte) iconId);
-        paint.setColorFilter(inputControlsView.getColorFilter());
-        int margin = (int) (inputControlsView.getSnappingSize() * (shape == Shape.CIRCLE || shape == Shape.SQUARE ? 2.0f : 1.0f) * scale);
-        int halfSize = (int) ((Math.min(width, height) - margin) * 0.5f);
+        if (icon == null || icon.isRecycled()) return;
 
-        Rect srcRect = new Rect(0, 0, icon.getWidth(), icon.getHeight());
-        Rect dstRect = new Rect((int) (cx - halfSize), (int) (cy - halfSize), (int) (cx + halfSize), (int) (cy + halfSize));
+        Paint paint = inputControlsView.getPaint();
+        paint.setColorFilter(inputControlsView.getColorFilter());
+
+        // Hitung ukuran icon dengan margin seperti TouchAreaButton (70% dari area)
+        float iconWidth;
+        float iconHeight;
+        float marginFactor = (shape == Shape.CIRCLE || shape == Shape.SQUARE) ? 0.65f : 0.75f;
+        iconWidth = width * marginFactor;
+        iconHeight = height * marginFactor;
+
+        // Pertahankan aspek rasio bitmap (pola dari TouchAreaButton)
+        float bitmapW = icon.getWidth();
+        float bitmapH = icon.getHeight();
+        if (bitmapW > 0 && bitmapH > 0) {
+            float aspectRatio = bitmapW / bitmapH;
+            if (aspectRatio > 1f) {
+                iconHeight = iconWidth / aspectRatio;
+            } else {
+                iconWidth = iconHeight * aspectRatio;
+            }
+        }
+
+        int halfW = (int) (iconWidth * 0.5f);
+        int halfH = (int) (iconHeight * 0.5f);
+
+        Rect srcRect = new Rect(0, 0, (int) bitmapW, (int) bitmapH);
+        Rect dstRect = new Rect((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
         canvas.drawBitmap(icon, srcRect, dstRect, paint);
         paint.setColorFilter(null);
     }
@@ -726,7 +805,7 @@ public class ControlElement {
                 scroller.handleTouchDown(x, y);
                 return true;
             } else {
-                if (type == Type.TRACKPAD) {
+                if (type == Type.TRACKPAD || type == Type.RIGHT_STICK) {
                     if (currentPosition == null) currentPosition = new PointF();
                     currentPosition.set(x, y);
                 }
@@ -736,7 +815,7 @@ public class ControlElement {
     }
 
     public boolean handleTouchMove(int pointerId, float x, float y) {
-        if (pointerId == currentPointerId && (type == Type.D_PAD || type == Type.STICK || type == Type.TRACKPAD)) {
+        if (pointerId == currentPointerId && (type == Type.D_PAD || type == Type.STICK || type == Type.TRACKPAD || type == Type.RIGHT_STICK)) {
             float deltaX, deltaY;
             Rect boundingBox = getBoundingBox();
             float radius = boundingBox.width() * 0.5f;
@@ -748,6 +827,25 @@ public class ControlElement {
                 deltaX = deltaPoint[0];
                 deltaY = deltaPoint[1];
                 currentPosition.set(x, y);
+            } else if (type == Type.RIGHT_STICK) {
+                // Delta ternormalisasi -1..1 dari posisi jari dalam bounding box (seperti STICK)
+                float localX = x - boundingBox.left;
+                float localY = y - boundingBox.top;
+                float offsetX = localX - radius;
+                float offsetY = localY - radius;
+                float distance = Mathf.lengthSq(offsetX, offsetY);
+                if (distance > radius * radius) {
+                    float angle = (float) Math.atan2(offsetY, offsetX);
+                    offsetX = (float) (Math.cos(angle) * radius);
+                    offsetY = (float) (Math.sin(angle) * radius);
+                }
+                deltaX = Mathf.clamp(offsetX / radius, -1, 1);
+                deltaY = Mathf.clamp(offsetY / radius, -1, 1);
+
+                // Update posisi visual thumbstick (dibatasi dalam outer circle)
+                if (visualThumbPosition == null) visualThumbPosition = new PointF();
+                visualThumbPosition.x = boundingBox.left + offsetX + radius;
+                visualThumbPosition.y = boundingBox.top + offsetY + radius;
             } else {
                 float localX = x - boundingBox.left;
                 float localY = y - boundingBox.top;
@@ -842,6 +940,44 @@ public class ControlElement {
                     else
                         inputControlsView.getXServer().injectPointerMoveDelta(cursorDx, cursorDy);
                 }
+            } else if (type == Type.RIGHT_STICK) {
+                // Logika input seperti STICK biasa: nilai ternormalisasi -1..1 dikirim ke gamepad
+                final boolean[] newStates = {
+                        deltaY <= -STICK_DEAD_ZONE,
+                        deltaX >= STICK_DEAD_ZONE,
+                        deltaY >= STICK_DEAD_ZONE,
+                        deltaX <= -STICK_DEAD_ZONE
+                };
+
+                for (byte i = 0; i < 4; i++) {
+                    float value = (i == 1 || i == 3) ? deltaX : deltaY;
+                    Binding binding = getBindingAt(i);
+
+                    if (binding.isGamepad()) {
+                        float gamepadValue = Mathf.clamp(
+                                Math.max(0, Math.abs(value) - 0.01f) * Mathf.sign(value) * STICK_SENSITIVITY,
+                                -1, 1
+                        );
+                        boolean isActiveNow = Math.abs(gamepadValue) > 0.01f;
+
+                        if (isActiveNow != this.states[i]) {
+                            inputControlsView.handleInputEvent(binding, isActiveNow, isActiveNow ? gamepadValue : 0f);
+                            this.states[i] = isActiveNow;
+                        } else if (isActiveNow) {
+                            inputControlsView.handleInputEvent(binding, true, gamepadValue);
+                        }
+                    } else {
+                        boolean state = binding.isMouseMove()
+                                ? (newStates[i] || newStates[(i + 2) % 4])
+                                : newStates[i];
+                        if (state != this.states[i]) {
+                            inputControlsView.handleInputEvent(binding, state, value);
+                            this.states[i] = state;
+                        }
+                    }
+                }
+
+                inputControlsView.invalidate();
             } else {
                 final boolean[] newStates = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 
@@ -904,7 +1040,7 @@ public class ControlElement {
                     selected = !selected;
                     inputControlsView.invalidate();
                 }
-            } else if (type == Type.RANGE_BUTTON || type == Type.D_PAD || type == Type.STICK || type == Type.TRACKPAD) {
+            } else if (type == Type.RANGE_BUTTON || type == Type.D_PAD || type == Type.STICK || type == Type.TRACKPAD || type == Type.RIGHT_STICK) {
                 for (int i = 0; i < states.length; i++) {
                     if (states[i]) inputControlsView.handleInputEvent(getBindingAt(i), false);
                     states[i] = false;
@@ -912,7 +1048,10 @@ public class ControlElement {
 
                 if (type == Type.RANGE_BUTTON) {
                     scroller.handleTouchUp();
-                } else if (type == Type.STICK) {
+                } else if (type == Type.STICK || type == Type.RIGHT_STICK) {
+                    // Reset posisi visual thumbstick ke center
+                    currentPosition = null;
+                    visualThumbPosition = null;
                     inputControlsView.invalidate();
                 }
 
@@ -925,8 +1064,15 @@ public class ControlElement {
     }
 
     public PointF getCurrentPosition() {
-        if (currentPosition == null) {
-            currentPosition = new PointF(x, y);
+        // Jika stick tidak sedang digunakan (tidak ada sentuhan aktif),
+        // kembalikan center boundingBox yang selalu up-to-date.
+        // Berlaku untuk STICK dan RIGHT_STICK.
+        if (currentPosition == null || currentPointerId == -1) {
+            Rect bb = getBoundingBox();
+            if (currentPosition == null) {
+                currentPosition = new PointF();
+            }
+            currentPosition.set(bb.centerX(), bb.centerY());
         }
         return currentPosition;
     }

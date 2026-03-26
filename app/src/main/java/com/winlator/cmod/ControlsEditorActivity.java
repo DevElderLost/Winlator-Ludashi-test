@@ -206,28 +206,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
             element.setText(text);
             element.setIconId(iconId);
-
-            // Simpan slot icons jika panel slot icons ada dan visible
-            LinearLayout llSlotIcons = view.findViewById(R.id.LLSlotIcons);
-            if (llSlotIcons != null && llSlotIcons.getVisibility() == View.VISIBLE) {
-                // Setiap slot direpresentasikan sebagai LinearLayout child di LLSlotIcons
-                for (int slot = 0; slot < llSlotIcons.getChildCount(); slot++) {
-                    View slotRow = llSlotIcons.getChildAt(slot);
-                    if (!(slotRow instanceof LinearLayout)) continue;
-                    LinearLayout iconRow = (LinearLayout) slotRow;
-                    // Child pertama adalah TextView label, sisanya adalah ImageView icon
-                    byte selectedSlotIcon = 0;
-                    for (int c = 1; c < iconRow.getChildCount(); c++) {
-                        View child = iconRow.getChildAt(c);
-                        if (child.isSelected() && child.getTag() instanceof Byte) {
-                            selectedSlotIcon = (byte) child.getTag();
-                            break;
-                        }
-                    }
-                    element.setSlotIconId(slot, selectedSlotIcon);
-                }
-            }
-
+            // slotIconIds sudah di-set realtime di onClick setiap icon,
+            // tidak perlu dibaca ulang dari view di sini.
             profile.save();
             inputControlsView.invalidate();
         });

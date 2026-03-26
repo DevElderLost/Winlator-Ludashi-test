@@ -328,6 +328,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             slotRow.addView(hsv);
             llSlotIcons.addView(slotRow);
         }
+    }
 
     private void loadTypeSpinner(final ControlElement element, Spinner spinner, Runnable callback) {
         spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Type.names()));

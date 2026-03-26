@@ -512,13 +512,15 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, boundingBox.top);
                 path.lineTo(cx + offsetX, cy - offsetY);
                 path.close();
-                paint.setStyle(upPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-                canvas.drawPath(path, paint);
                 if (slotIconIds[0] > 0) {
+                    if (upPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(upPressed ? baseColor : primaryColor);
+                    paint.setColor(upPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
                     float iconCy = (boundingBox.top + (cy - offsetY)) * 0.5f;
                     drawIcon(canvas, cx, iconCy, offsetX * 2, offsetY - start, slotIconIds[0]);
+                } else {
+                    paint.setStyle(upPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                    canvas.drawPath(path, paint);
                 }
 
                 // RIGHT
@@ -531,13 +533,15 @@ public class ControlElement {
                 path.lineTo(boundingBox.right, cy + offsetX);
                 path.lineTo(cx + offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle(rightPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-                canvas.drawPath(path, paint);
                 if (slotIconIds[1] > 0) {
+                    if (rightPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(rightPressed ? baseColor : primaryColor);
+                    paint.setColor(rightPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
                     float iconCx = (boundingBox.right + (cx + offsetY)) * 0.5f;
                     drawIcon(canvas, iconCx, cy, offsetY - start, offsetX * 2, slotIconIds[1]);
+                } else {
+                    paint.setStyle(rightPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                    canvas.drawPath(path, paint);
                 }
 
                 // DOWN
@@ -550,13 +554,15 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, boundingBox.bottom);
                 path.lineTo(cx + offsetX, cy + offsetY);
                 path.close();
-                paint.setStyle(downPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-                canvas.drawPath(path, paint);
                 if (slotIconIds[2] > 0) {
+                    if (downPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(downPressed ? baseColor : primaryColor);
+                    paint.setColor(downPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
                     float iconCy2 = (boundingBox.bottom + (cy + offsetY)) * 0.5f;
                     drawIcon(canvas, cx, iconCy2, offsetX * 2, offsetY - start, slotIconIds[2]);
+                } else {
+                    paint.setStyle(downPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                    canvas.drawPath(path, paint);
                 }
 
                 // LEFT
@@ -569,13 +575,15 @@ public class ControlElement {
                 path.lineTo(boundingBox.left, cy + offsetX);
                 path.lineTo(cx - offsetY, cy + offsetX);
                 path.close();
-                paint.setStyle(leftPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-                canvas.drawPath(path, paint);
                 if (slotIconIds[3] > 0) {
+                    if (leftPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(leftPressed ? baseColor : primaryColor);
+                    paint.setColor(leftPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
                     float iconCx2 = (boundingBox.left + (cx - offsetY)) * 0.5f;
                     drawIcon(canvas, iconCx2, cy, offsetY - start, offsetX * 2, slotIconIds[3]);
+                } else {
+                    paint.setStyle(leftPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+                    canvas.drawPath(path, paint);
                 }
 
                 // Icon global di tengah D_PAD (di atas semua arm)
@@ -683,11 +691,12 @@ public class ControlElement {
                 paint.setStrokeWidth(strokeWidth);
                 canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
 
-                // Slot 0: icon outer circle (di tepi, tidak bergerak)
+                // Slot 0: icon outer circle — ukuran mengikuti diameter outer circle (dikurangi strokeWidth agar pas di dalam garis)
                 if (slotIconIds[0] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
-                    drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), slotIconIds[0]);
+                    float outerDiameter = boundingBox.height() - strokeWidth;
+                    drawIconExact(canvas, cx, cy, outerDiameter, outerDiameter, slotIconIds[0]);
                 }
 
                 float thumbstickX = getCurrentPosition().x;
@@ -732,11 +741,12 @@ public class ControlElement {
                 paint.setStrokeWidth(strokeWidth);
                 canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
 
-                // Slot 0: icon outer circle (tidak bergerak)
+                // Slot 0: icon outer circle — ukuran mengikuti diameter outer circle
                 if (slotIconIds[0] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
-                    drawIcon(canvas, cx, cy, boundingBox.width(), boundingBox.height(), slotIconIds[0]);
+                    float outerDiameter = boundingBox.height() - strokeWidth;
+                    drawIconExact(canvas, cx, cy, outerDiameter, outerDiameter, slotIconIds[0]);
                 }
 
                 float thumbstickX, thumbstickY;
@@ -826,6 +836,38 @@ public class ControlElement {
         iconHeight = height * marginFactor;
 
         // Pertahankan aspek rasio bitmap (pola dari TouchAreaButton)
+        float bitmapW = icon.getWidth();
+        float bitmapH = icon.getHeight();
+        if (bitmapW > 0 && bitmapH > 0) {
+            float aspectRatio = bitmapW / bitmapH;
+            if (aspectRatio > 1f) {
+                iconHeight = iconWidth / aspectRatio;
+            } else {
+                iconWidth = iconHeight * aspectRatio;
+            }
+        }
+
+        int halfW = (int) (iconWidth * 0.5f);
+        int halfH = (int) (iconHeight * 0.5f);
+
+        Rect srcRect = new Rect(0, 0, (int) bitmapW, (int) bitmapH);
+        Rect dstRect = new Rect((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
+        canvas.drawBitmap(icon, srcRect, dstRect, paint);
+        paint.setColorFilter(null);
+    }
+
+    // Seperti drawIcon tapi ukuran width/height adalah ukuran FINAL (tidak dikalikan marginFactor)
+    // Dipakai untuk outer icon STICK/RIGHT_STICK agar pas dengan diameter stroke lingkaran
+    private void drawIconExact(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
+        Bitmap icon = inputControlsView.getIcon((byte) iconId);
+        if (icon == null || icon.isRecycled()) return;
+
+        Paint paint = inputControlsView.getPaint();
+        paint.setColorFilter(inputControlsView.getColorFilter());
+
+        float iconWidth = width;
+        float iconHeight = height;
+
         float bitmapW = icon.getWidth();
         float bitmapH = icon.getHeight();
         if (bitmapW > 0 && bitmapH > 0) {

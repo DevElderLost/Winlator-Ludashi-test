@@ -214,6 +214,16 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 element.setScale((float)elementJSONObject.getDouble("scale"));
                 element.setText(elementJSONObject.getString("text"));
                 element.setIconId(elementJSONObject.getInt("iconId"));
+
+                // Load slot icons (D_PAD per-arah, STICK/RIGHT_STICK outer+inner)
+                if (elementJSONObject.has("slotIconIds")) {
+                    JSONArray slotIconsArray = elementJSONObject.getJSONArray("slotIconIds");
+                    byte[] slotIds = new byte[slotIconsArray.length()];
+                    for (int j = 0; j < slotIconsArray.length(); j++) {
+                        slotIds[j] = (byte) slotIconsArray.getInt(j);
+                    }
+                    element.setSlotIconIds(slotIds);
+                }
                 if (elementJSONObject.has("range")) element.setRange(ControlElement.Range.valueOf(elementJSONObject.getString("range")));
                 if (elementJSONObject.has("orientation")) element.setOrientation((byte)elementJSONObject.getInt("orientation"));
 

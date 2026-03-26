@@ -480,8 +480,9 @@ public class ControlElement {
                 paint.setColor(primaryColor);
 
                 if (iconId > 0) {
-                    // Icon membesar saat isPressed — scale 1.0 normal, 1.2 saat pressed
-                    float pressScale = isPressed ? 1.2f : 1.0f;
+                    // Saat normal: icon 80% dari bounding box
+                    // Saat pressed: icon membesar ke 100% (tetap dalam batas, tidak keluar)
+                    float pressScale = isPressed ? 1.0f : 0.8f;
                     float iconW = boundingBox.width() * pressScale;
                     float iconH = boundingBox.height() * pressScale;
                     drawIconExact(canvas, cx, cy, iconW, iconH, iconId);
@@ -515,37 +516,37 @@ public class ControlElement {
                 boolean downPressed  = states.length > 2 && states[2] && isPressed;
                 boolean leftPressed  = states.length > 3 && states[3] && isPressed;
 
+                // Ukuran icon global — dipakai oleh global icon dan arm icon (konsisten)
+                float globalIconW = boundingBox.width() * 0.8f;
+                float globalIconH = boundingBox.height() * 0.8f;
+
                 // Jika ada iconId global: sembunyikan semua arm stroke,
-                // gambar iconId sebagai tampilan utama D_PAD
+                // gambar iconId sebagai tampilan utama D_PAD — ukuran TETAP tidak membesar saat pressed
                 if (iconId > 0) {
-                    float pressScale = (upPressed || rightPressed || downPressed || leftPressed) ? 1.15f : 1.0f;
-                    float iconW = boundingBox.width() * pressScale;
-                    float iconH = boundingBox.height() * pressScale;
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
-                    drawIconExact(canvas, cx, cy, iconW, iconH, iconId);
+                    drawIconExact(canvas, cx, cy, globalIconW, globalIconH, iconId);
 
-                    // Slot icon arah hanya muncul saat arah tersebut ditekan
+                    // Slot icon arah digambar di CENTER boundingBox dengan ukuran SAMA seperti global icon
+                    // sehingga menimpa global icon saat ditekan
                     if (upPressed && slotIconIds[0] > 0) {
-                        float iconCy = (boundingBox.top + (cy - offsetY)) * 0.5f;
-                        drawIconExact(canvas, cx, iconCy, offsetX * 2, offsetY - start, slotIconIds[0]);
-                    }
-                    if (rightPressed && slotIconIds[1] > 0) {
-                        float iconCx = (boundingBox.right + (cx + offsetY)) * 0.5f;
-                        drawIconExact(canvas, iconCx, cy, offsetY - start, offsetX * 2, slotIconIds[1]);
-                    }
-                    if (downPressed && slotIconIds[2] > 0) {
-                        float iconCy2 = (boundingBox.bottom + (cy + offsetY)) * 0.5f;
-                        drawIconExact(canvas, cx, iconCy2, offsetX * 2, offsetY - start, slotIconIds[2]);
-                    }
-                    if (leftPressed && slotIconIds[3] > 0) {
-                        float iconCx2 = (boundingBox.left + (cx - offsetY)) * 0.5f;
-                        drawIconExact(canvas, iconCx2, cy, offsetY - start, offsetX * 2, slotIconIds[3]);
+                        drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[0]);
+                    } else if (rightPressed && slotIconIds[1] > 0) {
+                        drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[1]);
+                    } else if (downPressed && slotIconIds[2] > 0) {
+                        drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[2]);
+                    } else if (leftPressed && slotIconIds[3] > 0) {
+                        drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[3]);
                     }
                     break;
                 }
 
                 // Tidak ada iconId global: gambar arm stroke biasa
+                float armUpDownW   = offsetX * 2 * 0.8f;
+                float armUpDownH   = offsetY * 0.8f;
+                float armLRW       = offsetY * 0.8f;
+                float armLRH       = offsetX * 2 * 0.8f;
+
                 // UP
                 path.reset();
                 path.moveTo(cx, cy - start);
@@ -555,13 +556,11 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, cy - offsetY);
                 path.close();
                 if (slotIconIds[0] > 0) {
-                    float iconCy = (boundingBox.top + (cy - offsetY)) * 0.5f;
-                    float armW = offsetX * 2;
-                    float armH = offsetY - start;
-                    float pressScale = upPressed ? 1.2f : 1.0f;
+                    if (upPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(upPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
-                    drawIconExact(canvas, cx, iconCy, armW * pressScale, armH * pressScale, slotIconIds[0]);
+                    // Icon arm digambar di center boundingBox, ukuran = globalIconW/H
+                    drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[0]);
                 } else {
                     paint.setStyle(upPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                     canvas.drawPath(path, paint);
@@ -577,13 +576,10 @@ public class ControlElement {
                 path.lineTo(cx + offsetY, cy + offsetX);
                 path.close();
                 if (slotIconIds[1] > 0) {
-                    float iconCx = (boundingBox.right + (cx + offsetY)) * 0.5f;
-                    float armW = offsetY - start;
-                    float armH = offsetX * 2;
-                    float pressScale = rightPressed ? 1.2f : 1.0f;
+                    if (rightPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(rightPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
-                    drawIconExact(canvas, iconCx, cy, armW * pressScale, armH * pressScale, slotIconIds[1]);
+                    drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[1]);
                 } else {
                     paint.setStyle(rightPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                     canvas.drawPath(path, paint);
@@ -599,13 +595,10 @@ public class ControlElement {
                 path.lineTo(cx + offsetX, cy + offsetY);
                 path.close();
                 if (slotIconIds[2] > 0) {
-                    float iconCy2 = (boundingBox.bottom + (cy + offsetY)) * 0.5f;
-                    float armW = offsetX * 2;
-                    float armH = offsetY - start;
-                    float pressScale = downPressed ? 1.2f : 1.0f;
+                    if (downPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(downPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
-                    drawIconExact(canvas, cx, iconCy2, armW * pressScale, armH * pressScale, slotIconIds[2]);
+                    drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[2]);
                 } else {
                     paint.setStyle(downPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                     canvas.drawPath(path, paint);
@@ -621,13 +614,10 @@ public class ControlElement {
                 path.lineTo(cx - offsetY, cy + offsetX);
                 path.close();
                 if (slotIconIds[3] > 0) {
-                    float iconCx2 = (boundingBox.left + (cx - offsetY)) * 0.5f;
-                    float armW = offsetY - start;
-                    float armH = offsetX * 2;
-                    float pressScale = leftPressed ? 1.2f : 1.0f;
+                    if (leftPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(leftPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
-                    drawIconExact(canvas, iconCx2, cy, armW * pressScale, armH * pressScale, slotIconIds[3]);
+                    drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[3]);
                 } else {
                     paint.setStyle(leftPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
                     canvas.drawPath(path, paint);

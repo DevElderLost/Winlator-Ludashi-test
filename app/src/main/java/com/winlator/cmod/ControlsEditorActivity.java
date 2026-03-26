@@ -1,6 +1,8 @@
 package com.winlator.cmod;
 
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -118,10 +120,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLRangeOptions).setVisibility(View.VISIBLE);
             }
             else if (type == ControlElement.Type.D_PAD) {
-                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"Up", "Right", "Down", "Left"}, 4);
+                loadSlotIconsUI(view, element, new String[]{"↑ Up", "→ Right", "↓ Down", "← Left"}, 4);
             }
             else if (type == ControlElement.Type.STICK || type == ControlElement.Type.RIGHT_STICK) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
@@ -300,8 +301,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     inputControlsView.invalidate();
                 });
                 try (java.io.InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
-                    imageView.setImageBitmap(android.graphics.BitmapFactory.decodeStream(is));
-                } catch (IOException e) {}
+                    Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is);
+                    imageView.setImageBitmap(bmp);
+                    applyIconBackground(imageView, bmp);
+                } catch (IOException e) {
+                    imageView.setBackgroundResource(R.drawable.icon_background);
+                }
                 iconRow.addView(imageView);
             }
 
@@ -481,6 +486,54 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         });
     }
 
+    /**
+     * Menganalisis dominasi warna pada bitmap icon.
+     * Jika icon didominasi warna putih/putih-transparan → background diganti hitam.
+     * Jika icon didominasi warna hitam/hitam-transparan atau lainnya → background default.
+     */
+    private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
+        if (bitmap == null) {
+            imageView.setBackgroundResource(R.drawable.icon_background);
+            return;
+        }
+
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        long totalVisible = 0;
+        long whitishPixels = 0;
+
+        // Sampling setiap 2 pixel agar lebih efisien
+        for (int y = 0; y < height; y += 2) {
+            for (int x = 0; x < width; x += 2) {
+                int pixel = bitmap.getPixel(x, y);
+                int alpha = Color.alpha(pixel);
+
+                // Abaikan pixel yang hampir transparan penuh (alpha < 30)
+                if (alpha < 30) continue;
+
+                totalVisible++;
+
+                int r = Color.red(pixel);
+                int g = Color.green(pixel);
+                int b = Color.blue(pixel);
+
+                // Anggap "putih/putih-transparan": semua channel tinggi (>= 200)
+                // dan tidak terlalu gelap
+                if (r >= 200 && g >= 200 && b >= 200) {
+                    whitishPixels++;
+                }
+            }
+        }
+
+        if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
+            // Mayoritas pixel putih → pakai background hitam
+            imageView.setBackgroundColor(Color.BLACK);
+        } else {
+            // Hitam, gelap, atau warna lain → pakai background default
+            imageView.setBackgroundResource(R.drawable.icon_background);
+        }
+    }
+
     private void loadIcons(final LinearLayout parent, byte selectedId) {
         byte[] iconIds = new byte[0];
         try {
@@ -503,7 +556,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             ImageView imageView = new ImageView(this);
             imageView.setLayoutParams(params);
             imageView.setPadding(padding, padding, padding, padding);
-            imageView.setBackgroundResource(R.drawable.icon_background);
             imageView.setTag(id);
             imageView.setSelected(id == selectedId);
             imageView.setOnClickListener(v -> {
@@ -514,8 +566,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             });
 
             try (InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
-                imageView.setImageBitmap(BitmapFactory.decodeStream(is));
-            } catch (IOException e) {}
+                Bitmap bmp = BitmapFactory.decodeStream(is);
+                imageView.setImageBitmap(bmp);
+                applyIconBackground(imageView, bmp);
+            } catch (IOException e) {
+                imageView.setBackgroundResource(R.drawable.icon_background);
+            }
 
             parent.addView(imageView);
         }

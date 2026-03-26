@@ -573,6 +573,15 @@ public class InputControlsView extends View {
                     if (selectedElement != null) {
                         selectedElement.setX((int)Mathf.roundTo(event.getX() - offsetX, snappingSize));
                         selectedElement.setY((int)Mathf.roundTo(event.getY() - offsetY, snappingSize));
+
+                        // Sync inner thumbstick ke center boundingBox yang baru
+                        // agar inner circle ikut bergerak saat element di-drag di edit mode
+                        if (selectedElement.getType() == ControlElement.Type.STICK ||
+                            selectedElement.getType() == ControlElement.Type.RIGHT_STICK) {
+                            Rect bb = selectedElement.getBoundingBox();
+                            selectedElement.setCurrentPosition(bb.centerX(), bb.centerY());
+                        }
+
                         invalidate();
                     }
                     break;
@@ -761,12 +770,13 @@ public class InputControlsView extends View {
     }
 
     public Bitmap getIcon(byte id) {
+        if (id <= 0 || id >= icons.length) return null;
         if (icons[id] == null) {
             Context context = getContext();
             try (InputStream is = context.getAssets().open("inputcontrols/icons/"+id+".png")) {
                 icons[id] = BitmapFactory.decodeStream(is);
             }
-            catch (IOException e) {}
+            catch (Exception e) {}
         }
         return icons[id];
     }

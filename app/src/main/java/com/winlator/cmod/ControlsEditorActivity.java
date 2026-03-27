@@ -123,12 +123,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"Icon Up", "Icon Right", "Icon Down", "icon Left"}, 4);
+                loadSlotIconsUI(view, element, new String[]{"↑ Up", "→ Right", "↓ Down", "← Left"}, 4);
             }
             else if (type == ControlElement.Type.STICK || type == ControlElement.Type.RIGHT_STICK) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"Outer Thumb", "Inner Thumb"}, 2);
+                loadSlotIconsUI(view, element, new String[]{"Outer Circle", "Inner Thumb"}, 2);
             }
             else if (type == ControlElement.Type.TRACKPAD) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
@@ -217,103 +217,243 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     /**
-     * Membangun UI pemilih icon per-slot di dalam LLSlotIcons.
-     * slotLabels: nama tiap slot (misal "↑ Up", "→ Right", dll)
-     * slotCount: jumlah slot yang ditampilkan
+     * Satu baris icon tunggal dengan multi-select berurutan (tidak ada lag).
+     *
+     * Urutan slot sesuai ControlElement:
+     *   D_PAD             → slot 0=Up, 1=Right, 2=Down, 3=Left  (slotCount=4)
+     *   STICK/RIGHT_STICK → slot 0=Outer, 1=Inner               (slotCount=2)
+     *
+     * Tap icon yang belum dipilih → masuk ke slot kosong berikutnya.
+     * Tap icon yang sudah dipilih → hapus dari slot itu, slot sesudahnya maju.
+     * Tap "×"                     → reset semua slot ke 0 (tidak ada icon).
+     *
+     * Badge angka biru di pojok kanan atas menunjukkan urutan slot.
      */
-    private void loadSlotIconsUI(View settingsView, ControlElement element, String[] slotLabels, int slotCount) {
+    private void loadSlotIconsUI(View settingsView, ControlElement element,
+                                 String[] slotLabels, int slotCount) {
         LinearLayout llSlotIcons = settingsView.findViewById(R.id.LLSlotIcons);
         llSlotIcons.removeAllViews();
 
+        // Muat daftar icon dari assets sekali saja
         byte[] availableIconIds = new byte[0];
         try {
             String[] filenames = getAssets().list("inputcontrols/icons/");
             availableIconIds = new byte[filenames.length];
             for (int i = 0; i < filenames.length; i++) {
-                availableIconIds[i] = Byte.parseByte(com.winlator.cmod.core.FileUtils.getBasename(filenames[i]));
+                availableIconIds[i] = Byte.parseByte(
+                        com.winlator.cmod.core.FileUtils.getBasename(filenames[i]));
             }
         } catch (IOException e) {}
         java.util.Arrays.sort(availableIconIds);
 
-        int iconSize = (int) com.winlator.cmod.core.UnitUtils.dpToPx(36);
-        int iconMargin = (int) com.winlator.cmod.core.UnitUtils.dpToPx(2);
-        int iconPadding = (int) com.winlator.cmod.core.UnitUtils.dpToPx(3);
+        // State slot lokal — diperbarui setiap tap dan disinkronkan ke element
+        final byte[] selectedSlots = new byte[slotCount];
+        for (int s = 0; s < slotCount; s++) {
+            selectedSlots[s] = element.getSlotIconId(s);
+        }
 
-        for (int slot = 0; slot < slotCount; slot++) {
-            // Row container per slot
-            LinearLayout slotRow = new LinearLayout(this);
-            slotRow.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            rowParams.setMargins(0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(4), 0, 0);
-            slotRow.setLayoutParams(rowParams);
+        int iconSize    = (int) com.winlator.cmod.core.UnitUtils.dpToPx(40);
+        int iconMargin  = (int) com.winlator.cmod.core.UnitUtils.dpToPx(2);
+        int iconPadding = (int) com.winlator.cmod.core.UnitUtils.dpToPx(4);
+        int badgeSize   = (int) com.winlator.cmod.core.UnitUtils.dpToPx(14);
 
-            // Label nama slot
-            TextView tvLabel = new TextView(this);
-            tvLabel.setText(slotLabels[slot]);
-            tvLabel.setTextSize(12);
-            tvLabel.setPadding(0, 0, 0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(2));
-            slotRow.addView(tvLabel);
+        // Baris keterangan urutan slot (mis. "1=Up  2=Right  3=Down  4=Left")
+        TextView tvHint = new TextView(this);
+        StringBuilder hint = new StringBuilder("Slot: ");
+        for (int s = 0; s < slotCount; s++) {
+            if (s > 0) hint.append("  ");
+            hint.append(s + 1).append("=").append(slotLabels[s]);
+        }
+        tvHint.setText(hint.toString());
+        tvHint.setTextSize(11);
+        tvHint.setPadding(0, 0, 0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(4));
+        llSlotIcons.addView(tvHint);
 
-            // Horizontal scroll untuk daftar icon
-            android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
-            hsv.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        // HorizontalScrollView — hanya SATU baris icon
+        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        hsv.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
-            LinearLayout iconRow = new LinearLayout(this);
-            iconRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout iconRow = new LinearLayout(this);
+        iconRow.setOrientation(LinearLayout.HORIZONTAL);
 
-            final byte currentSlotIcon = element.getSlotIconId(slot);
-            final int finalSlot = slot;
+        // Referensi semua FrameLayout untuk refresh badge tanpa rebuild view
+        final java.util.List<android.widget.FrameLayout> iconFrames = new java.util.ArrayList<>();
 
-            // Opsi "None" (tidak ada icon)
-            ImageView noneView = new ImageView(this);
-            LinearLayout.LayoutParams noneParams = new LinearLayout.LayoutParams(iconSize, iconSize);
-            noneParams.setMargins(iconMargin, 0, iconMargin, 0);
-            noneView.setLayoutParams(noneParams);
-            noneView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
-            noneView.setBackgroundResource(R.drawable.icon_background);
-            noneView.setTag((byte) 0);
-            noneView.setSelected(currentSlotIcon == 0);
-            noneView.setOnClickListener(v -> {
-                for (int c = 0; c < iconRow.getChildCount(); c++) iconRow.getChildAt(c).setSelected(false);
-                noneView.setSelected(true);
-                element.setSlotIconId(finalSlot, (byte) 0);
+        // Runnable: perbarui badge angka semua icon sesuai selectedSlots
+        final Runnable refreshBadges = () -> {
+            for (android.widget.FrameLayout frame : iconFrames) {
+                Object tagObj = frame.getTag();
+                if (tagObj == null) continue;
+                byte fId = (byte) tagObj;
+
+                int slotIndex = -1;
+                for (int s = 0; s < slotCount; s++) {
+                    if (selectedSlots[s] == fId) { slotIndex = s; break; }
+                }
+
+                ImageView fIv    = (ImageView) frame.getChildAt(0);
+                TextView  fBadge = (TextView)  frame.getChildAt(1);
+
+                if (slotIndex >= 0) {
+                    fIv.setSelected(true);
+                    fBadge.setVisibility(View.VISIBLE);
+                    fBadge.setText(String.valueOf(slotIndex + 1));
+                } else {
+                    fIv.setSelected(false);
+                    fBadge.setVisibility(View.GONE);
+                }
+            }
+        };
+
+        // Tombol "×" — reset semua slot
+        android.widget.FrameLayout noneFrame = new android.widget.FrameLayout(this);
+        LinearLayout.LayoutParams nfp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        nfp.setMargins(iconMargin, 0, iconMargin, 0);
+        noneFrame.setLayoutParams(nfp);
+
+        ImageView noneIv = new ImageView(this);
+        noneIv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        noneIv.setBackgroundResource(R.drawable.icon_background);
+        noneFrame.addView(noneIv);
+
+        TextView noneLabel = new TextView(this);
+        noneLabel.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        noneLabel.setText("×");
+        noneLabel.setTextSize(20);
+        noneLabel.setGravity(android.view.Gravity.CENTER);
+        noneFrame.addView(noneLabel);
+
+        noneFrame.setOnClickListener(v -> {
+            java.util.Arrays.fill(selectedSlots, (byte) 0);
+            for (int s = 0; s < slotCount; s++) element.setSlotIconId(s, (byte) 0);
+            profile.save();
+            inputControlsView.invalidate();
+            refreshBadges.run();
+        });
+        iconRow.addView(noneFrame);
+
+        // Satu daftar icon (tidak berulang per slot)
+        for (final byte id : availableIconIds) {
+            android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+            frame.setTag(id);
+            LinearLayout.LayoutParams frameParams = new LinearLayout.LayoutParams(iconSize, iconSize);
+            frameParams.setMargins(iconMargin, 0, iconMargin, 0);
+            frame.setLayoutParams(frameParams);
+
+            // ImageView icon dengan applyIconBackground
+            ImageView iv = new ImageView(this);
+            iv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+            iv.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+            try (java.io.InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
+                Bitmap bmp = BitmapFactory.decodeStream(is);
+                iv.setImageBitmap(bmp);
+                applyIconBackground(iv, bmp);
+            } catch (IOException e) {
+                iv.setBackgroundResource(R.drawable.icon_background);
+            }
+            frame.addView(iv);
+
+            // Badge angka urutan slot (pojok kanan atas)
+            TextView badge = new TextView(this);
+            android.widget.FrameLayout.LayoutParams badgeParams =
+                    new android.widget.FrameLayout.LayoutParams(badgeSize, badgeSize);
+            badgeParams.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+            badge.setLayoutParams(badgeParams);
+            badge.setTextSize(8);
+            badge.setGravity(android.view.Gravity.CENTER);
+            badge.setTextColor(Color.WHITE);
+            badge.setBackgroundColor(Color.argb(200, 0, 100, 220));
+            badge.setVisibility(View.GONE);
+            frame.addView(badge);
+
+            iconFrames.add(frame);
+
+            frame.setOnClickListener(v -> {
+                // Cari apakah icon ini sudah ada di slot manapun
+                int existingSlot = -1;
+                for (int s = 0; s < slotCount; s++) {
+                    if (selectedSlots[s] == id) { existingSlot = s; break; }
+                }
+
+                if (existingSlot >= 0) {
+                    // Sudah dipilih → hapus, geser slot sesudahnya maju
+                    for (int s = existingSlot; s < slotCount - 1; s++) {
+                        selectedSlots[s] = selectedSlots[s + 1];
+                    }
+                    selectedSlots[slotCount - 1] = 0;
+                } else {
+                    // Belum dipilih → masuk ke slot kosong pertama
+                    boolean placed = false;
+                    for (int s = 0; s < slotCount; s++) {
+                        if (selectedSlots[s] == 0) {
+                            selectedSlots[s] = id;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) {
+                        // Semua slot penuh → geser kiri, tempatkan di slot terakhir
+                        System.arraycopy(selectedSlots, 1, selectedSlots, 0, slotCount - 1);
+                        selectedSlots[slotCount - 1] = id;
+                    }
+                }
+
+                // Sinkronisasi ke ControlElement
+                for (int s = 0; s < slotCount; s++) element.setSlotIconId(s, selectedSlots[s]);
                 profile.save();
                 inputControlsView.invalidate();
+                refreshBadges.run();
             });
-            iconRow.addView(noneView);
 
-            // Daftar icon dari assets
-            for (final byte id : availableIconIds) {
-                ImageView imageView = new ImageView(this);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(iconSize, iconSize);
-                params.setMargins(iconMargin, 0, iconMargin, 0);
-                imageView.setLayoutParams(params);
-                imageView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
-                imageView.setBackgroundResource(R.drawable.icon_background);
-                imageView.setTag(id);
-                imageView.setSelected(id == currentSlotIcon);
-                imageView.setOnClickListener(v -> {
-                    for (int c = 0; c < iconRow.getChildCount(); c++) iconRow.getChildAt(c).setSelected(false);
-                    imageView.setSelected(true);
-                    element.setSlotIconId(finalSlot, id);
-                    profile.save();
-                    inputControlsView.invalidate();
-                });
-                try (java.io.InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
-                    Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is);
-                    imageView.setImageBitmap(bmp);
-                    applyIconBackground(imageView, bmp);
-                } catch (IOException e) {
-                    imageView.setBackgroundResource(R.drawable.icon_background);
+            iconRow.addView(frame);
+        }
+
+        // Inisialisasi badge sesuai state awal
+        refreshBadges.run();
+
+        hsv.addView(iconRow);
+        llSlotIcons.addView(hsv);
+    }
+
+    /**
+     * Analisis dominasi warna bitmap icon.
+     * Icon dominan putih → background hitam (agar terlihat).
+     * Lainnya → background default drawable (stroke biru selected tetap aktif).
+     */
+    private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
+        imageView.setBackgroundResource(R.drawable.icon_background);
+        if (bitmap == null) return;
+
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        long totalVisible = 0;
+        long whitishPixels = 0;
+
+        for (int y = 0; y < height; y += 2) {
+            for (int x = 0; x < width; x += 2) {
+                int pixel = bitmap.getPixel(x, y);
+                if (Color.alpha(pixel) < 30) continue;
+                totalVisible++;
+                if (Color.red(pixel) >= 200 && Color.green(pixel) >= 200 && Color.blue(pixel) >= 200) {
+                    whitishPixels++;
                 }
-                iconRow.addView(imageView);
             }
+        }
 
-            hsv.addView(iconRow);
-            slotRow.addView(hsv);
-            llSlotIcons.addView(slotRow);
+        if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
+            // Dominan putih → tint hitam, drawable selector tetap aktif (stroke biru tidak hilang)
+            imageView.setBackgroundTintList(
+                    android.content.res.ColorStateList.valueOf(Color.BLACK));
+        } else {
+            imageView.setBackgroundTintList(null);
         }
     }
 
@@ -485,54 +625,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
-    }
-
-    /**
-     * Menganalisis dominasi warna pada bitmap icon.
-     * Jika icon didominasi warna putih/putih-transparan → background diganti hitam.
-     * Jika icon didominasi warna hitam/hitam-transparan atau lainnya → background default.
-     */
-    private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
-        if (bitmap == null) {
-            imageView.setBackgroundResource(R.drawable.icon_background);
-            return;
-        }
-
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        long totalVisible = 0;
-        long whitishPixels = 0;
-
-        // Sampling setiap 2 pixel agar lebih efisien
-        for (int y = 0; y < height; y += 2) {
-            for (int x = 0; x < width; x += 2) {
-                int pixel = bitmap.getPixel(x, y);
-                int alpha = Color.alpha(pixel);
-
-                // Abaikan pixel yang hampir transparan penuh (alpha < 30)
-                if (alpha < 30) continue;
-
-                totalVisible++;
-
-                int r = Color.red(pixel);
-                int g = Color.green(pixel);
-                int b = Color.blue(pixel);
-
-                // Anggap "putih/putih-transparan": semua channel tinggi (>= 200)
-                // dan tidak terlalu gelap
-                if (r >= 200 && g >= 200 && b >= 200) {
-                    whitishPixels++;
-                }
-            }
-        }
-
-        if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
-            // Mayoritas pixel putih → pakai background hitam
-            imageView.setBackgroundColor(Color.BLACK);
-        } else {
-            // Hitam, gelap, atau warna lain → pakai background default
-            imageView.setBackgroundResource(R.drawable.icon_background);
-        }
     }
 
     private void loadIcons(final LinearLayout parent, byte selectedId) {

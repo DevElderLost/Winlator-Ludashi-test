@@ -425,8 +425,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     /**
      * Analisis dominasi warna bitmap icon.
-     * Icon dominan putih → background hitam (agar terlihat).
-     * Lainnya → background default drawable (stroke biru selected tetap aktif).
+     * Icon dominan putih → background hitam (agar terlihat), dengan LayerDrawable
+     * agar stroke indikator selected dari icon_background selector tetap tampil di atas.
+     * Lainnya → background default drawable saja.
      */
     private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
         imageView.setBackgroundResource(R.drawable.icon_background);
@@ -449,12 +450,18 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
 
         if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
-            // Dominan putih → tint hitam, drawable selector tetap aktif (stroke biru tidak hilang)
-            imageView.setBackgroundTintList(
-                    android.content.res.ColorStateList.valueOf(Color.BLACK));
-        } else {
-            imageView.setBackgroundTintList(null);
+            // Dominan putih → susun LayerDrawable: lapisan bawah hitam solid,
+            // lapisan atas icon_background selector (membawa stroke biru saat selected).
+            android.graphics.drawable.ColorDrawable blackLayer =
+                    new android.graphics.drawable.ColorDrawable(Color.BLACK);
+            android.graphics.drawable.Drawable selectorLayer =
+                    androidx.core.content.ContextCompat.getDrawable(this, R.drawable.icon_background);
+            android.graphics.drawable.LayerDrawable layered =
+                    new android.graphics.drawable.LayerDrawable(
+                            new android.graphics.drawable.Drawable[]{blackLayer, selectorLayer});
+            imageView.setBackground(layered);
         }
+        // else: icon_background sudah di-set di awal, tidak perlu tindakan lagi
     }
 
     private void loadTypeSpinner(final ControlElement element, Spinner spinner, Runnable callback) {

@@ -452,8 +452,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
             // Dominan putih → susun LayerDrawable: lapisan bawah hitam solid,
             // lapisan atas icon_background selector (membawa stroke biru saat selected).
-            android.graphics.drawable.ColorDrawable blackLayer =
-                    new android.graphics.drawable.ColorDrawable(Color.BLACK);
+            android.graphics.drawable.Drawable blackLayer =
+                    androidx.core.content.ContextCompat.getDrawable(this, R.drawable.icon_background_black);
             android.graphics.drawable.Drawable selectorLayer =
                     androidx.core.content.ContextCompat.getDrawable(this, R.drawable.icon_background);
             android.graphics.drawable.LayerDrawable layered =

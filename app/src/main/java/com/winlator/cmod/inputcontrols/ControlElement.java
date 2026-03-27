@@ -97,6 +97,10 @@ public class ControlElement {
     private CubicBezierInterpolator interpolator;
     private Object touchTime;
 
+    // Cached Rect objects untuk drawIconExact — menghindari alokasi per frame (anti-lag)
+    private final Rect iconSrcRect = new Rect();
+    private final Rect iconDstRect = new Rect();
+
     // === TAMBAHAN UNTUK EFEK VISUAL PRESSED ===
     private boolean isPressed = false;
 
@@ -132,8 +136,6 @@ public class ControlElement {
         } else if (type == Type.TOUCHSCREEN_TOGGLE) {
             bindings.add(Binding.NONE);
             states = new boolean[1];
-            text = "";
-            iconId = 0;
         } else {
             // BUTTON dan tipe lain default 1 binding
             bindings.add(Binding.NONE);
@@ -898,9 +900,10 @@ public class ControlElement {
         int halfW = (int) (iconWidth * 0.5f);
         int halfH = (int) (iconHeight * 0.5f);
 
-        Rect srcRect = new Rect(0, 0, (int) bitmapW, (int) bitmapH);
-        Rect dstRect = new Rect((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
-        canvas.drawBitmap(icon, srcRect, dstRect, paint);
+        // Reuse cached Rect — tidak ada alokasi per frame (anti-lag)
+        iconSrcRect.set(0, 0, (int) bitmapW, (int) bitmapH);
+        iconDstRect.set((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
+        canvas.drawBitmap(icon, iconSrcRect, iconDstRect, paint);
         paint.setColorFilter(null);
     }
 
@@ -930,9 +933,10 @@ public class ControlElement {
         int halfW = (int) (iconWidth * 0.5f);
         int halfH = (int) (iconHeight * 0.5f);
 
-        Rect srcRect = new Rect(0, 0, (int) bitmapW, (int) bitmapH);
-        Rect dstRect = new Rect((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
-        canvas.drawBitmap(icon, srcRect, dstRect, paint);
+        // Reuse cached Rect — tidak ada alokasi per frame (anti-lag)
+        iconSrcRect.set(0, 0, (int) bitmapW, (int) bitmapH);
+        iconDstRect.set((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
+        canvas.drawBitmap(icon, iconSrcRect, iconDstRect, paint);
         paint.setColorFilter(null);
     }
 
@@ -1007,10 +1011,7 @@ public class ControlElement {
                 scroller.handleTouchDown(x, y);
                 return true;
             } else {
-                if (type == Type.TRACKPAD) {
-                    if (currentPosition == null) currentPosition = new PointF();
-                    currentPosition.set(x, y);
-                } else if (type == Type.RIGHT_STICK) {
+                if (type == Type.TRACKPAD || type == Type.RIGHT_STICK) {
                     if (currentPosition == null) currentPosition = new PointF();
                     currentPosition.set(x, y);
                 }
@@ -1040,9 +1041,10 @@ public class ControlElement {
                 float offsetY = localY - radius;
                 float distance = Mathf.lengthSq(offsetX, offsetY);
                 if (distance > radius * radius) {
-                    float angle = (float) Math.atan2(offsetY, offsetX);
-                    offsetX = (float) (Math.cos(angle) * radius);
-                    offsetY = (float) (Math.sin(angle) * radius);
+                    // Normalisasi vektor langsung — lebih cepat dari atan2/cos/sin
+                    float len = (float) Math.sqrt(distance);
+                    offsetX = offsetX / len * radius;
+                    offsetY = offsetY / len * radius;
                 }
                 deltaX = Mathf.clamp(offsetX / radius, -1, 1);
                 deltaY = Mathf.clamp(offsetY / radius, -1, 1);
@@ -1259,8 +1261,6 @@ public class ControlElement {
                     visualThumbPosition = null;
                     inputControlsView.invalidate();
                 }
-
-                if (currentPosition != null) currentPosition = null;
             }
             currentPointerId = -1;
             return true;

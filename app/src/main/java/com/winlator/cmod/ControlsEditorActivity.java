@@ -121,13 +121,14 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
             else if (type == ControlElement.Type.D_PAD) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"↑ Up", "→ Right", "↓ Down", "← Left"}, 4);
+                loadSlotIconsUI(view, element, new String[]{"Icon Up", "Icon Right", "Icon Down", "icon Left"}, 4);
             }
             else if (type == ControlElement.Type.STICK || type == ControlElement.Type.RIGHT_STICK) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                loadSlotIconsUI(view, element, new String[]{"Outer Circle", "Inner Thumb"}, 2);
+                loadSlotIconsUI(view, element, new String[]{"Outer Thumb", "Inner Thumb"}, 2);
             }
             else if (type == ControlElement.Type.TRACKPAD) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);

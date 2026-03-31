@@ -775,14 +775,31 @@ public class InputControlsView extends View {
         Bitmap cached = icons.get(id);
         if (cached == null || cached.isRecycled()) {
             Context context = getContext();
-            try (InputStream is = context.getAssets().open("inputcontrols/icons/"+id+".png")) {
+
+            // 1. Coba dari assets bawaan (inputcontrols/icons/<id>.png)
+            try (InputStream is = context.getAssets().open("inputcontrols/icons/" + id + ".png")) {
                 Bitmap bitmap = BitmapFactory.decodeStream(is);
                 if (bitmap != null) {
                     icons.put(id, bitmap);
                     return bitmap;
                 }
+            } catch (Exception ignored) {}
+
+            // 2. Fallback ke folder import pengguna (filesDir/inputcontrols/icons/)
+            //    Cari file dengan nama <id>.png / <id>.jpg / <id>.webp
+            java.io.File iconsDir = com.winlator.cmod.inputcontrols.InputControlsManager.getIconsDir(context);
+            String[] extensions = {".png", ".jpg", ".jpeg", ".webp"};
+            for (String ext : extensions) {
+                java.io.File iconFile = new java.io.File(iconsDir, id + ext);
+                if (iconFile.isFile()) {
+                    Bitmap bitmap = BitmapFactory.decodeFile(iconFile.getAbsolutePath());
+                    if (bitmap != null) {
+                        icons.put(id, bitmap);
+                        return bitmap;
+                    }
+                }
             }
-            catch (Exception e) {}
+
             return null;
         }
         return cached;

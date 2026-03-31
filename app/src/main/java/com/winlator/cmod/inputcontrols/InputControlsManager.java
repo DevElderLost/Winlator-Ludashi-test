@@ -20,12 +20,15 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class InputControlsManager {
     private final Context context;
@@ -41,6 +44,115 @@ public class InputControlsManager {
         File profilesDir = new File(context.getFilesDir(), "profiles");
         if (!profilesDir.isDirectory()) profilesDir.mkdir();
         return profilesDir;
+    }
+
+    /**
+     * Mengembalikan direktori penyimpanan icon yang diimport pengguna.
+     * Path: filesDir/inputcontrols/icons/
+     */
+    public static File getIconsDir(Context context) {
+        File iconsDir = new File(context.getFilesDir(), "inputcontrols/icons");
+        if (!iconsDir.isDirectory()) iconsDir.mkdirs();
+        return iconsDir;
+    }
+
+    /**
+     * Menghitung ID tertinggi icon yang sudah ada, baik dari assets maupun
+     * dari folder import pengguna, kemudian mengekstrak semua file gambar
+     * dari ZIP yang dipilih dan menyimpannya dengan ID berlanjut.
+     *
+     * @param zipUri  URI file ZIP yang dipilih pengguna
+     * @return jumlah icon baru yang berhasil diimport, atau -1 jika gagal
+     */
+    public int importIcons(android.net.Uri zipUri) {
+        try {
+            int maxId = resolveMaxIconId();
+            File iconsDir = getIconsDir(context);
+            int imported = 0;
+
+            try (InputStream raw = context.getContentResolver().openInputStream(zipUri);
+                 ZipInputStream zis = new ZipInputStream(raw)) {
+
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (entry.isDirectory()) {
+                        zis.closeEntry();
+                        continue;
+                    }
+
+                    String name = new File(entry.getName()).getName().toLowerCase();
+                    // Hanya proses file gambar PNG/JPG/WEBP
+                    if (!name.endsWith(".png") && !name.endsWith(".jpg")
+                            && !name.endsWith(".jpeg") && !name.endsWith(".webp")) {
+                        zis.closeEntry();
+                        continue;
+                    }
+
+                    int newId = ++maxId;
+                    // Tentukan ekstensi berdasarkan nama asli entry
+                    String ext = name.endsWith(".png") ? ".png"
+                            : (name.endsWith(".webp") ? ".webp" : ".png");
+                    File dest = new File(iconsDir, newId + ext);
+
+                    try (FileOutputStream fos = new FileOutputStream(dest)) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = zis.read(buf)) != -1) {
+                            fos.write(buf, 0, len);
+                        }
+                    }
+                    zis.closeEntry();
+                    imported++;
+                }
+            }
+            return imported;
+        } catch (Exception e) {
+            android.util.Log.e("InputControlsManager", "importIcons failed", e);
+            return -1;
+        }
+    }
+
+    /**
+     * Menghitung ID tertinggi dari semua icon yang sudah ada:
+     * - Asset bawaan: assets/inputcontrols/icons/
+     * - Icon import: filesDir/inputcontrols/icons/
+     */
+    private int resolveMaxIconId() {
+        int maxId = 0;
+
+        // Hitung dari asset bawaan
+        try {
+            String[] assetIcons = context.getAssets().list("inputcontrols/icons");
+            if (assetIcons != null) {
+                for (String fn : assetIcons) {
+                    int id = parseIconId(fn);
+                    if (id > maxId) maxId = id;
+                }
+            }
+        } catch (IOException ignored) {}
+
+        // Hitung dari folder import pengguna
+        File iconsDir = getIconsDir(context);
+        File[] files = iconsDir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                int id = parseIconId(f.getName());
+                if (id > maxId) maxId = id;
+            }
+        }
+
+        return maxId;
+    }
+
+    /** Mengurai nama file seperti "31.png" menjadi integer 31. */
+    private int parseIconId(String filename) {
+        int dot = filename.lastIndexOf('.');
+        String base = dot >= 0 ? filename.substring(0, dot) : filename;
+        try {
+            return Integer.parseInt(base);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     public ArrayList<ControlsProfile> getProfiles() {

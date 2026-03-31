@@ -467,8 +467,8 @@ public class InputControlsFragment extends Fragment {
     /**
      * Membuka document provider untuk memilih file ZIP yang berisi icon.
      * Filter MIME diset ke application/zip; jika provider tidak mendukung,
-     * fallback ke wildcard (*/*) agar pengguna tetap bisa menavigasi.
-     */
+//     * fallback ke wildcard agar pengguna tetap bisa menavigasi.
+//     */
     private void openIconZipFile() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);

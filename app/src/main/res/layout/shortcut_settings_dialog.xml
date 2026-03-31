@@ -594,10 +594,10 @@
                     </LinearLayout>
 
                     <CheckBox
-                        android:id="@+id/CBFullscreenStretched"
+                        android:id="@+id/CBForceFullscreen"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/fullscreen_stretched" />
+                        android:text="@string/force_fullscreen" />
 
                 </LinearLayout>
 

@@ -66,6 +66,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class InputControlsFragment extends Fragment {
     private static final String INPUT_CONTROLS_URL = "https://raw.githubusercontent.com/brunodev85/winlator/main/input_controls/%s";
+    /** Request code khusus untuk memilih file ZIP icon */
+    private static final int IMPORT_ICON_REQUEST_CODE = 1002;
+
     private InputControlsManager manager;
     private ControlsProfile currentProfile;
     private Runnable updateLayout;
@@ -131,6 +134,9 @@ public class InputControlsFragment extends Fragment {
                 AppUtils.showToast(getContext(), R.string.unable_to_import_profile);
             }
             importProfileCallback = null;
+        }
+        else if (requestCode == IMPORT_ICON_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
+            handleImportIconResult(data.getData());
         }
     }
 
@@ -304,6 +310,9 @@ public class InputControlsFragment extends Fragment {
             else AppUtils.showToast(context, R.string.no_profile_selected);
         });
 
+        // Tombol Import Icon – membuka file picker untuk memilih ZIP berisi icon
+        view.findViewById(R.id.BTImportIcons).setOnClickListener((v) -> openIconZipFile());
+
         view.findViewById(R.id.BTControlsEditor).setOnClickListener((v) -> {
             if (currentProfile != null) {
                 Intent intent = new Intent(context, ControlsEditorActivity.class);
@@ -453,6 +462,53 @@ public class InputControlsFragment extends Fragment {
             }
         }
         else view.findViewById(R.id.TVEmptyText).setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Membuka document provider untuk memilih file ZIP yang berisi icon.
+     * Filter MIME diset ke application/zip; jika provider tidak mendukung,
+     * fallback ke wildcard (*/*) agar pengguna tetap bisa menavigasi.
+     */
+    private void openIconZipFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Coba tipe spesifik ZIP; beberapa provider juga mengenali octet-stream
+        intent.setType("application/zip");
+        // Sertakan juga octet-stream sebagai alternatif
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/zip",
+                "application/x-zip-compressed",
+                "application/octet-stream"
+        });
+        getActivity().startActivityFromFragment(this, intent, IMPORT_ICON_REQUEST_CODE);
+    }
+
+    /**
+     * Memproses ZIP yang dipilih: ekstrak semua file gambar di dalamnya,
+     * beri nama berurutan melanjutkan ID tertinggi yang sudah ada,
+     * lalu simpan ke filesDir/inputcontrols/icons/.
+     */
+    private void handleImportIconResult(android.net.Uri zipUri) {
+        final Context context = getContext();
+        if (context == null || zipUri == null) return;
+
+        // Jalankan di background agar tidak memblokir UI thread
+        new Thread(() -> {
+            int count = manager.importIcons(zipUri);
+
+            getActivity().runOnUiThread(() -> {
+                if (count > 0) {
+                    AppUtils.showToast(context,
+                            count + " icon(s) berhasil diimport");
+                } else if (count == 0) {
+                    AppUtils.showToast(context,
+                            "Tidak ada file gambar yang ditemukan di dalam ZIP");
+                } else {
+                    AppUtils.showToast(context,
+                            "Gagal mengimport icon dari file ZIP");
+                }
+            });
+        }).start();
     }
 
     private void showGyroConfigDialog() {

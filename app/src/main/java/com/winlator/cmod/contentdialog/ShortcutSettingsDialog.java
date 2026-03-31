@@ -200,9 +200,9 @@ public class ShortcutSettingsDialog extends ContentDialog {
             }
         });
 
-        final CheckBox cbFullscreenStretched =  findViewById(R.id.CBFullscreenStretched);
-        boolean fullscreenStretched = shortcut.getExtra("fullscreenStretched", "0").equals("1");
-        cbFullscreenStretched.setChecked(fullscreenStretched);
+        final CheckBox cbForceFullscreen =  findViewById(R.id.CBForceFullscreen);
+        boolean forceFullscreen = shortcut.getExtra("forceFullscreen", "0").equals("1");
+        cbForceFullscreen.setChecked(forceFullscreen);
 
         final Runnable showInputWarning = () -> ContentDialog.alert(context, R.string.enable_xinput_and_dinput_same_time, null);
         final CheckBox cbEnableXInput = findViewById(R.id.CBEnableXInput);
@@ -384,7 +384,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 shortcut.putExtra("midiSoundFont", midiSoundFont);
                 shortcut.putExtra("lc_all", lc_all);
 
-                shortcut.putExtra("fullscreenStretched", cbFullscreenStretched.isChecked() ? "1" : null);
+                shortcut.putExtra("forceFullscreen", cbForceFullscreen.isChecked() ? "1" : null);
 
                 String wincomponents = containerDetailFragment.getWinComponents(getContentView());
                 shortcut.putExtra("wincomponents", wincomponents);

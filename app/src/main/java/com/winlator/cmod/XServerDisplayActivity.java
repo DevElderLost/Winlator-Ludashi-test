@@ -1174,9 +1174,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         final GLRenderer renderer = xServerView.getRenderer();
         renderer.setCursorVisible(false);
 
-        if (shortcut != null) {
+		if (shortcut != null) {
+            if (shortcut.getExtra("forceFullscreen", "0").equals("1")) renderer.setForceFullscreenWMClass(shortcut.wmClass);
             renderer.setUnviewableWMClasses("explorer.exe");
-        }
+		}
 
         xServer.setRenderer(renderer);
         rootView.addView(xServerView);
@@ -1972,4 +1973,4 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         this.screenEffectProfile = screenEffectProfile;
     }
 
-}
+}

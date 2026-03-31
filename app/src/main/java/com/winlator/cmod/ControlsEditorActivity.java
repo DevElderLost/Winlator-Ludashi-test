@@ -34,9 +34,13 @@ import com.winlator.cmod.core.UnitUtils;
 import com.winlator.cmod.widget.InputControlsView;
 import com.winlator.cmod.widget.NumberPicker;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class ControlsEditorActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -234,17 +238,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         LinearLayout llSlotIcons = settingsView.findViewById(R.id.LLSlotIcons);
         llSlotIcons.removeAllViews();
 
-        // Muat daftar icon dari assets sekali saja
-        byte[] availableIconIds = new byte[0];
-        try {
-            String[] filenames = getAssets().list("inputcontrols/icons/");
-            availableIconIds = new byte[filenames.length];
-            for (int i = 0; i < filenames.length; i++) {
-                availableIconIds[i] = Byte.parseByte(
-                        com.winlator.cmod.core.FileUtils.getBasename(filenames[i]));
-            }
-        } catch (IOException e) {}
-        java.util.Arrays.sort(availableIconIds);
+        // Muat daftar icon dari assets + folder import pengguna
+        byte[] availableIconIds = loadAllIconIds();
 
         // State slot lokal — diperbarui setiap tap dan disinkronkan ke element
         final byte[] selectedSlots = new byte[slotCount];
@@ -352,10 +347,14 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
             iv.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
-            try (java.io.InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
-                Bitmap bmp = BitmapFactory.decodeStream(is);
-                iv.setImageBitmap(bmp);
-                applyIconBackground(iv, bmp);
+            try (InputStream is = openIconStream(id)) {
+                if (is != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
+                    iv.setImageBitmap(bmp);
+                    applyIconBackground(iv, bmp);
+                } else {
+                    iv.setBackgroundResource(R.drawable.icon_background);
+                }
             } catch (IOException e) {
                 iv.setBackgroundResource(R.drawable.icon_background);
             }
@@ -635,16 +634,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadIcons(final LinearLayout parent, byte selectedId) {
-        byte[] iconIds = new byte[0];
-        try {
-            String[] filenames = getAssets().list("inputcontrols/icons/");
-            iconIds = new byte[filenames.length];
-            for (int i = 0; i < filenames.length; i++) {
-                iconIds[i] = Byte.parseByte(FileUtils.getBasename(filenames[i]));
-            }
-        } catch (IOException e) {}
-
-        Arrays.sort(iconIds);
+        byte[] iconIds = loadAllIconIds();
 
         int size = (int) UnitUtils.dpToPx(40);
         int margin = (int) UnitUtils.dpToPx(2);
@@ -665,16 +655,95 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 imageView.setSelected(true);
             });
 
-            try (InputStream is = getAssets().open("inputcontrols/icons/" + id + ".png")) {
-                Bitmap bmp = BitmapFactory.decodeStream(is);
-                imageView.setImageBitmap(bmp);
-                applyIconBackground(imageView, bmp);
+            try (InputStream is = openIconStream(id)) {
+                if (is != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
+                    imageView.setImageBitmap(bmp);
+                    applyIconBackground(imageView, bmp);
+                } else {
+                    imageView.setBackgroundResource(R.drawable.icon_background);
+                }
             } catch (IOException e) {
                 imageView.setBackgroundResource(R.drawable.icon_background);
             }
 
             parent.addView(imageView);
         }
+    }
+
+    /**
+     * Mengumpulkan semua ID icon yang tersedia dari dua sumber:
+     *  1. Assets bawaan   : assets/inputcontrols/icons/
+     *  2. Import pengguna : filesDir/inputcontrols/icons/
+     * Hasilnya digabung, deduplikasi, lalu diurutkan numerik secara ascending.
+     */
+    private byte[] loadAllIconIds() {
+        List<Byte> ids = new ArrayList<>();
+
+        // 1. Asset bawaan
+        try {
+            String[] filenames = getAssets().list("inputcontrols/icons/");
+            if (filenames != null) {
+                for (String fn : filenames) {
+                    try {
+                        byte id = Byte.parseByte(FileUtils.getBasename(fn));
+                        if (!ids.contains(id)) ids.add(id);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        } catch (IOException ignored) {}
+
+        // 2. Folder import pengguna (filesDir/inputcontrols/icons/)
+        File iconsDir = InputControlsManager.getIconsDir(this);
+        File[] files = iconsDir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                String base = FileUtils.getBasename(f.getName());
+                try {
+                    // ID dari folder import bisa > 127, tapi byte di sini; gunakan int dulu lalu cast
+                    int idInt = Integer.parseInt(base);
+                    if (idInt >= Byte.MIN_VALUE && idInt <= Byte.MAX_VALUE) {
+                        byte id = (byte) idInt;
+                        if (!ids.contains(id)) ids.add(id);
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        // Urutkan (byte unsigned sort agar 1,2,...,30,31 tetap urut)
+        ids.sort((a, b) -> Byte.toUnsignedInt(a) - Byte.toUnsignedInt(b));
+
+        byte[] result = new byte[ids.size()];
+        for (int i = 0; i < ids.size(); i++) result[i] = ids.get(i);
+        return result;
+    }
+
+    /**
+     * Membuka InputStream untuk icon dengan ID tertentu.
+     * Urutan prioritas:
+     *  1. Asset bawaan   : assets/inputcontrols/icons/<id>.png
+     *  2. Import pengguna: filesDir/inputcontrols/icons/<id>.(png|jpg|jpeg|webp)
+     * Mengembalikan null jika tidak ditemukan di kedua sumber.
+     */
+    private InputStream openIconStream(byte id) {
+        // 1. Asset bawaan
+        try {
+            return getAssets().open("inputcontrols/icons/" + id + ".png");
+        } catch (IOException ignored) {}
+
+        // 2. Folder import pengguna
+        File iconsDir = InputControlsManager.getIconsDir(this);
+        String[] extensions = {".png", ".jpg", ".jpeg", ".webp"};
+        for (String ext : extensions) {
+            File f = new File(iconsDir, id + ext);
+            if (f.isFile()) {
+                try {
+                    return new FileInputStream(f);
+                } catch (IOException ignored) {}
+            }
+        }
+
+        return null;
     }
 
     @Override

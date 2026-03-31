@@ -218,6 +218,14 @@
 
             <Button
                 style="@style/ButtonNeutral"
+                android:id="@+id/BTImportIcons"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/import_icons" />
+            
+            <Button
+                style="@style/ButtonNeutral"
                 android:id="@+id/BTImportProfile"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"

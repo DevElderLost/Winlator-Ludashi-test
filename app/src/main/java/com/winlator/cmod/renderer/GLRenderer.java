@@ -264,6 +264,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
                 windowMaterial, directCandidate.forceFullscreen);
 
+        // Render overlay windows (dialogs, popups, new windows) on top of the direct candidate
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+            for (RenderableWindow rw : renderableWindows) {
+                if (rw == directCandidate) continue;
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+            }
+        }
+        GLES20.glDisable(GLES20.GL_BLEND);
+
         if (cursorVisible) {
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
@@ -455,8 +466,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             }
 
             if (singleWindow && !renderableWindows.isEmpty()) {
-                RenderableWindow window = renderableWindows.get(renderableWindows.size() - 1);
-                renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, true);
+                // Render the bottom-most (background) window as fullscreen
+                RenderableWindow root = renderableWindows.get(renderableWindows.size() - 1);
+                renderDrawable(root.content, root.rootX, root.rootY, windowMaterial, true);
+                // Render remaining windows (dialogs, popups, new windows) on top
+                for (int i = 0; i < renderableWindows.size() - 1; i++) {
+                    RenderableWindow window = renderableWindows.get(i);
+                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
+                }
             } else {
                 for (RenderableWindow window : renderableWindows) {
                     renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);

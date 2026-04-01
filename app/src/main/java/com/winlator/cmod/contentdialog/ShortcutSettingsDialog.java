@@ -60,6 +60,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
     private InputControlsManager inputControlsManager;
     private TextView tvGraphicsDriverVersion;
     private String box64Version;
+    private CheckBox cbNativeRendering;
 
 
     public ShortcutSettingsDialog(ShortcutsFragment fragment, Shortcut shortcut) {
@@ -203,6 +204,18 @@ public class ShortcutSettingsDialog extends ContentDialog {
         final CheckBox cbForceFullscreen =  findViewById(R.id.CBForceFullscreen);
         boolean forceFullscreen = shortcut.getExtra("forceFullscreen", "0").equals("1");
         cbForceFullscreen.setChecked(forceFullscreen);
+
+        // Native Rendering (Direct Rendering+) checkbox.
+        // Looked up by resource name to match the decompiled logic, so the layout
+        // can keep or remove the view without causing a crash.
+        int cbNativeRenderingId = context.getResources().getIdentifier(
+                "CBNativeRendering", "id", context.getPackageName());
+        cbNativeRendering = cbNativeRenderingId != 0
+                ? findViewById(cbNativeRenderingId)
+                : null;
+        if (cbNativeRendering != null) {
+            cbNativeRendering.setChecked(shortcut.getExtra("nativeRendering", "0").equals("1"));
+        }
 
         final Runnable showInputWarning = () -> ContentDialog.alert(context, R.string.enable_xinput_and_dinput_same_time, null);
         final CheckBox cbEnableXInput = findViewById(R.id.CBEnableXInput);
@@ -385,6 +398,11 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 shortcut.putExtra("lc_all", lc_all);
 
                 shortcut.putExtra("forceFullscreen", cbForceFullscreen.isChecked() ? "1" : null);
+
+                // Save Native Rendering (Direct Rendering+) state
+                if (cbNativeRendering != null) {
+                    shortcut.putExtra("nativeRendering", cbNativeRendering.isChecked() ? "1" : "0");
+                }
 
                 String wincomponents = containerDetailFragment.getWinComponents(getContentView());
                 shortcut.putExtra("wincomponents", wincomponents);

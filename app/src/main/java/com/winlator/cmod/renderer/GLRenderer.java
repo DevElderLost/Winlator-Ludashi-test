@@ -271,10 +271,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        // Render large window with forceFullscreen=true so it is scaled/centered
-        // to the GPU surface the same way small windows are rendered.
+        // Large windows are rendered normally (forceFullscreen=false) — original behavior.
+        // Only small windows with the forceFullscreen flag that have grown to >= threshold
+        // will be scaled to the GPU surface by renderDrawable.
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, true);
+                windowMaterial, directCandidate.forceFullscreen);
 
         // Render overlay windows (dialogs, popups, new windows) on top of the direct candidate
         GLES20.glEnable(GLES20.GL_BLEND);
@@ -329,17 +330,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         quadVertices.bind(windowMaterial.programId);
 
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            int screenW = xServer.screenInfo.width;
-            int screenH = xServer.screenInfo.height;
             for (RenderableWindow rw : renderableWindows) {
-                // Large windows (>= 95% screen coverage) are rendered with
-                // forceFullscreen=true so they are scaled/centered to the GPU
-                // surface the same way small forceFullscreen windows are.
-                boolean isLarge = rw.content != null
-                        && rw.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
-                        && rw.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial,
-                        isLarge || rw.forceFullscreen);
+                // renderDrawable only applies GPU scaling when the window has
+                // actually grown to cover >= DIRECT_MODE_COVERAGE_THRESHOLD.
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
             }
         }
 
@@ -452,7 +446,18 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             Texture texture = drawable.getTexture();
             texture.updateFromDrawable(drawable);
 
-            if (forceFullscreen) {
+            // GPU scaling is applied ONLY to windows that:
+            //   1. Have the forceFullscreen flag set, AND
+            //   2. Have physically grown to >= DIRECT_MODE_COVERAGE_THRESHOLD.
+            // Large windows (>= threshold) without the forceFullscreen flag are
+            // always rendered normally at their actual position/size (original behavior).
+            int screenW = xServer.screenInfo.width;
+            int screenH = xServer.screenInfo.height;
+            boolean isActuallyLarge = drawable.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
+                                   && drawable.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
+
+            if (forceFullscreen && isActuallyLarge) {
+                // Window has grown large enough — scale to GPU surface
                 short newHeight = (short)Math.min(xServer.screenInfo.height, ((float)xServer.screenInfo.width / drawable.width) * drawable.height);
                 short newWidth = (short)(((float)newHeight / drawable.height) * drawable.width);
                 float offsetX = (xServer.screenInfo.width - newWidth) * 0.5f;
@@ -467,6 +472,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 isForceFullscreenActive = true;
             }
             else {
+                // Large windows without forceFullscreen flag, or small windows not
+                // yet at threshold — render at actual position/size (original behavior).
                 XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
                 isForceFullscreenActive = false;
             }
@@ -508,14 +515,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
                 }
             } else {
-                int screenW = xServer.screenInfo.width;
-                int screenH = xServer.screenInfo.height;
                 for (RenderableWindow window : renderableWindows) {
-                    boolean isLarge = window.content != null
-                            && window.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
-                            && window.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
-                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial,
-                            isLarge || window.forceFullscreen);
+                    // renderDrawable only applies GPU scaling when the window has
+                    // actually grown to cover >= DIRECT_MODE_COVERAGE_THRESHOLD.
+                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
                 }
             }
         }

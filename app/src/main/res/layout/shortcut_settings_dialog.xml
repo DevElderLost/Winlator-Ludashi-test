@@ -599,6 +599,12 @@
                         android:layout_height="wrap_content"
                         android:text="@string/force_fullscreen" />
 
+                    <CheckBox
+                        android:id="@+id/CBNativeRendering"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/native_rendering" />
+                    
                 </LinearLayout>
 
                 <TextView

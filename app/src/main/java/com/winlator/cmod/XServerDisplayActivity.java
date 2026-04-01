@@ -1256,6 +1256,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             touchpadView.setSimTouchScreen(simTouchScreen.equals("1"));
         }
 
+        // Wire the GLRenderer into TouchpadView so forceFullscreen coordinate
+        // remapping is applied automatically on all pointer/touch events.
+        xServerView.attachTouchpadView(touchpadView);
+
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
     }
 

@@ -241,6 +241,43 @@
                     android:text="Theme" />
             </FrameLayout>
 
+            <!-- Locale Settings -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout style="@style/FieldSet">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/language" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <Spinner
+                            style="@style/ComboBox"
+                            android:id="@+id/SLocale"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:spinnerMode="dialog" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/TVLocale"
+                    style="@style/FieldSetLabel"
+                    android:text="@string/language" />
+
+            </FrameLayout>
+
             <!-- Shortcuts -->
             <FrameLayout
                 android:layout_width="match_parent"
@@ -297,7 +334,8 @@
                     style="@style/FieldSetLabel"
                     android:text="Path Settings" />
             </FrameLayout>
-
+
+
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.XrActivity;
@@ -14,6 +15,7 @@ import com.winlator.cmod.math.XForm;
 import com.winlator.cmod.renderer.material.CursorMaterial;
 import com.winlator.cmod.renderer.material.ShaderMaterial;
 import com.winlator.cmod.renderer.material.WindowMaterial;
+import com.winlator.cmod.widget.FrameRating;
 import com.winlator.cmod.widget.XServerView;
 import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xserver.Cursor;
@@ -54,6 +56,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public int surfaceWidth;
     public int surfaceHeight;
     private final EffectComposer effectComposer;
+
+    // --- CPU Saver / Direct Rendering ---
+    private static final float DIRECT_MODE_COVERAGE_THRESHOLD = 0.95f;
+    private boolean cpuSaverMode = false;
+    private boolean wasDirectMode = false;
+    private FrameRating frameRating;
 
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
@@ -110,10 +118,31 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             fullscreen = !fullscreen;
             toggleFullscreen = false;
             viewportNeedsUpdate = true;
-
         }
 
-        drawFrame();
+        if (cpuSaverMode) {
+            // Effects are disabled in CPU saver mode (see setNativeMode).
+            // drawFrameOptimized renders directly without any effectComposer processing.
+            drawFrameOptimized();
+            return;
+        }
+
+        if (frameRating != null) frameRating.setIsNative(false);
+
+        boolean hasEffects = effectComposer != null
+                && effectComposer.hasEffects()
+                && surfaceWidth > 0
+                && surfaceHeight > 0;
+
+        if (!hasEffects) {
+            drawFrame();
+        } else {
+            try {
+                effectComposer.render();
+            } catch (Exception e) {
+                drawFrame();
+            }
+        }
     }
 
     public void drawFrame() {
@@ -138,40 +167,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         // Clear the screen before drawing
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-        // Apply basic transformations and draw windows
-        if (magnifierEnabled) {
-            // Apply magnifier transformations if enabled
-            float pointerX = 0;
-            float pointerY = 0;
-            float magnifierZoom = !screenOffsetYRelativeToCursor ? this.magnifierZoom : 1.0f;
-
-            if (magnifierZoom != 1.0f) {
-                pointerX = Mathf.clamp(xServer.pointer.getX() * magnifierZoom - xServer.screenInfo.width * 0.5f, 0, xServer.screenInfo.width * Math.abs(1.0f - magnifierZoom));
-            }
-
-            if (screenOffsetYRelativeToCursor || magnifierZoom != 1.0f) {
-                float scaleY = magnifierZoom != 1.0f ? Math.abs(1.0f - magnifierZoom) : 0.5f;
-                float offsetY = xServer.screenInfo.height * (screenOffsetYRelativeToCursor ? 0.25f : 0.5f);
-                pointerY = Mathf.clamp(xServer.pointer.getY() * magnifierZoom - offsetY, 0, xServer.screenInfo.height * scaleY);
-            }
-
-            XForm.makeTransform(tmpXForm2, -pointerX, -pointerY, magnifierZoom, magnifierZoom, 0);
-        } else {
-            if (!fullscreen) {
-                int pointerY = 0;
-                if (screenOffsetYRelativeToCursor) {
-                    short halfScreenHeight = (short)(xServer.screenInfo.height / 2);
-                    pointerY = Mathf.clamp(xServer.pointer.getY() - halfScreenHeight / 2, 0, halfScreenHeight);
-                }
-
-                XForm.makeTransform(tmpXForm2, viewTransformation.sceneOffsetX, viewTransformation.sceneOffsetY - pointerY, viewTransformation.sceneScaleX, viewTransformation.sceneScaleY, 0);
-
-                GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
-                GLES20.glScissor(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY, viewTransformation.viewWidth, viewTransformation.viewHeight);
-            } else {
-                XForm.identity(tmpXForm2);
-            }
-        }
+        // Apply scene transform (magnifier / scroll / fullscreen)
+        applySceneTransform();
 
         renderWindows(xrImmersive);
 
@@ -183,16 +180,186 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
 
-        // Apply all the effects using EffectComposer
-        if (effectComposer.hasEffects()) {
-            effectComposer.render();  // <-- This line applies the effects
-        }
-
         // Finalize XR frame if supported
         if (xrFrame) {
             XrActivity.getInstance().endFrame();
             XrActivity.updateControllers();
             xServerView.requestRender();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // CPU Saver / Direct Rendering optimized path
+    // -------------------------------------------------------------------------
+
+    /**
+     * Optimized frame path used when CPU saver mode is active.
+     * Tries to render a single large window directly (native/direct mode),
+     * bypassing full compositing when possible.
+     */
+    private void drawFrameOptimized() {
+        RenderableWindow directCandidate = findDirectRenderCandidate();
+        boolean isDirectMode = (directCandidate != null);
+
+        if (isDirectMode != wasDirectMode) {
+            viewportNeedsUpdate = true;
+            wasDirectMode = isDirectMode;
+        }
+
+        if (isDirectMode) {
+            drawFrameDirect(directCandidate);
+        } else {
+            drawFrameComposited();
+        }
+    }
+
+    /**
+     * Finds the topmost window covering >= 95% of the screen for direct rendering.
+     * Returns null if no candidate exists.
+     */
+    private RenderableWindow findDirectRenderCandidate() {
+        int screenW = xServer.screenInfo.width;
+        int screenH = xServer.screenInfo.height;
+
+        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+            for (int i = renderableWindows.size() - 1; i >= 0; i--) {
+                RenderableWindow rw = renderableWindows.get(i);
+                if (rw.content != null
+                        && rw.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
+                        && rw.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD) {
+                    return rw;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Direct rendering path: draws a single full-screen candidate without compositing.
+     * Blending is disabled for maximum throughput.
+     */
+    private void drawFrameDirect(RenderableWindow directCandidate) {
+        if (frameRating != null) frameRating.setIsNative(true);
+
+        if (viewportNeedsUpdate) {
+            if (fullscreen) {
+                GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
+            } else {
+                GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
+                        viewTransformation.viewWidth, viewTransformation.viewHeight);
+            }
+            viewportNeedsUpdate = false;
+        }
+
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        GLES20.glDisable(GLES20.GL_BLEND);
+
+        applySceneTransform();
+
+        windowMaterial.use();
+        GLES20.glUniform2f(windowMaterial.getUniformLocation("viewSize"),
+                xServer.screenInfo.width, xServer.screenInfo.height);
+        quadVertices.bind(windowMaterial.programId);
+
+        renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
+                windowMaterial, directCandidate.forceFullscreen);
+
+        if (cursorVisible) {
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+            renderCursor();
+        }
+
+        if (!magnifierEnabled && !fullscreen) {
+            GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+        }
+
+        quadVertices.disable();
+    }
+
+    /**
+     * Composited rendering path for CPU saver mode when no direct candidate is found.
+     * Renders all windows layered with blending enabled.
+     */
+    private void drawFrameComposited() {
+        if (frameRating != null) frameRating.setIsNative(false);
+
+        if (viewportNeedsUpdate && magnifierEnabled) {
+            if (fullscreen) {
+                GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
+            } else {
+                GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
+                        viewTransformation.viewWidth, viewTransformation.viewHeight);
+            }
+            viewportNeedsUpdate = false;
+        }
+
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+
+        applySceneTransform();
+
+        windowMaterial.use();
+        GLES20.glUniform2f(windowMaterial.getUniformLocation("viewSize"),
+                xServer.screenInfo.width, xServer.screenInfo.height);
+        quadVertices.bind(windowMaterial.programId);
+
+        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+            for (RenderableWindow rw : renderableWindows) {
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+            }
+        }
+
+        if (cursorVisible && !rootWindowDownsized) renderCursor();
+
+        if (!magnifierEnabled && !fullscreen) {
+            GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+        }
+
+        quadVertices.disable();
+    }
+
+    /**
+     * Shared helper: computes and applies tmpXForm2 based on magnifier / scroll / fullscreen state.
+     */
+    private void applySceneTransform() {
+        if (magnifierEnabled) {
+            float pointerX = 0;
+            float pointerY = 0;
+            float zoom = screenOffsetYRelativeToCursor ? 1.0f : magnifierZoom;
+
+            if (zoom != 1.0f) {
+                pointerX = Mathf.clamp(
+                        xServer.pointer.getX() * zoom - xServer.screenInfo.width * 0.5f,
+                        0, xServer.screenInfo.width * Math.abs(1.0f - zoom));
+            }
+
+            if (screenOffsetYRelativeToCursor || zoom != 1.0f) {
+                float scaleY = zoom != 1.0f ? Math.abs(1.0f - zoom) : 0.5f;
+                float offsetY = xServer.screenInfo.height * (screenOffsetYRelativeToCursor ? 0.25f : 0.5f);
+                pointerY = Mathf.clamp(
+                        xServer.pointer.getY() * zoom - offsetY,
+                        0, xServer.screenInfo.height * scaleY);
+            }
+
+            XForm.makeTransform(tmpXForm2, -pointerX, -pointerY, zoom, zoom, 0);
+        } else if (fullscreen) {
+            XForm.identity(tmpXForm2);
+        } else {
+            int pointerY = 0;
+            if (screenOffsetYRelativeToCursor) {
+                short halfScreenHeight = (short) (xServer.screenInfo.height / 2);
+                pointerY = Mathf.clamp(xServer.pointer.getY() - halfScreenHeight / 2, 0, halfScreenHeight);
+            }
+
+            XForm.makeTransform(tmpXForm2, viewTransformation.sceneOffsetX,
+                    viewTransformation.sceneOffsetY - pointerY,
+                    viewTransformation.sceneScaleX, viewTransformation.sceneScaleY, 0);
+
+            GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+            GLES20.glScissor(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
+                    viewTransformation.viewWidth, viewTransformation.viewHeight);
         }
     }
 
@@ -484,6 +651,44 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public EffectComposer getEffectComposer (){
         return effectComposer;
+    }
+
+    // --- CPU Saver / Direct Rendering public API ---
+
+    /**
+     * Enables or disables CPU saver (Direct Rendering+) mode.
+     * When enabled, the renderer bypasses full compositing for large windows,
+     * significantly reducing GPU and CPU overhead.
+     */
+    public void setNativeMode(boolean enabled) {
+        if (cpuSaverMode == enabled) return;
+        cpuSaverMode = enabled;
+        viewportNeedsUpdate = true;
+
+        // Explicitly pause/resume effects so the effectComposer is not
+        // processing shaders in the background while direct rendering is active.
+        if (enabled) {
+            effectComposer.setEnabled(false);
+        } else {
+            effectComposer.setEnabled(true);
+        }
+
+        String message = enabled ? "Direct Rendering+ Enabled" : "Direct Rendering+ Disabled";
+        xServerView.post(() -> Toast.makeText(xServerView.getContext(), message, Toast.LENGTH_SHORT).show());
+        xServerView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        xServerView.requestRender();
+    }
+
+    public boolean isNativeMode() {
+        return cpuSaverMode;
+    }
+
+    public FrameRating getFrameRating() {
+        return frameRating;
+    }
+
+    public void setFrameRating(FrameRating frameRating) {
+        this.frameRating = frameRating;
     }
 
     private void renderWindowEffect(Drawable drawable, int x, int y, ShaderMaterial material) {

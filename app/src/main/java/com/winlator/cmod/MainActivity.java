@@ -41,6 +41,7 @@ import com.winlator.cmod.contentdialog.ContentDialog;
 import com.winlator.cmod.core.Callback;
 import com.winlator.cmod.core.ImageUtils;
 import com.winlator.cmod.core.PreloaderDialog;
+import com.winlator.cmod.core.LocaleHelper;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
@@ -451,6 +452,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (currentFragment instanceof SavesFragment) {
             ((SavesFragment) currentFragment).refreshSavesList();
         }
+    }
+  
+    protected void attachBaseContext(Context context) {
+        super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
     
 }

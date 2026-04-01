@@ -258,6 +258,7 @@ public class ShortcutsFragment extends Fragment {
                 // Check if the shortcut has the disableXinput value; if not, default to false.
                 String disableXinputValue = shortcut.getExtra("disableXinput", "0"); // Get value from shortcut or use "0" (false) by default
                 intent.putExtra("disableXinput", disableXinputValue); // Use the actual value from the shortcut
+                intent.putExtra("native_rendering", shortcut.getNativeRendering());                
                 activity.startActivity(intent);
             }
             else XrActivity.openIntent(activity, shortcut.container.id, shortcut.file.getPath());

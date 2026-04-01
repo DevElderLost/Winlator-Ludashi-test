@@ -63,6 +63,16 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean wasDirectMode = false;
     private FrameRating frameRating;
 
+    // --- ForceFullscreen coordinate transform state ---
+    // Stores the visual offset and scale applied when a window is force-fullscreened,
+    // so that pointer/touch coordinates can be inverse-transformed to match the
+    // actual (smaller) window coordinate space.
+    private float forceFullscreenOffsetX = 0f;
+    private float forceFullscreenOffsetY = 0f;
+    private float forceFullscreenScaleX = 1f;
+    private float forceFullscreenScaleY = 1f;
+    private boolean isForceFullscreenActive = false;
+
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
         this.xServer = xServer;
@@ -261,8 +271,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
+        // Render large window with forceFullscreen=true so it is scaled/centered
+        // to the GPU surface the same way small windows are rendered.
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, directCandidate.forceFullscreen);
+                windowMaterial, true);
 
         // Render overlay windows (dialogs, popups, new windows) on top of the direct candidate
         GLES20.glEnable(GLES20.GL_BLEND);
@@ -317,8 +329,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         quadVertices.bind(windowMaterial.programId);
 
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+            int screenW = xServer.screenInfo.width;
+            int screenH = xServer.screenInfo.height;
             for (RenderableWindow rw : renderableWindows) {
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+                // Large windows (>= 95% screen coverage) are rendered with
+                // forceFullscreen=true so they are scaled/centered to the GPU
+                // surface the same way small forceFullscreen windows are.
+                boolean isLarge = rw.content != null
+                        && rw.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
+                        && rw.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial,
+                        isLarge || rw.forceFullscreen);
             }
         }
 
@@ -434,9 +455,21 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             if (forceFullscreen) {
                 short newHeight = (short)Math.min(xServer.screenInfo.height, ((float)xServer.screenInfo.width / drawable.width) * drawable.height);
                 short newWidth = (short)(((float)newHeight / drawable.height) * drawable.width);
-                XForm.set(tmpXForm1, (xServer.screenInfo.width - newWidth) * 0.5f, (xServer.screenInfo.height - newHeight) * 0.5f, newWidth, newHeight);
+                float offsetX = (xServer.screenInfo.width - newWidth) * 0.5f;
+                float offsetY = (xServer.screenInfo.height - newHeight) * 0.5f;
+                XForm.set(tmpXForm1, offsetX, offsetY, newWidth, newHeight);
+
+                // Save transform so pointer coordinates can be inverse-mapped
+                forceFullscreenOffsetX = offsetX;
+                forceFullscreenOffsetY = offsetY;
+                forceFullscreenScaleX  = (float) newWidth  / drawable.width;
+                forceFullscreenScaleY  = (float) newHeight / drawable.height;
+                isForceFullscreenActive = true;
             }
-            else XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
+            else {
+                XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
+                isForceFullscreenActive = false;
+            }
 
             XForm.multiply(tmpXForm1, tmpXForm1, tmpXForm2);
 
@@ -475,8 +508,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
                 }
             } else {
+                int screenW = xServer.screenInfo.width;
+                int screenH = xServer.screenInfo.height;
                 for (RenderableWindow window : renderableWindows) {
-                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
+                    boolean isLarge = window.content != null
+                            && window.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
+                            && window.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
+                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial,
+                            isLarge || window.forceFullscreen);
                 }
             }
         }
@@ -698,6 +737,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public boolean isNativeMode() {
         return cpuSaverMode;
+    }
+
+    /**
+     * Remaps a screen-space pointer coordinate (from touch/mouse input) to
+     * the actual window coordinate space when forceFullscreen is active.
+     *
+     * When a window is rendered force-fullscreen it is visually scaled up and
+     * centered on screen. Without this remapping the X server receives raw screen
+     * coordinates that don't match the smaller logical window, causing the cursor
+     * hit area to be misaligned.
+     *
+     * Call this before forwarding pointer events to the X server:
+     *   float[] mapped = renderer.mapPointerCoords(rawX, rawY);
+     *   xServer.pointer.setPosition((short) mapped[0], (short) mapped[1]);
+     *
+     * @param screenX Raw screen X from touch/mouse input
+     * @param screenY Raw screen Y from touch/mouse input
+     * @return float[2] with the remapped {windowX, windowY}
+     */
+    public float[] mapPointerCoords(float screenX, float screenY) {
+        if (!isForceFullscreenActive || forceFullscreenScaleX == 0 || forceFullscreenScaleY == 0) {
+            return new float[]{screenX, screenY};
+        }
+        float windowX = (screenX - forceFullscreenOffsetX) / forceFullscreenScaleX;
+        float windowY = (screenY - forceFullscreenOffsetY) / forceFullscreenScaleY;
+        return new float[]{windowX, windowY};
+    }
+
+    public boolean isForceFullscreenActive() {
+        return isForceFullscreenActive;
     }
 
     public FrameRating getFrameRating() {

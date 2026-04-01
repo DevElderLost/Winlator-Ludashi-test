@@ -28,6 +28,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.core.AppUtils;
+import com.winlator.cmod.core.LocaleHelper;
 import com.winlator.cmod.inputcontrols.Binding;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;

@@ -667,11 +667,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         // Explicitly pause/resume effects so the effectComposer is not
         // processing shaders in the background while direct rendering is active.
-        if (enabled) {
-            effectComposer.setEnabled(false);
-        } else {
-            effectComposer.setEnabled(true);
-        }
+//        if (enabled) {
+//            effectComposer.setEnabled(false);
+//        } else {
+//            effectComposer.setEnabled(true);
+//        }
 
         String message = enabled ? "Direct Rendering+ Enabled" : "Direct Rendering+ Disabled";
         xServerView.post(() -> Toast.makeText(xServerView.getContext(), message, Toast.LENGTH_SHORT).show());

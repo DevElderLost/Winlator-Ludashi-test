@@ -27,4 +27,12 @@ public class XServerView extends GLSurfaceView {
     public GLRenderer getRenderer() {
         return renderer;
     }
+
+    /**
+     * Wires the GLRenderer into a TouchpadView so forceFullscreen coordinate
+     * remapping is applied automatically on all pointer events.
+     */
+    public void attachTouchpadView(TouchpadView touchpadView) {
+        touchpadView.setRenderer(renderer);
+    }
 }

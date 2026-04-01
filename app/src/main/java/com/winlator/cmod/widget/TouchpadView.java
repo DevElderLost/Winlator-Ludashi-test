@@ -21,6 +21,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.math.XForm;
+import com.winlator.cmod.renderer.GLRenderer;
 import com.winlator.cmod.renderer.ViewTransformation;
 import com.winlator.cmod.winhandler.MouseEventFlags;
 import com.winlator.cmod.winhandler.WinHandler;
@@ -44,6 +45,7 @@ public class TouchpadView extends View {
     private float scrollAccumY = 0;
     private boolean scrolling = false;
     private final XServer xServer;
+    private GLRenderer glRenderer;
     private Runnable fourFingersTapCallback;
     private final float[] xform = XForm.getInstance();
     private boolean simTouchScreen = false;
@@ -202,9 +204,7 @@ public class TouchpadView extends View {
             case MotionEvent.ACTION_HOVER_MOVE:
                 Log.d("StylusEvent", "Hover Move: (" + event.getX() + ", " + event.getY() + ")");
                 float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-                xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
-                break;
-            case MotionEvent.ACTION_HOVER_EXIT:
+                injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
                 Log.d("StylusEvent", "Hover Exit");
                 break;
             default:
@@ -238,19 +238,19 @@ public class TouchpadView extends View {
 
     private void handleStylusLeftClick(MotionEvent event) {
         float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-        xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+        injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
         xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
     }
 
     private void handleStylusRightClick(MotionEvent event) {
         float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-        xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+        injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
         xServer.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
     }
 
     private void handleStylusMove(MotionEvent event) {
         float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-        xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+        injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
     }
 
     private void handleStylusUp(MotionEvent event) {
@@ -309,7 +309,7 @@ public class TouchpadView extends View {
                     if (xServer.isRelativeMouseMovement())
                         xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
                     else
-                        xServer.injectPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
+                        injectMappedPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
                 } else {
                     for (byte i = 0; i < MAX_FINGERS; i++) {
                         if (fingers[i] != null) {
@@ -386,7 +386,7 @@ public class TouchpadView extends View {
         if (xServer.isRelativeMouseMovement())
             xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
         else
-            xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+            injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
 
         // Handle long press for right click (or use a dedicated method to detect long press)
         if (event.getPointerCount() == 1) {
@@ -402,7 +402,7 @@ public class TouchpadView extends View {
         if (xServer.isRelativeMouseMovement())
             xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
         else
-            xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+            injectMappedPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
     }
 
     private void handleTouchUp(MotionEvent event) {
@@ -506,7 +506,7 @@ public class TouchpadView extends View {
 
             if (simTouchScreen) {
                 if (System.currentTimeMillis() - finger1.touchTime > CLICK_DELAYED_TIME)
-                    xServer.injectPointerMove(finger1.x, finger1.y);
+                    injectMappedPointerMove(finger1.x, finger1.y);
             }
             else if (xServer.isRelativeMouseMovement()) {
                 WinHandler winHandler = xServer.getWinHandler();
@@ -575,6 +575,24 @@ public class TouchpadView extends View {
         this.pointerButtonRightEnabled = pointerButtonRightEnabled;
     }
 
+    public void setRenderer(GLRenderer glRenderer) {
+        this.glRenderer = glRenderer;
+    }
+
+    /**
+     * Injects a pointer move to the X server, applying the forceFullscreen
+     * inverse transform when active so the cursor hit area matches the
+     * visually enlarged window.
+     */
+    private void injectMappedPointerMove(int x, int y) {
+        if (glRenderer != null && glRenderer.isForceFullscreenActive()) {
+            float[] mapped = glRenderer.mapPointerCoords(x, y);
+            xServer.injectPointerMove((int) mapped[0], (int) mapped[1]);
+        } else {
+            xServer.injectPointerMove(x, y);
+        }
+    }
+
     public void setFourFingersTapCallback(Runnable fourFingersTapCallback) {
         this.fourFingersTapCallback = fourFingersTapCallback;
     }
@@ -628,7 +646,7 @@ public class TouchpadView extends View {
                     if (xServer.isRelativeMouseMovement())
                         xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
                     else
-                        xServer.injectPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
+                        injectMappedPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
                     handled = true;
                     break;
                 case MotionEvent.ACTION_SCROLL:

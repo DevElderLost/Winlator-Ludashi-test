@@ -2,9 +2,12 @@ package com.winlator.cmod.core;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.content.SharedPreferences;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.TextView;
+
+import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
 
@@ -16,13 +19,24 @@ public class PreloaderDialog {
         this.activity = activity;
     }
 
+    private boolean isDarkMode() {
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(activity);
+        return preferences.getBoolean("dark_mode", false);
+    }
+
     private void create() {
         if (dialog != null) return;
         dialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setCancelable(false);
         dialog.setCanceledOnTouchOutside(false);
-        dialog.setContentView(R.layout.preloader_dialog);
+
+        // Gunakan layout dark atau default berdasarkan preferensi dark mode
+        if (isDarkMode()) {
+            dialog.setContentView(R.layout.preloader_dialog_dark);
+        } else {
+            dialog.setContentView(R.layout.preloader_dialog);
+        }
 
         Window window = dialog.getWindow();
         if (window != null) {
@@ -47,6 +61,7 @@ public class PreloaderDialog {
         try {
             if (dialog != null) {
                 dialog.dismiss();
+                dialog = null; // Reset agar create() bisa dipanggil ulang dengan tema terbaru
             }
         }
         catch (Exception e) {}

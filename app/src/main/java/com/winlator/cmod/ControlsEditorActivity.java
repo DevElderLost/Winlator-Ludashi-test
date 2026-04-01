@@ -1,5 +1,6 @@
 package com.winlator.cmod;
 
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -21,6 +22,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.inputcontrols.Binding;
@@ -46,10 +48,19 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     private InputControlsView inputControlsView;
     private ControlsProfile profile;
+    private boolean isDarkMode;
 
     @Override
     public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+
+        // Baca preferensi dark mode — harus sebelum setContentView
+        // agar AppTheme.Dark menerapkan windowBackground, textViewStyle,
+        // checkboxStyle, popupWindowStyle, dll. secara otomatis ke seluruh layout.
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        isDarkMode = preferences.getBoolean("dark_mode", false);
+        setTheme(isDarkMode ? R.style.AppTheme_Dark : R.style.AppTheme);
+
         AppUtils.hideSystemUI(this);
         setContentView(R.layout.controls_editor_activity);
 

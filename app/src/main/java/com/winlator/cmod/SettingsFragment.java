@@ -134,16 +134,6 @@ public class SettingsFragment extends Fragment {
         cbDarkMode = view.findViewById(R.id.CBDarkMode);
         cbDarkMode.setChecked(preferences.getBoolean("dark_mode", false));
 
-        cbDarkMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            // Save dark mode preference
-            SharedPreferences.Editor editor = preferences.edit();
-            editor.putBoolean("dark_mode", isChecked);
-            editor.apply();
-
-            // Update the UI or activity theme if necessary
-            updateTheme(isChecked);
-        });
-
         // Initialize Big Picture Mode Checkbox
 //        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
 //        cbEnableBigPictureMode.setChecked(preferences.getBoolean("enable_big_picture_mode", false));
@@ -340,12 +330,8 @@ public class SettingsFragment extends Fragment {
 //            saveCustomApiKeySettings(editor);
 
             if (editor.commit()) {
-                NavigationView navigationView = getActivity().findViewById(R.id.NavigationView);
-                navigationView.setCheckedItem(R.id.main_menu_containers);
-                FragmentManager fragmentManager = getParentFragmentManager();
-                fragmentManager.beginTransaction()
-                        .replace(R.id.FLFragmentContainer, new ContainersFragment())
-                        .commit();
+                // Apply dark mode theme after all settings are saved
+                updateTheme(cbDarkMode.isChecked());
             }
         });
 

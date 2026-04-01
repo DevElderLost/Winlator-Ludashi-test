@@ -322,4 +322,9 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
             animator.start();
         }
     }
+    
+    protected void attachBaseContext(Context context) {
+        super.attachBaseContext(LocaleHelper.setSystemLocale(context));
+    }
+
 }

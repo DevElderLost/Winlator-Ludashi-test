@@ -35,6 +35,7 @@ import com.winlator.cmod.core.FileUtils;
 import com.winlator.cmod.core.UnitUtils;
 import com.winlator.cmod.widget.InputControlsView;
 import com.winlator.cmod.widget.NumberPicker;
+import com.winlator.cmod.core.LocaleHelper;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -762,4 +763,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         super.onBackPressed();
         overridePendingTransition(R.anim.slide_in_down, R.anim.slide_out_up);
     }
+    
+    protected void attachBaseContext(Context context) {
+        super.attachBaseContext(LocaleHelper.setSystemLocale(context));
+    }
+    
 }

@@ -262,7 +262,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        GLES20.glDisable(GLES20.GL_BLEND);
+
+        // Enable blend for all window rendering — some windows carry alpha data,
+        // disabling blend for the main window causes a white screen on those surfaces.
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
 
         applySceneTransform();
 
@@ -271,28 +275,24 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        // Large windows are rendered normally (forceFullscreen=false) — original behavior.
-        // Only small windows with the forceFullscreen flag that have grown to >= threshold
-        // will be scaled to the GPU surface by renderDrawable.
+        // Pass forceFullscreen=true so large windows also go through GPU scaling
+        // in renderDrawable (isActuallyLarge will be true for direct candidates).
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, directCandidate.forceFullscreen);
+                windowMaterial, true);
 
         // Render overlay windows (dialogs, popups, new windows) on top of the direct candidate
-        GLES20.glEnable(GLES20.GL_BLEND);
-        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
             for (RenderableWindow rw : renderableWindows) {
                 if (rw == directCandidate) continue;
                 renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
             }
         }
-        GLES20.glDisable(GLES20.GL_BLEND);
 
         if (cursorVisible) {
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             renderCursor();
         }
+
+        GLES20.glDisable(GLES20.GL_BLEND);
 
         if (!magnifierEnabled && !fullscreen) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
@@ -444,20 +444,27 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (drawable == null) return;
         synchronized (drawable.renderLock) {
             Texture texture = drawable.getTexture();
+
+            // Guard: if drawable has no pixel data yet, skip this frame to avoid
+            // uploading garbage to the GPU which causes a white screen flash.
+            if (drawable.width <= 0 || drawable.height <= 0) return;
+
             texture.updateFromDrawable(drawable);
 
-            // GPU scaling is applied ONLY to windows that:
-            //   1. Have the forceFullscreen flag set, AND
-            //   2. Have physically grown to >= DIRECT_MODE_COVERAGE_THRESHOLD.
-            // Large windows (>= threshold) without the forceFullscreen flag are
-            // always rendered normally at their actual position/size (original behavior).
+            // Guard: reject invalid texture IDs (texture upload may have failed).
+            if (!GLES20.glIsTexture(texture.getTextureId())) return;
+
+            // GPU scaling is applied to windows that:
+            //   - Have the forceFullscreen flag set AND have grown to >= threshold (small window), OR
+            //   - Are already large (>= DIRECT_MODE_COVERAGE_THRESHOLD) regardless of the flag.
             int screenW = xServer.screenInfo.width;
             int screenH = xServer.screenInfo.height;
             boolean isActuallyLarge = drawable.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
                                    && drawable.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
 
-            if (forceFullscreen && isActuallyLarge) {
-                // Window has grown large enough — scale to GPU surface
+            if (forceFullscreen || isActuallyLarge) {
+                // Scale and center to GPU surface — applies to both large windows
+                // and small forceFullscreen windows that have grown to threshold.
                 short newHeight = (short)Math.min(xServer.screenInfo.height, ((float)xServer.screenInfo.width / drawable.width) * drawable.height);
                 short newWidth = (short)(((float)newHeight / drawable.height) * drawable.width);
                 float offsetX = (xServer.screenInfo.width - newWidth) * 0.5f;
@@ -472,8 +479,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 isForceFullscreenActive = true;
             }
             else {
-                // Large windows without forceFullscreen flag, or small windows not
-                // yet at threshold — render at actual position/size (original behavior).
+                // Window is small and has no forceFullscreen flag — render at
+                // its actual position/size without GPU scaling.
                 XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
                 isForceFullscreenActive = false;
             }

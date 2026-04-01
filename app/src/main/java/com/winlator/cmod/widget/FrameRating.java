@@ -4,7 +4,10 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -171,8 +174,8 @@ public class FrameRating extends LinearLayout implements Runnable {
         if (tvRenderer != null) tvRenderer.setText(rendererName);
         if (tvFpsBig   != null) tvFpsBig.setText("0");
 
-        // Frametime graph
-        graphView = new FrametimeGraphView(this, context);
+        // Frametime graph — inner class, accesses C_FPS_OK directly
+        graphView = new FrametimeGraphView(context);
         if (graphContainer != null) graphContainer.addView(graphView);
 
         setupDragListener();
@@ -669,5 +672,87 @@ public class FrameRating extends LinearLayout implements Runnable {
 
     public void setHudAlpha(float alpha) {
         setAlpha(alpha);
+    }
+
+    // =========================================================================
+    // Inner class — FrametimeGraphView
+    // =========================================================================
+
+    /**
+     * A lightweight graph view that renders frame-time history as a line chart.
+     *
+     * <p>The X-axis represents the last {@value #MAX_SAMPLES} frames in
+     * chronological order; the Y-axis represents frame time in milliseconds,
+     * capped at {@value #MAX_MS} ms (~25 FPS ceiling). Frame times above
+     * {@value #CAP_MS} ms (~15 FPS) are clamped before being stored so that
+     * extreme spikes don't distort the graph scale.</p>
+     */
+    private class FrametimeGraphView extends View {
+
+        private static final int   MAX_SAMPLES  = 60;
+        private static final float MAX_MS       = 40.0f;  // graph Y ceiling (~25 FPS)
+        private static final float CAP_MS       = 66.6f;  // hard cap on stored values (~15 FPS)
+        private static final float STROKE_WIDTH = 1.5f;
+
+        // Ring-buffer that holds the last MAX_SAMPLES frame times (ms)
+        private final float[] history      = new float[MAX_SAMPLES];
+        private int           historyIndex = 0;  // next write position
+        private int           historySize  = 0;  // number of valid samples (0..MAX_SAMPLES)
+
+        private final Paint paintLine = new Paint();
+        private final Path  path      = new Path();
+
+        FrametimeGraphView(Context context) {
+            super(context);
+            // C_FPS_OK is accessed directly from the outer FrameRating instance
+            paintLine.setColor(C_FPS_OK);
+            paintLine.setStrokeWidth(STROKE_WIDTH);
+            paintLine.setStyle(Paint.Style.STROKE);
+            paintLine.setAntiAlias(true);
+            setBackgroundColor(0); // transparent
+        }
+
+        /**
+         * Records a new frame-time sample.
+         * Values above {@value #CAP_MS} ms are clamped so spikes don't distort the scale.
+         *
+         * @param ms frame time in milliseconds
+         */
+        public void addFrame(float ms) {
+            history[historyIndex] = Math.min(ms, CAP_MS);
+            historyIndex = (historyIndex + 1) % MAX_SAMPLES;
+            if (historySize < MAX_SAMPLES) historySize++;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (historySize < 2) return;
+
+            float viewHeight = getHeight();
+            float xStep      = (float) getWidth() / (MAX_SAMPLES - 1);
+
+            // Oldest sample index in the ring buffer
+            int start = ((historyIndex - historySize) + MAX_SAMPLES) % MAX_SAMPLES;
+
+            path.reset();
+            path.moveTo(0.0f, yForMs(history[start], viewHeight));
+
+            for (int i = 1; i < historySize; i++) {
+                float x  = i * xStep;
+                float ms = history[(start + i) % MAX_SAMPLES];
+                path.lineTo(x, yForMs(ms, viewHeight));
+            }
+
+            canvas.drawPath(path, paintLine);
+        }
+
+        /**
+         * Converts a frame-time value to a Y coordinate.
+         * Higher ms → closer to the top (lower Y value).
+         */
+        private float yForMs(float ms, float viewHeight) {
+            return Math.max(0.0f, viewHeight - (ms / MAX_MS) * viewHeight);
+        }
     }
 }

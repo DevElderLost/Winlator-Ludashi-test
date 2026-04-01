@@ -164,11 +164,11 @@ public class FrameRating extends LinearLayout implements Runnable {
         tvHardwareStats = view.findViewById(R.id.TVHardwareStats);
         tvWattsTemp     = view.findViewById(R.id.TVWattsTemp);
         tvFpsBig        = view.findViewById(R.id.TVFpsBig);
-        graphContainer  = view.findViewById(R.id.graphContainer);
-        sep0 = view.findViewById(R.id.sep0);
-        sep1 = view.findViewById(R.id.sep1);
-        sep2 = view.findViewById(R.id.sep2);
-        sep3 = view.findViewById(R.id.sep3);
+        graphContainer  = view.findViewById(R.id.FLGraphContainer);
+        sep0 = view.findViewById(R.id.Sep0);
+        sep1 = view.findViewById(R.id.Sep1);
+        sep2 = view.findViewById(R.id.Sep2);
+        sep3 = view.findViewById(R.id.Sep3);
 
         // Initial text
         if (tvRenderer != null) tvRenderer.setText(rendererName);

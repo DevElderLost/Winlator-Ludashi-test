@@ -307,5 +307,15 @@ import java.nio.file.Files;
         
             return exe;
         }
+        
+    public void setNativeRendering(boolean z) {
+        putExtra("nativeRendering", z ? "1" : "0");
+        saveData();
+    }
+        
+    public boolean getNativeRendering() {
+        return getExtra("nativeRendering", "0").equals("1");
+    }
+        
 
     }

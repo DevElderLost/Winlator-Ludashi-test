@@ -78,6 +78,7 @@ import com.winlator.cmod.core.WineRequestHandler;
 import com.winlator.cmod.core.WineStartMenuCreator;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.core.WineUtils;
+import com.winlator.cmod.core.LocaleHelper;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
@@ -1971,6 +1972,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     public void setScreenEffectProfile(String screenEffectProfile) {
         this.screenEffectProfile = screenEffectProfile;
+    }
+
+    protected void attachBaseContext(Context context) {
+        super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
 
 }

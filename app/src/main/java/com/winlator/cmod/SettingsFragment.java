@@ -20,6 +20,7 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -48,6 +49,7 @@ import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.ArrayUtils;
 import com.winlator.cmod.core.Callback;
+import com.winlator.cmod.core.LocaleHelper;
 import com.winlator.cmod.core.FileUtils;
 import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.core.TarCompressorUtils;
@@ -94,6 +96,7 @@ public class SettingsFragment extends Fragment {
 
     private CheckBox cbDarkMode;
     boolean isDarkMode;
+    private Spinner sLocale;
 
     private static final int REQUEST_CODE_WINLATOR_PATH = 1002;
     private static final int REQUEST_CODE_SHORTCUT_EXPORT_PATH = 1003;
@@ -133,6 +136,10 @@ public class SettingsFragment extends Fragment {
         // Initialize the Dark Mode checkbox
         cbDarkMode = view.findViewById(R.id.CBDarkMode);
         cbDarkMode.setChecked(preferences.getBoolean("dark_mode", false));
+
+        // Initialize the Locale spinner
+        sLocale = view.findViewById(R.id.SLocale);
+        loadLocaleSpinner(context);
 
         // Initialize Big Picture Mode Checkbox
 //        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
@@ -303,6 +310,7 @@ public class SettingsFragment extends Fragment {
 
             // Save Dark Mode setting
             editor.putBoolean("dark_mode", cbDarkMode.isChecked());
+            editor.putInt("lc_index", sLocale.getSelectedItemPosition());
             editor.putString("box64_preset", Box64PresetManager.getSpinnerSelectedId(sBox64Preset));
             editor.putString("fexcore_preset", FEXCorePresetManager.getSpinnerSelectedId(sFEXCorePreset));
             editor.putBoolean("use_dri3", cbUseDRI3.isChecked());
@@ -352,6 +360,16 @@ public class SettingsFragment extends Fragment {
     }
 
 
+    private void loadLocaleSpinner(Context context) {
+        String[] localeLabels = LocaleHelper.getSupportedLocaleLabels();
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_item, localeLabels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        sLocale.setAdapter(adapter);
+
+        int savedIndex = preferences.getInt("lc_index", LocaleHelper.getLocaleIndex(context));
+        sLocale.setSelection(savedIndex);
+    }
+
     private void applyDynamicStyles(View view, boolean isDarkMode) {
 
         Spinner sBox64Preset = view.findViewById(R.id.SBox64Preset);
@@ -359,6 +377,10 @@ public class SettingsFragment extends Fragment {
 
         Spinner sFEXCorePreset = view.findViewById(R.id.SFEXCorePreset);
         sFEXCorePreset.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+
+        if (sLocale != null) {
+            sLocale.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+        }
     }
 
     private void applyDynamicStylesRecursively(View view) {
@@ -373,6 +395,9 @@ public class SettingsFragment extends Fragment {
 
         TextView themeLabel = view.findViewById(R.id.TVTheme);
         applyFieldSetLabelStyle(themeLabel, isDarkMode);
+
+        TextView localeLabel = view.findViewById(R.id.TVLocale);
+        applyFieldSetLabelStyle(localeLabel, isDarkMode);
 
         TextView shortcutSettingsLabel = view.findViewById(R.id.TVShortcutSettings);
         applyFieldSetLabelStyle(shortcutSettingsLabel, isDarkMode);

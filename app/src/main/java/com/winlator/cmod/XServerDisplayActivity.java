@@ -1175,6 +1175,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         xServerView = new XServerView(this, xServer);
         final GLRenderer renderer = xServerView.getRenderer();
         renderer.setCursorVisible(false);
+		renderer.setNativeMode(getIntent().getBooleanExtra("native_rendering", false));
 
 		if (shortcut != null) {
             if (shortcut.getExtra("forceFullscreen", "0").equals("1")) renderer.setForceFullscreenWMClass(shortcut.wmClass);

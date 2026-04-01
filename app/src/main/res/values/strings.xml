@@ -640,5 +640,6 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="no_containers_available">Container Not Found</string>
     <string name="binding_additional">Binding Combo</string>
     <string name="force_fullscreen">Force FullScreen</string>
+    <string name="import_icons">Import Icons</string>
     <string name="language">Language</string>
 </resources>

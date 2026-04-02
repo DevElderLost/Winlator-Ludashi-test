@@ -155,7 +155,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         // Update the viewport if necessary
         if (viewportNeedsUpdate && magnifierEnabled) {
-            if (fullscreen) {
+            if (hasForceFullscreenWindow()) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             }
             else {
@@ -175,8 +175,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         // Render cursor if enabled
         if (cursorVisible && !rootWindowDownsized) renderCursor();
 
-        // Disable scissor test if magnifier is disabled and not in fullscreen mode
-        if (!magnifierEnabled && !fullscreen) {
+        // Disable scissor test if magnifier is disabled and no forceFullscreen window is active
+        if (!magnifierEnabled && !hasForceFullscreenWindow()) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
 
@@ -248,7 +248,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (frameRating != null) frameRating.setIsNative(true);
 
         if (viewportNeedsUpdate) {
-            if (fullscreen) {
+            if (hasForceFullscreenWindow()) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             } else {
                 GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
@@ -265,14 +265,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        // Render background utama tanpa blend dan tanpa forceFullscreen —
-        // directCandidate sudah dipilih karena >= 95% layar, tidak perlu transform ulang.
+        // Render directCandidate tanpa blend sebagai background utama.
         GLES20.glDisable(GLES20.GL_BLEND);
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, false);
+                windowMaterial, directCandidate.forceFullscreen);
 
-        // Render window kecil overlay di atas background.
-        // Blend diaktifkan hanya jika ada overlay, hemat state change GPU.
+        // Render semua window overlay dengan blend, menggunakan flag forceFullscreen per-window.
         boolean blendEnabled = false;
         for (RenderableWindow rw : renderableWindows) {
             if (rw == directCandidate) continue;
@@ -293,7 +291,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             renderCursor();
         }
 
-        if (!magnifierEnabled && !fullscreen) {
+        if (!magnifierEnabled && !hasForceFullscreenWindow()) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
 
@@ -308,7 +306,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (frameRating != null) frameRating.setIsNative(false);
 
         if (viewportNeedsUpdate && magnifierEnabled) {
-            if (fullscreen) {
+            if (hasForceFullscreenWindow()) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             } else {
                 GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
@@ -334,7 +332,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         if (cursorVisible && !rootWindowDownsized) renderCursor();
 
-        if (!magnifierEnabled && !fullscreen) {
+        if (!magnifierEnabled && !hasForceFullscreenWindow()) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
 
@@ -366,7 +364,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             }
 
             XForm.makeTransform(tmpXForm2, -pointerX, -pointerY, zoom, zoom, 0);
-        } else if (fullscreen) {
+        } else if (hasForceFullscreenWindow()) {
             XForm.identity(tmpXForm2);
         } else {
             int pointerY = 0;
@@ -468,9 +466,9 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
             rootWindowDownsized = false;
 
-            // Deteksi apakah root window lebih kecil dari layar saat fullscreen aktif
+            // Deteksi apakah root window lebih kecil dari layar saat forceFullscreen aktif
             boolean hasUndersizedRoot = false;
-            if (fullscreen && !renderableWindows.isEmpty()) {
+            if (hasForceFullscreenWindow() && !renderableWindows.isEmpty()) {
                 RenderableWindow root = renderableWindows.get(0);
                 if ((root.content.width < xServer.screenInfo.width) || (root.content.height < xServer.screenInfo.height)) {
                     rootWindowDownsized = true;
@@ -626,6 +624,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 break;
             }
         }
+    }
+
+    /**
+     * Returns true if any renderable window has forceFullscreen flag set.
+     * Used as the trigger condition for Native Rendering mode.
+     */
+    private boolean hasForceFullscreenWindow() {
+        for (RenderableWindow rw : renderableWindows) {
+            if (rw.forceFullscreen) return true;
+        }
+        return false;
     }
 
     private void updateWindowPosition(Window window) {

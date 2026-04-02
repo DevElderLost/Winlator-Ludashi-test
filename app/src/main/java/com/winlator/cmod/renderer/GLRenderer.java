@@ -250,15 +250,18 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         // Native Rendering hanya menggunakan forceFullscreen — fullscreen diabaikan di path ini
         boolean isForceFullscreen = directCandidate.forceFullscreen;
 
-        if (viewportNeedsUpdate) {
-            if (isForceFullscreen) {
-                GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
-            } else {
-                GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
-                        viewTransformation.viewWidth, viewTransformation.viewHeight);
-            }
-            viewportNeedsUpdate = false;
-        }
+        // === UBAHAN DISINI ===
+    // JANGAN paksa full viewport meski forceFullscreen aktif
+    if (viewportNeedsUpdate) {
+        // Selalu gunakan viewport normal (viewTransformation)
+        // agar Native + ForceFullscreen berperilaku sama dengan Non-Native
+        GLES20.glViewport(viewTransformation.viewOffsetX, 
+                          viewTransformation.viewOffsetY,
+                          viewTransformation.viewWidth, 
+                          viewTransformation.viewHeight);
+        viewportNeedsUpdate = false;
+    }
+    // ====================
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         applySceneTransform();
@@ -311,21 +314,16 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private void drawFrameCompositedLocked() {
         if (frameRating != null) frameRating.setIsNative(false);
 
-        if (viewportNeedsUpdate && magnifierEnabled) {
-            // Native Rendering hanya menggunakan forceFullscreen — fullscreen diabaikan di path ini
-            boolean hasForceFullscreen = false;
-            for (RenderableWindow rw : renderableWindows) {
-                if (rw.forceFullscreen) { hasForceFullscreen = true; break; }
-            }
-
-            if (hasForceFullscreen) {
-                GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
-            } else {
-                GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
-                        viewTransformation.viewWidth, viewTransformation.viewHeight);
-            }
-            viewportNeedsUpdate = false;
-        }
+        if (viewportNeedsUpdate) {
+        // === UBAHAN DISINI ===
+        // Selalu gunakan viewport normal, abaikan forceFullscreen
+        GLES20.glViewport(viewTransformation.viewOffsetX, 
+                          viewTransformation.viewOffsetY,
+                          viewTransformation.viewWidth, 
+                          viewTransformation.viewHeight);
+        viewportNeedsUpdate = false;
+    }
+    // ====================
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glEnable(GLES20.GL_BLEND);
@@ -492,41 +490,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             }
 
             if (forceFullscreen) {
-                // Mode XR immersive: render background fullscreen dengan preserve aspect ratio
-                // (logika screen info yang sama seperti renderDrawable(forceFullscreen=true)
-                // agar tidak ada stretching / distorsi rasio)
+                // Mode XR immersive: render semua window — background fullscreen,
+                // window kecil (dialog, popup) tetap dirender di atas dengan posisi aslinya.
                 if (!renderableWindows.isEmpty()) {
+                    // Render background (window terbesar / terakhir) sebagai fullscreen
                     RenderableWindow bg = renderableWindows.get(renderableWindows.size() - 1);
-                    Drawable drawable = bg.content;
-                    if (drawable != null) {
-                        synchronized (drawable.renderLock) {
-                            Texture texture = drawable.getTexture();
-                            texture.updateFromDrawable(drawable);
-
-                            // === Logika screen info (preserve aspect ratio + center) ===
-                            short newHeight = (short) Math.min(xServer.screenInfo.height,
-                                    ((float) xServer.screenInfo.width / drawable.width) * drawable.height);
-                            short newWidth = (short) (((float) newHeight / drawable.height) * drawable.width);
-
-                            XForm.set(tmpXForm1,
-                                    (xServer.screenInfo.width - newWidth) * 0.5f,
-                                    (xServer.screenInfo.height - newHeight) * 0.5f,
-                                    newWidth, newHeight);
-
-                            XForm.multiply(tmpXForm1, tmpXForm1, tmpXForm2);
-
-                            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-                            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture.getTextureId());
-                            GLES20.glUniform1i(windowMaterial.getUniformLocation("texture"), 0);
-                            GLES20.glUniform1fv(windowMaterial.getUniformLocation("xform"), tmpXForm1.length, tmpXForm1, 0);
-                            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
-                            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-                        }
-                    }
+                    renderDrawable(bg.content, bg.rootX, bg.rootY, windowMaterial, true);
                 }
-
-                // Render semua window kecil (dialog, popup, dll) di atas background
-                // dengan posisi dan ukuran aslinya
+                // Render semua window kecil di atasnya (kecuali background)
                 for (int i = 0; i < renderableWindows.size() - 1; i++) {
                     RenderableWindow rw = renderableWindows.get(i);
                     renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);

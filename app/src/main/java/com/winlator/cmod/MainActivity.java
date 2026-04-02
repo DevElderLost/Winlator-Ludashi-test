@@ -144,11 +144,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             navigationView.setCheckedItem(menuItemId);
 
             if (!requestAppPermissions()) {
-                ImageFsInstaller.installIfNeeded(this, () -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-                        showAllFilesAccessDialog();
-                    }
-                });
+                ImageFsInstaller.installIfNeeded(this);   // tetap pakai versi lama (1 parameter)
             } else {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
                     showAllFilesAccessDialog();
@@ -163,7 +159,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
     }
 
-    private void showAllFilesAccessDialog() {
+    public void showAllFilesAccessDialog() {
         ContentDialog dialog = new ContentDialog(this);
         dialog.setTitle(R.string.all_files_access_dialog_title);
         dialog.setMessage(R.string.all_files_access_dialog_message);

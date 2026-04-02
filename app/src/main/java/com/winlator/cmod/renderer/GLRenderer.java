@@ -198,47 +198,53 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
      * bypassing full compositing when possible.
      */
     private void drawFrameOptimized() {
-        RenderableWindow directCandidate = findDirectRenderCandidate();
-        boolean isDirectMode = (directCandidate != null);
+        // Satu XLock tunggal melindungi seluruh proses:
+        // pemilihan kandidat + render loop, mencegah race condition
+        // di mana renderableWindows bisa berubah dari thread lain
+        // (onMapWindow, onUpdateWindowGeometry via queueEvent)
+        // di antara pemilihan kandidat dan eksekusi render.
+        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+            RenderableWindow directCandidate = findDirectRenderCandidateLocked();
+            boolean isDirectMode = (directCandidate != null);
 
-        if (isDirectMode != wasDirectMode) {
-            viewportNeedsUpdate = true;
-            wasDirectMode = isDirectMode;
-        }
+            if (isDirectMode != wasDirectMode) {
+                viewportNeedsUpdate = true;
+                wasDirectMode = isDirectMode;
+            }
 
-        if (isDirectMode) {
-            drawFrameDirect(directCandidate);
-        } else {
-            drawFrameComposited();
+            if (isDirectMode) {
+                drawFrameDirectLocked(directCandidate);
+            } else {
+                drawFrameCompositedLocked();
+            }
         }
     }
 
     /**
-     * Finds the topmost window covering >= 95% of the screen for direct rendering.
-     * Returns null if no candidate exists.
+     * Finds the topmost window covering >= 95% of the screen.
+     * MUST be called inside XLock DRAWABLE_MANAGER.
      */
-    private RenderableWindow findDirectRenderCandidate() {
+    private RenderableWindow findDirectRenderCandidateLocked() {
         int screenW = xServer.screenInfo.width;
         int screenH = xServer.screenInfo.height;
 
-        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            for (int i = renderableWindows.size() - 1; i >= 0; i--) {
-                RenderableWindow rw = renderableWindows.get(i);
-                if (rw.content != null
-                        && rw.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
-                        && rw.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD) {
-                    return rw;
-                }
+        for (int i = renderableWindows.size() - 1; i >= 0; i--) {
+            RenderableWindow rw = renderableWindows.get(i);
+            if (rw.content != null
+                    && rw.content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
+                    && rw.content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD) {
+                return rw;
             }
         }
         return null;
     }
 
     /**
-     * Direct rendering path: draws a single full-screen candidate without compositing.
-     * Blending is disabled for maximum throughput.
+     * Direct rendering path: background besar tanpa blend (performa maksimal),
+     * window kecil overlay dengan blend.
+     * MUST be called inside XLock DRAWABLE_MANAGER.
      */
-    private void drawFrameDirect(RenderableWindow directCandidate) {
+    private void drawFrameDirectLocked(RenderableWindow directCandidate) {
         if (frameRating != null) frameRating.setIsNative(true);
 
         if (viewportNeedsUpdate) {
@@ -252,8 +258,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        GLES20.glDisable(GLES20.GL_BLEND);
-
         applySceneTransform();
 
         windowMaterial.use();
@@ -261,12 +265,31 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
+        // Render background utama tanpa blend dan tanpa forceFullscreen —
+        // directCandidate sudah dipilih karena >= 95% layar, tidak perlu transform ulang.
+        GLES20.glDisable(GLES20.GL_BLEND);
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, directCandidate.forceFullscreen);
+                windowMaterial, false);
 
+        // Render window kecil overlay di atas background.
+        // Blend diaktifkan hanya jika ada overlay, hemat state change GPU.
+        boolean blendEnabled = false;
+        for (RenderableWindow rw : renderableWindows) {
+            if (rw == directCandidate) continue;
+            if (!blendEnabled) {
+                GLES20.glEnable(GLES20.GL_BLEND);
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+                blendEnabled = true;
+            }
+            renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+        }
+
+        // Cursor selalu di lapisan paling atas
         if (cursorVisible) {
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+            if (!blendEnabled) {
+                GLES20.glEnable(GLES20.GL_BLEND);
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+            }
             renderCursor();
         }
 
@@ -278,10 +301,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     }
 
     /**
-     * Composited rendering path for CPU saver mode when no direct candidate is found.
-     * Renders all windows layered with blending enabled.
+     * Composited rendering path untuk CPU saver mode ketika tidak ada direct candidate.
+     * MUST be called inside XLock DRAWABLE_MANAGER.
      */
-    private void drawFrameComposited() {
+    private void drawFrameCompositedLocked() {
         if (frameRating != null) frameRating.setIsNative(false);
 
         if (viewportNeedsUpdate && magnifierEnabled) {
@@ -305,10 +328,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            for (RenderableWindow rw : renderableWindows) {
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-            }
+        for (RenderableWindow rw : renderableWindows) {
+            renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
         }
 
         if (cursorVisible && !rootWindowDownsized) renderCursor();
@@ -319,6 +340,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         quadVertices.disable();
     }
+
 
     /**
      * Shared helper: computes and applies tmpXForm2 based on magnifier / scroll / fullscreen state.
@@ -556,20 +578,25 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     short height = window.getHeight();
                     boolean forceFullscreen = false;
 
-                    // Terapkan forceFullscreen untuk semua ukuran window yang valid (kecil maupun besar),
-                    // selama memenuhi ukuran minimum dan cocok dengan WMClass yang ditentukan.
-                    if (width >= 320 && height >= 200) {
+                    // forceFullscreen hanya berlaku untuk window besar yang mendekati ukuran layar
+                    // (minimal 75% dari lebar DAN tinggi layar). Window kecil seperti dialog,
+                    // popup, tooltip tetap dirender normal dengan posisi dan ukuran aslinya.
+                    float screenW = xServer.screenInfo.width;
+                    float screenH = xServer.screenInfo.height;
+                    boolean isLargeWindow = (width >= screenW * 0.75f) && (height >= screenH * 0.75f);
+
+                    if (isLargeWindow) {
                         Window parent = window.getParent();
                         boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
                         boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
 
                         if (hasWMClass) {
-                            // Window memiliki WMClass yang cocok: paksa fullscreen jika
+                            // Window besar dengan WMClass cocok: paksa fullscreen jika
                             // parent tidak memiliki WMClass yang sama dan tidak memiliki child.
                             forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
                         } else {
-                            // Window tidak memiliki WMClass, tapi parent mungkin merupakan
-                            // frame dekorasi tipis — paksa fullscreen pada child tunggal.
+                            // Window besar tanpa WMClass — cek apakah parent adalah
+                            // frame dekorasi tipis, lalu paksa fullscreen.
                             short borderX = (short)(parent.getWidth() - width);
                             short borderY = (short)(parent.getHeight() - height);
                             if (parent.getChildCount() == 1 && borderX > 0 && borderY > 0 && borderX <= 12) {
@@ -578,6 +605,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                             }
                         }
                     }
+                    // Window kecil: forceFullscreen tetap false,
+                    // dirender dengan posisi dan ukuran aslinya di atas window utama.
 
                     renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));
                 }

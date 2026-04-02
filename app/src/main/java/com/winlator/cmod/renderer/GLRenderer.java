@@ -164,7 +164,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         // Update the viewport if necessary
-        if (viewportNeedsUpdate && magnifierEnabled) {
+        if (viewportNeedsUpdate) {
             if (fullscreen) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             }
@@ -308,7 +308,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private void drawFrameComposited() {
         if (frameRating != null) frameRating.setIsNative(false);
 
-        if (viewportNeedsUpdate && magnifierEnabled) {
+        if (viewportNeedsUpdate) {
             if (fullscreen) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             } else {

@@ -1,7 +1,6 @@
 package com.winlator.cmod;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
@@ -145,11 +144,15 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             navigationView.setCheckedItem(menuItemId);
 
             if (!requestAppPermissions()) {
-                ImageFsInstaller.installIfNeeded(this);
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-                showAllFilesAccessDialog();
+                ImageFsInstaller.installIfNeeded(this, () -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                        showAllFilesAccessDialog();
+                    }
+                });
+            } else {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                    showAllFilesAccessDialog();
+                }
             }
 
             if (Build.VERSION.SDK_INT >= 33) {
@@ -161,16 +164,23 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void showAllFilesAccessDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("All Files Access Required")
-                .setMessage("In order to grant access to additional storage devices such as USB storage device, the All Files Access permission must be granted. Press Okay to grant All Files Access in your Android Settings.")
-                .setPositiveButton("Okay", (dialog, which) -> {
-                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                    intent.setData(Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        ContentDialog dialog = new ContentDialog(this);
+        dialog.setTitle(R.string.all_files_access_dialog_title);
+        dialog.setMessage(R.string.all_files_access_dialog_message);
+
+        if (isDarkMode) {
+            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+        } else {
+            dialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+        }
+
+        dialog.setOnConfirmCallback(() -> {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        });
+
+        dialog.show();
     }
 
     @Override

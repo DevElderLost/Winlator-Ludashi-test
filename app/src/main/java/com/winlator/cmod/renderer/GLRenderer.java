@@ -63,16 +63,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean wasDirectMode = false;
     private FrameRating frameRating;
 
-    // --- ForceFullscreen coordinate transform state ---
-    // Stores the visual offset and scale applied when a window is force-fullscreened,
-    // so that pointer/touch coordinates can be inverse-transformed to match the
-    // actual (smaller) window coordinate space.
-    private float forceFullscreenOffsetX = 0f;
-    private float forceFullscreenOffsetY = 0f;
-    private float forceFullscreenScaleX = 1f;
-    private float forceFullscreenScaleY = 1f;
-    private boolean isForceFullscreenActive = false;
-
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
         this.xServer = xServer;
@@ -164,7 +154,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         // Update the viewport if necessary
-        if (viewportNeedsUpdate) {
+        if (viewportNeedsUpdate && magnifierEnabled) {
             if (fullscreen) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             }
@@ -262,11 +252,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-
-        // Enable blend for all window rendering — some windows carry alpha data,
-        // disabling blend for the main window causes a white screen on those surfaces.
-        GLES20.glEnable(GLES20.GL_BLEND);
-        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+        GLES20.glDisable(GLES20.GL_BLEND);
 
         applySceneTransform();
 
@@ -275,24 +261,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        // Pass forceFullscreen=true so large windows also go through GPU scaling
-        // in renderDrawable (isActuallyLarge will be true for direct candidates).
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, true);
-
-        // Render overlay windows (dialogs, popups, new windows) on top of the direct candidate
-        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            for (RenderableWindow rw : renderableWindows) {
-                if (rw == directCandidate) continue;
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-            }
-        }
+                windowMaterial, directCandidate.forceFullscreen);
 
         if (cursorVisible) {
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             renderCursor();
         }
-
-        GLES20.glDisable(GLES20.GL_BLEND);
 
         if (!magnifierEnabled && !fullscreen) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
@@ -308,7 +284,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private void drawFrameComposited() {
         if (frameRating != null) frameRating.setIsNative(false);
 
-        if (viewportNeedsUpdate) {
+        if (viewportNeedsUpdate && magnifierEnabled) {
             if (fullscreen) {
                 GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
             } else {
@@ -331,8 +307,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
             for (RenderableWindow rw : renderableWindows) {
-                // renderDrawable only applies GPU scaling when the window has
-                // actually grown to cover >= DIRECT_MODE_COVERAGE_THRESHOLD.
                 renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
             }
         }
@@ -444,46 +418,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (drawable == null) return;
         synchronized (drawable.renderLock) {
             Texture texture = drawable.getTexture();
-
-            // Guard: if drawable has no pixel data yet, skip this frame to avoid
-            // uploading garbage to the GPU which causes a white screen flash.
-            if (drawable.width <= 0 || drawable.height <= 0) return;
-
             texture.updateFromDrawable(drawable);
 
-            // Guard: reject invalid texture IDs (texture upload may have failed).
-            if (!GLES20.glIsTexture(texture.getTextureId())) return;
-
-            // GPU scaling is applied to windows that:
-            //   - Have the forceFullscreen flag set AND have grown to >= threshold (small window), OR
-            //   - Are already large (>= DIRECT_MODE_COVERAGE_THRESHOLD) regardless of the flag.
-            int screenW = xServer.screenInfo.width;
-            int screenH = xServer.screenInfo.height;
-            boolean isActuallyLarge = drawable.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD
-                                   && drawable.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD;
-
-            if (forceFullscreen || isActuallyLarge) {
-                // Scale and center to GPU surface — applies to both large windows
-                // and small forceFullscreen windows that have grown to threshold.
+            if (forceFullscreen) {
                 short newHeight = (short)Math.min(xServer.screenInfo.height, ((float)xServer.screenInfo.width / drawable.width) * drawable.height);
                 short newWidth = (short)(((float)newHeight / drawable.height) * drawable.width);
-                float offsetX = (xServer.screenInfo.width - newWidth) * 0.5f;
-                float offsetY = (xServer.screenInfo.height - newHeight) * 0.5f;
-                XForm.set(tmpXForm1, offsetX, offsetY, newWidth, newHeight);
-
-                // Save transform so pointer coordinates can be inverse-mapped
-                forceFullscreenOffsetX = offsetX;
-                forceFullscreenOffsetY = offsetY;
-                forceFullscreenScaleX  = (float) newWidth  / drawable.width;
-                forceFullscreenScaleY  = (float) newHeight / drawable.height;
-                isForceFullscreenActive = true;
+                XForm.set(tmpXForm1, (xServer.screenInfo.width - newWidth) * 0.5f, (xServer.screenInfo.height - newHeight) * 0.5f, newWidth, newHeight);
             }
-            else {
-                // Window is small and has no forceFullscreen flag — render at
-                // its actual position/size without GPU scaling.
-                XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
-                isForceFullscreenActive = false;
-            }
+            else XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
 
             XForm.multiply(tmpXForm1, tmpXForm1, tmpXForm2);
 
@@ -501,30 +443,44 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         GLES20.glUniform2f(windowMaterial.getUniformLocation("viewSize"), xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
-        boolean singleWindow = forceFullscreen;
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
             rootWindowDownsized = false;
+
+            // Deteksi apakah root window lebih kecil dari layar saat fullscreen aktif
+            boolean hasUndersizedRoot = false;
             if (fullscreen && !renderableWindows.isEmpty()) {
                 RenderableWindow root = renderableWindows.get(0);
                 if ((root.content.width < xServer.screenInfo.width) || (root.content.height < xServer.screenInfo.height)) {
                     rootWindowDownsized = true;
-                    singleWindow = true;
+                    hasUndersizedRoot = true;
                 }
             }
 
-            if (singleWindow && !renderableWindows.isEmpty()) {
-                // Render the bottom-most (background) window as fullscreen
-                RenderableWindow root = renderableWindows.get(renderableWindows.size() - 1);
-                renderDrawable(root.content, root.rootX, root.rootY, windowMaterial, true);
-                // Render remaining windows (dialogs, popups, new windows) on top
+            if (forceFullscreen) {
+                // Mode XR immersive: render semua window — background fullscreen,
+                // window kecil (dialog, popup) tetap dirender di atas dengan posisi aslinya.
+                if (!renderableWindows.isEmpty()) {
+                    // Render background (window terbesar / terakhir) sebagai fullscreen
+                    RenderableWindow bg = renderableWindows.get(renderableWindows.size() - 1);
+                    renderDrawable(bg.content, bg.rootX, bg.rootY, windowMaterial, true);
+                }
+                // Render semua window kecil di atasnya (kecuali background)
                 for (int i = 0; i < renderableWindows.size() - 1; i++) {
-                    RenderableWindow window = renderableWindows.get(i);
-                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
+                    RenderableWindow rw = renderableWindows.get(i);
+                    renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+                }
+            } else if (hasUndersizedRoot) {
+                // Mode fullscreen dengan root window lebih kecil dari layar:
+                // Render semua window — root di-stretch fullscreen, window kecil overlay di atasnya.
+                RenderableWindow root = renderableWindows.get(0);
+                renderDrawable(root.content, root.rootX, root.rootY, windowMaterial, true);
+                for (int i = 1; i < renderableWindows.size(); i++) {
+                    RenderableWindow rw = renderableWindows.get(i);
+                    renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
                 }
             } else {
+                // Mode normal: render semua window sesuai posisi dan flag forceFullscreen masing-masing
                 for (RenderableWindow window : renderableWindows) {
-                    // renderDrawable only applies GPU scaling when the window has
-                    // actually grown to cover >= DIRECT_MODE_COVERAGE_THRESHOLD.
                     renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
                 }
             }
@@ -536,7 +492,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (error != GLES20.GL_NO_ERROR) {
             Log.e("GLRenderer", "OpenGL Error: " + error);
         }
-
     }
 
     private void renderCursor() {
@@ -599,16 +554,22 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 if (forceFullscreenWMClass != null) {
                     short width = window.getWidth();
                     short height = window.getHeight();
-                    boolean forceFullscreen= false;
+                    boolean forceFullscreen = false;
 
-                    if (width >= 320 && height >= 200 && width < xServer.screenInfo.width && height < xServer.screenInfo.height) {
+                    // Terapkan forceFullscreen untuk semua ukuran window yang valid (kecil maupun besar),
+                    // selama memenuhi ukuran minimum dan cocok dengan WMClass yang ditentukan.
+                    if (width >= 320 && height >= 200) {
                         Window parent = window.getParent();
                         boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
                         boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
+
                         if (hasWMClass) {
+                            // Window memiliki WMClass yang cocok: paksa fullscreen jika
+                            // parent tidak memiliki WMClass yang sama dan tidak memiliki child.
                             forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
-                        }
-                        else {
+                        } else {
+                            // Window tidak memiliki WMClass, tapi parent mungkin merupakan
+                            // frame dekorasi tipis — paksa fullscreen pada child tunggal.
                             short borderX = (short)(parent.getWidth() - width);
                             short borderY = (short)(parent.getHeight() - height);
                             if (parent.getChildCount() == 1 && borderX > 0 && borderY > 0 && borderX <= 12) {
@@ -747,36 +708,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public boolean isNativeMode() {
         return cpuSaverMode;
-    }
-
-    /**
-     * Remaps a screen-space pointer coordinate (from touch/mouse input) to
-     * the actual window coordinate space when forceFullscreen is active.
-     *
-     * When a window is rendered force-fullscreen it is visually scaled up and
-     * centered on screen. Without this remapping the X server receives raw screen
-     * coordinates that don't match the smaller logical window, causing the cursor
-     * hit area to be misaligned.
-     *
-     * Call this before forwarding pointer events to the X server:
-     *   float[] mapped = renderer.mapPointerCoords(rawX, rawY);
-     *   xServer.pointer.setPosition((short) mapped[0], (short) mapped[1]);
-     *
-     * @param screenX Raw screen X from touch/mouse input
-     * @param screenY Raw screen Y from touch/mouse input
-     * @return float[2] with the remapped {windowX, windowY}
-     */
-    public float[] mapPointerCoords(float screenX, float screenY) {
-        if (!isForceFullscreenActive || forceFullscreenScaleX == 0 || forceFullscreenScaleY == 0) {
-            return new float[]{screenX, screenY};
-        }
-        float windowX = (screenX - forceFullscreenOffsetX) / forceFullscreenScaleX;
-        float windowY = (screenY - forceFullscreenOffsetY) / forceFullscreenScaleY;
-        return new float[]{windowX, windowY};
-    }
-
-    public boolean isForceFullscreenActive() {
-        return isForceFullscreenActive;
     }
 
     public FrameRating getFrameRating() {

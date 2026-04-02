@@ -266,9 +266,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         quadVertices.bind(windowMaterial.programId);
 
         // Render directCandidate tanpa blend sebagai background utama.
+        // directCandidate sudah >= 95% layar, tidak perlu transform forceFullscreen.
         GLES20.glDisable(GLES20.GL_BLEND);
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
-                windowMaterial, directCandidate.forceFullscreen);
+                windowMaterial, false);
 
         // Render semua window overlay dengan blend, menggunakan flag forceFullscreen per-window.
         boolean blendEnabled = false;
@@ -490,7 +491,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
                 }
             } else if (hasUndersizedRoot) {
-                // Mode fullscreen dengan root window lebih kecil dari layar:
+                // Mode forceFullscreen aktif dengan root window lebih kecil dari layar:
                 // Render semua window — root di-stretch fullscreen, window kecil overlay di atasnya.
                 RenderableWindow root = renderableWindows.get(0);
                 renderDrawable(root.content, root.rootX, root.rootY, windowMaterial, true);

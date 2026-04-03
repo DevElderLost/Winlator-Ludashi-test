@@ -111,4 +111,6 @@
     <string name="no_containers_available">コンテナが見つかりません</string>
     <string name="force_fullscreen">全画面強制</string>
     <string name="use_xr">XRを使用する</string>
+    <string name="all_files_access_dialog_title">すべてのファイルへのアクセスが必要です</string>
+    <string name="all_files_access_dialog_message">USBストレージデバイスなどの追加のストレージデバイスへのアクセスを許可するには、「すべてのファイルへのアクセス」権限を付与する必要があります。OKを押して、Androidの設定で「すべてのファイルへのアクセス」を許可してください。</string>
 </resources>

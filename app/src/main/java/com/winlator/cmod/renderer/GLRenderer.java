@@ -560,7 +560,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         return Drawable.fromBitmap(bitmap);
     }
 
-    private void updateScene() {
+    public void updateScene() {
         try (XLock lock = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.DRAWABLE_MANAGER)) {
             renderableWindows.clear();
             collectRenderableWindows(xServer.windowManager.rootWindow, xServer.windowManager.rootWindow.getX(), xServer.windowManager.rootWindow.getY());

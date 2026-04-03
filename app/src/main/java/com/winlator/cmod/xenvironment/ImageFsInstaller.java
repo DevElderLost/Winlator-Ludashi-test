@@ -1,11 +1,10 @@
 package com.winlator.cmod.xenvironment;
 
 import android.content.Context;
-import android.os.Build;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
-
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -104,22 +103,22 @@ public abstract class ImageFsInstaller {
 
         // === BAGIAN INI: Panggil dialog permission setelah install selesai ===
         if (success) {
-            activity.runOnUiThread(() -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-                    // Panggil method showAllFilesAccessDialog() yang ada di MainActivity
-                    // Catatan: activity harus punya method ini
-                    if (activity instanceof MainActivity) {
-                        ((MainActivity) activity).showAllFilesAccessDialog();
-                    }
-                }
-            });
-        }
+           activity.runOnUiThread(() -> {
+        // Selalu cek setelah instalasi selesai
+        checkAndShowAllFilesAccessDialog(activity);
+        });
+    }
     });
 }
 
     public static void installIfNeeded(final MainActivity activity) {
-        ImageFs imageFs = ImageFs.find(activity);
-        if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) installFromAssets(activity);
+    ImageFs imageFs = ImageFs.find(activity);
+    if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) {
+        installFromAssets(activity);
+    } else {
+        // Sudah terinstall, tapi cek permission All Files
+        checkAndShowAllFilesAccessDialog(activity);
+    }
     }
 
     private static void clearOptDir(File optDir) {

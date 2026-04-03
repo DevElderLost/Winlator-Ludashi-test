@@ -63,20 +63,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean wasDirectMode = false;
     private FrameRating frameRating;
 
-    // --- Z-Order: track apakah X11 cursor sedang di atas window besar ---
-    // true  = cursor ada di window besar → window kecil dirender di BELAKANG window besar
-    // false = cursor ada di window kecil → window kecil dirender di DEPAN (normal)
-    private boolean largeWindowHasFocus = false;
-
-    // --- Glitch prevention: stable forceFullscreen state per window ---
-    // Menyimpan Drawable mana yang SUDAH PERNAH memenuhi syarat forceFullscreen.
-    // Selama resize/maximize berlangsung, X11 mengirim banyak event dengan ukuran
-    // transisi yang belum mencapai threshold → tanpa ini, window akan ber-glitch
-    // bolak-balik antara mode kecil dan fullscreen di setiap intermediate frame.
-    // State ini hanya di-clear ketika window di-unmap (ditutup/disembunyikan).
-    private final java.util.Set<Drawable> stableForceFullscreenSet =
-            new java.util.HashSet<>();
-
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
         this.xServer = xServer;
@@ -286,24 +272,23 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         quadVertices.bind(windowMaterial.programId);
 
         // Render background utama tanpa blend.
+        // Jika forceFullscreen terdeteksi pada directCandidate, aktifkan Native Rendering
+        // dengan logika fullscreen (stretch ke seluruh layar).
         GLES20.glDisable(GLES20.GL_BLEND);
         renderDrawable(directCandidate.content, directCandidate.rootX, directCandidate.rootY,
                 windowMaterial, isForceFullscreen);
 
-        // Z-ORDER FIX:
-        // largeWindowHasFocus = cursor X11 ada di window besar → window kecil TIDAK dirender di atas
-        // largeWindowHasFocus = false  → cursor di window kecil → window kecil dirender di atas (normal)
+        // Render window kecil overlay di atas background.
+        // Blend diaktifkan hanya jika ada overlay, hemat state change GPU.
         boolean blendEnabled = false;
-        if (!largeWindowHasFocus) {
-            for (RenderableWindow rw : renderableWindows) {
-                if (rw == directCandidate) continue;
-                if (!blendEnabled) {
-                    GLES20.glEnable(GLES20.GL_BLEND);
-                    GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-                    blendEnabled = true;
-                }
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
+        for (RenderableWindow rw : renderableWindows) {
+            if (rw == directCandidate) continue;
+            if (!blendEnabled) {
+                GLES20.glEnable(GLES20.GL_BLEND);
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+                blendEnabled = true;
             }
+            renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
         }
 
         // Cursor selalu di lapisan paling atas
@@ -420,23 +405,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     @Override
     public void onUnmapWindow(Window window) {
-        // Hapus stable state saat window ditutup/disembunyikan,
-        // sehingga jika dibuka lagi dimulai dari kondisi bersih.
-        Drawable content = window.getContent();
-        if (content != null) stableForceFullscreenSet.remove(content);
         xServerView.queueEvent(this::updateScene);
         xServerView.requestRender();
     }
 
     @Override
     public void onChangeWindowZOrder(Window window) {
-        // Z-order berubah = X11 memindahkan focus antar window akibat klik cursor.
-        // Cek apakah window yang naik ke atas adalah window besar atau kecil,
-        // lalu update largeWindowHasFocus agar urutan render menyesuaikan.
-        xServerView.queueEvent(() -> {
-            updateScene();
-            updateLargeWindowFocus();
-        });
+        xServerView.queueEvent(this::updateScene);
         xServerView.requestRender();
     }
 
@@ -537,36 +512,9 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
                 }
             } else {
-                // Mode normal: render semua window sesuai posisi dan flag forceFullscreen masing-masing.
-                //
-                // Z-ORDER FIX berdasarkan cursor X11 (pointWindow):
-                // - largeWindowHasFocus = true  → cursor di window besar →
-                //   render window kecil DULU (belakang), lalu window besar di atas (menutupinya)
-                // - largeWindowHasFocus = false → cursor di window kecil →
-                //   urutan normal: window besar dulu, window kecil di atas
-                if (largeWindowHasFocus) {
-                    // Pass 1: render semua window NON-besar dulu (mereka di belakang)
-                    for (RenderableWindow rw : renderableWindows) {
-                        if (rw.content != null
-                                && rw.content.width  >= xServer.screenInfo.width  * DIRECT_MODE_COVERAGE_THRESHOLD
-                                && rw.content.height >= xServer.screenInfo.height * DIRECT_MODE_COVERAGE_THRESHOLD) {
-                            continue; // skip window besar, render nanti
-                        }
-                        renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-                    }
-                    // Pass 2: render window besar DI ATAS — menutupi window kecil
-                    for (RenderableWindow rw : renderableWindows) {
-                        if (rw.content != null
-                                && rw.content.width  >= xServer.screenInfo.width  * DIRECT_MODE_COVERAGE_THRESHOLD
-                                && rw.content.height >= xServer.screenInfo.height * DIRECT_MODE_COVERAGE_THRESHOLD) {
-                            renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-                        }
-                    }
-                } else {
-                    // Normal: window kecil dirender terakhir → tetap di atas window besar
-                    for (RenderableWindow rw : renderableWindows) {
-                        renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-                    }
+                // Mode normal: render semua window sesuai posisi dan flag forceFullscreen masing-masing
+                for (RenderableWindow window : renderableWindows) {
+                    renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, window.forceFullscreen);
                 }
             }
         }
@@ -619,40 +567,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
     }
 
-    /**
-     * Mengecek window mana yang sedang di-point oleh X11 cursor (pointWindow),
-     * lalu menentukan apakah itu window besar atau kecil.
-     *
-     * - Jika pointWindow adalah window besar (>= 95% layar) → largeWindowHasFocus = true
-     *   → window kecil akan dirender DI BELAKANG window besar (tersembunyi sementara)
-     *
-     * - Jika pointWindow adalah window kecil → largeWindowHasFocus = false
-     *   → window kecil kembali dirender DI ATAS (perilaku normal)
-     *
-     * Dipanggil dari onChangeWindowZOrder karena itulah saat X11 memindahkan
-     * fokus antar window sebagai respons atas klik cursor.
-     */
-    private void updateLargeWindowFocus() {
-        Window pointWindow = xServer.inputDeviceManager.getPointWindow();
-        if (pointWindow == null) {
-            largeWindowHasFocus = false;
-            return;
-        }
-
-        Drawable content = pointWindow.getContent();
-        if (content == null) {
-            largeWindowHasFocus = false;
-            return;
-        }
-
-        int screenW = xServer.screenInfo.width;
-        int screenH = xServer.screenInfo.height;
-
-        // Window besar = mencakup >= 95% lebar DAN tinggi layar
-        largeWindowHasFocus = (content.width  >= screenW * DIRECT_MODE_COVERAGE_THRESHOLD)
-                            && (content.height >= screenH * DIRECT_MODE_COVERAGE_THRESHOLD);
-    }
-
     private void collectRenderableWindows(Window window, int x, int y) {
         if (!window.attributes.isMapped()) return;
         if (window != xServer.windowManager.rootWindow) {
@@ -675,11 +589,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     short height = window.getHeight();
                     boolean forceFullscreen = false;
 
+                    // forceFullscreen hanya berlaku untuk window besar yang mendekati ukuran layar
+                    // (minimal 75% dari lebar DAN tinggi layar). Window kecil seperti dialog,
+                    // popup, tooltip tetap dirender normal dengan posisi dan ukuran aslinya.
                     float screenW = xServer.screenInfo.width;
                     float screenH = xServer.screenInfo.height;
                     boolean isLargeWindow = (width >= screenW * 0.75f) && (height >= screenH * 0.75f);
-
-                    Drawable content = window.getContent();
 
                     if (isLargeWindow) {
                         Window parent = window.getParent();
@@ -687,8 +602,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                         boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
 
                         if (hasWMClass) {
+                            // Window besar dengan WMClass cocok: paksa fullscreen jika
+                            // parent tidak memiliki WMClass yang sama dan tidak memiliki child.
                             forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
                         } else {
+                            // Window besar tanpa WMClass — cek apakah parent adalah
+                            // frame dekorasi tipis, lalu paksa fullscreen.
                             short borderX = (short)(parent.getWidth() - width);
                             short borderY = (short)(parent.getHeight() - height);
                             if (parent.getChildCount() == 1 && borderX > 0 && borderY > 0 && borderX <= 12) {
@@ -696,27 +615,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                                 removeRenderableWindow(parent);
                             }
                         }
-
-                        // Sekali window memenuhi syarat forceFullscreen, simpan ke stable set.
-                        // Ini mencegah glitch saat maximize: X11 mengirim banyak resize event
-                        // dengan ukuran transisi yang kadang turun di bawah threshold 75%,
-                        // sehingga tanpa ini window akan ber-flip antara mode kecil dan fullscreen
-                        // di setiap intermediate frame selama animasi resize berlangsung.
-                        if (forceFullscreen && content != null) {
-                            stableForceFullscreenSet.add(content);
-                        }
-                    } else {
-                        // Ukuran saat ini di bawah threshold — tapi cek stable set dulu.
-                        // Jika window ini PERNAH jadi forceFullscreen sebelumnya, pertahankan
-                        // statusnya sampai window di-unmap. Ini adalah kunci anti-glitch:
-                        // frame transisi resize tidak akan menyebabkan window "kembali mengecil"
-                        // secara visual meski ukurannya sesaat turun di bawah 75%.
-                        if (content != null && stableForceFullscreenSet.contains(content)) {
-                            forceFullscreen = true;
-                        }
                     }
+                    // Window kecil: forceFullscreen tetap false,
+                    // dirender dengan posisi dan ukuran aslinya di atas window utama.
 
-                    renderableWindows.add(new RenderableWindow(content, x, y, forceFullscreen));
+                    renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));
                 }
                 else renderableWindows.add(new RenderableWindow(window.getContent(), x, y));
             }

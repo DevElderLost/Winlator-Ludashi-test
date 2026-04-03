@@ -145,10 +145,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
             if (!requestAppPermissions()) {
                 ImageFsInstaller.installIfNeeded(this);   // tetap pakai versi lama (1 parameter)
-            } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-                    showAllFilesAccessDialog();
-                }
             }
 
             if (Build.VERSION.SDK_INT >= 33) {
@@ -464,5 +460,11 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
+
+public static void checkAndShowAllFilesAccessDialog(MainActivity activity) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+        activity.showAllFilesAccessDialog();
+    }
+}
     
 }

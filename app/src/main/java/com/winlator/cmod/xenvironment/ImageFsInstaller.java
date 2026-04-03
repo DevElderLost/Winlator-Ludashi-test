@@ -1,12 +1,8 @@
 package com.winlator.cmod.xenvironment;
 
 import android.content.Context;
-import android.os.Build;
-import android.os.Bundle;
+import android.os.Build;
 import android.os.Environment;
-import android.provider.Settings;
-
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.winlator.cmod.MainActivity;
 import com.winlator.cmod.R;
@@ -21,12 +17,7 @@ import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.core.TarCompressorUtils;
 import com.winlator.cmod.core.WineInfo;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.File;
-import java.util.ArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -66,59 +57,64 @@ public abstract class ImageFsInstaller {
     }
 
     public static void installFromAssets(final MainActivity activity) {
-    AppUtils.keepScreenOn(activity);
-    ImageFs imageFs = ImageFs.find(activity);
-    File rootDir = imageFs.getRootDir();
+        AppUtils.keepScreenOn(activity);
+        ImageFs imageFs = ImageFs.find(activity);
+        File rootDir = imageFs.getRootDir();
 
-    SettingsFragment.resetEmulatorsVersion(activity);
+        SettingsFragment.resetEmulatorsVersion(activity);
 
-    final DownloadProgressDialog dialog = new DownloadProgressDialog(activity);
-    dialog.show(R.string.installing_system_files);
+        final DownloadProgressDialog dialog = new DownloadProgressDialog(activity);
+        dialog.show(R.string.installing_system_files);
 
-    Executors.newSingleThreadExecutor().execute(() -> {
-        clearRootDir(rootDir);
-        final byte compressionRatio = 22;
-        final long contentLength = (long)(FileUtils.getSize(activity, "imagefs.txz") * (100.0f / compressionRatio));
-        AtomicLong totalSizeRef = new AtomicLong();
+        Executors.newSingleThreadExecutor().execute(() -> {
+            clearRootDir(rootDir);
+            final byte compressionRatio = 22;
+            final long contentLength = (long)(FileUtils.getSize(activity, "imagefs.txz") * (100.0f / compressionRatio));
+            AtomicLong totalSizeRef = new AtomicLong();
 
-        boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, activity, "imagefs.txz", rootDir, (file, size) -> {
-            if (size > 0) {
-                long totalSize = totalSizeRef.addAndGet(size);
-                final int progress = (int)(((float)totalSize / contentLength) * 100);
-                activity.runOnUiThread(() -> dialog.setProgress(progress));
+            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, activity, "imagefs.txz", rootDir, (file, size) -> {
+                if (size > 0) {
+                    long totalSize = totalSizeRef.addAndGet(size);
+                    final int progress = (int)(((float)totalSize / contentLength) * 100);
+                    activity.runOnUiThread(() -> dialog.setProgress(progress));
+                }
+                return file;
+            });
+
+            if (success) {
+                installWineFromAssets(activity);
+                installDriversFromAssets(activity);
+                imageFs.createImgVersionFile(LATEST_VERSION);
+                resetContainerImgVersions(activity);
+            } else {
+                AppUtils.showToast(activity, R.string.unable_to_install_system_files);
             }
-            return file;
-        });
 
-        if (success) {
-            installWineFromAssets(activity);
-            installDriversFromAssets(activity);
-            imageFs.createImgVersionFile(LATEST_VERSION);
-            resetContainerImgVersions(activity);
-        } else {
-            AppUtils.showToast(activity, R.string.unable_to_install_system_files);
-        }
+            dialog.closeOnUiThread();
 
-        dialog.closeOnUiThread();
-
-        // === BAGIAN INI: Panggil dialog permission setelah install selesai ===
-        if (success) {
-           activity.runOnUiThread(() -> {
-        // Selalu cek setelah instalasi selesai
-        checkAndShowAllFilesAccessDialog(activity);
+            // Tampilkan dialog All Files Access setelah proses instalasi selesai
+            if (success) {
+                activity.runOnUiThread(() -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                        activity.showAllFilesAccessDialog();
+                    }
+                });
+            }
         });
     }
-    });
-}
 
     public static void installIfNeeded(final MainActivity activity) {
-    ImageFs imageFs = ImageFs.find(activity);
-    if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) {
-        installFromAssets(activity);
-    } else {
-        // Sudah terinstall, tapi cek permission All Files
-        checkAndShowAllFilesAccessDialog(activity);
-    }
+        ImageFs imageFs = ImageFs.find(activity);
+        if (!imageFs.isValid() || imageFs.getVersion() < LATEST_VERSION) {
+            installFromAssets(activity);
+        } else {
+            // Jika ImageFS sudah terinstall, tetap cek apakah perlu menampilkan dialog All Files Access
+            activity.runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                    activity.showAllFilesAccessDialog();
+                }
+            });
+        }
     }
 
     private static void clearOptDir(File optDir) {

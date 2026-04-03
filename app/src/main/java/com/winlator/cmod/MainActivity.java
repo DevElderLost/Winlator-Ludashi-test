@@ -144,7 +144,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             navigationView.setCheckedItem(menuItemId);
 
             if (!requestAppPermissions()) {
-                ImageFsInstaller.installIfNeeded(this);   // tetap pakai versi lama (1 parameter)
+                ImageFsInstaller.installIfNeeded(this);
             }
 
             if (Build.VERSION.SDK_INT >= 33) {
@@ -245,7 +245,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 if (saveEditDialog != null && saveEditDialog.isShowing()) {
                     saveEditDialog.dismiss();
                 }
-                showSaveEditDialog(saveToEdit); // Use the correct method to show SaveEditDialog
+                showSaveEditDialog(saveToEdit);
             } else {
                 saveSettingsDialog = new SaveSettingsDialog(this, saveManager, containerManager);
 
@@ -281,25 +281,25 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
         switch (item.getItemId()) {
             case R.id.main_menu_shortcuts:
-                show(new ShortcutsFragment(), false);  // Forward animation
+                show(new ShortcutsFragment(), false);
                 break;
             case R.id.main_menu_containers:
-                show(new ContainersFragment(), false);  // Forward animation
+                show(new ContainersFragment(), false);
                 break;
             case R.id.main_menu_input_controls:
-                show(new InputControlsFragment(selectedProfileId), false);  // Forward animation
+                show(new InputControlsFragment(selectedProfileId), false);
                 break;
             case R.id.main_menu_contents:
-                show(new ContentsFragment(), false);  // Forward animation
+                show(new ContentsFragment(), false);
                 break;
             case R.id.main_menu_adrenotools_gpu_drivers:
                 show(new AdrenotoolsFragment(), false);
                 break;
             case R.id.main_menu_saves:
-                show(new SavesFragment(), false);  // Forward animation
+                show(new SavesFragment(), false);
                 break;
             case R.id.main_menu_settings:
-                show(new SettingsFragment(), false);  // Forward animation
+                show(new SettingsFragment(), false);
                 break;
             case R.id.main_menu_about:
                 showAboutDialog();
@@ -308,26 +308,16 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         return true;
     }
 
-
-//    private void show(Fragment fragment) {
-//        FragmentManager fragmentManager = getSupportFragmentManager();
-//        fragmentManager.beginTransaction()
-//                .replace(R.id.FLFragmentContainer, fragment)
-//                .commit();
-//
-//        drawerLayout.closeDrawer(GravityCompat.START);
-//    }
-
     private void show(Fragment fragment, boolean reverse) {
         FragmentManager fragmentManager = getSupportFragmentManager();
         if (reverse) {
             fragmentManager.beginTransaction()
-                    .setCustomAnimations(R.anim.slide_in_down, R.anim.slide_out_up)  // Reverse animation
+                    .setCustomAnimations(R.anim.slide_in_down, R.anim.slide_out_up)
                     .replace(R.id.FLFragmentContainer, fragment)
                     .commit();
         } else {
             fragmentManager.beginTransaction()
-                    .setCustomAnimations(R.anim.slide_in_up, R.anim.slide_out_down)  // Forward animation
+                    .setCustomAnimations(R.anim.slide_in_up, R.anim.slide_out_down)
                     .replace(R.id.FLFragmentContainer, fragment)
                     .commit();
         }
@@ -393,7 +383,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             MenuItem menuItem = navigationView.getMenu().getItem(i);
             setMenuItemTextColor(menuItem, color);
 
-            // If the menu item has sub-items, iterate through them
             if (menuItem.hasSubMenu()) {
                 for (int j = 0; j < menuItem.getSubMenu().size(); j++) {
                     MenuItem subMenuItem = menuItem.getSubMenu().getItem(j);
@@ -431,16 +420,15 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void showSavesFragment() {
-    SavesFragment fragment = new SavesFragment();
-    getSupportFragmentManager().beginTransaction()
-            .replace(R.id.FLFragmentContainer, fragment)
-            .commit();
+        SavesFragment fragment = new SavesFragment();
+        getSupportFragmentManager().beginTransaction()
+                .replace(R.id.FLFragmentContainer, fragment)
+                .commit();
     }
-    // Method to show SaveEditDialog
+
     public void showSaveEditDialog(Save saveToEdit) {
         saveEditDialog = new SaveEditDialog(this, saveManager, containerManager, saveToEdit);
 
-        // Check for dark mode and set the background accordingly
         if (isDarkMode) {
             saveEditDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
         } else {
@@ -460,11 +448,5 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
-
-public static void checkAndShowAllFilesAccessDialog(MainActivity activity) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-        activity.showAllFilesAccessDialog();
-    }
-}
     
 }

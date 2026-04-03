@@ -59,6 +59,7 @@ import com.winlator.cmod.contentdialog.DebugDialog;
 import com.winlator.cmod.contentdialog.GraphicsDriverConfigDialog;
 import com.winlator.cmod.contentdialog.ScreenEffectDialog;
 import com.winlator.cmod.contentdialog.WineD3DConfigDialog;
+import com.winlator.cmod.contentdialog.ActiveWindowsDialog;
 import com.winlator.cmod.contents.ContentProfile;
 import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.contents.AdrenotoolsManager;
@@ -873,6 +874,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 AppUtils.showKeyboard(this);
                 drawerLayout.closeDrawers();
                 break;
+			case R.id.main_menu_active_windows:
+				ActiveWindowsDialog.show(this, xServer, renderer);
+				drawerLayout.closeDrawers();
+				break;
             case R.id.main_menu_input_controls:
                 showInputControlsDialog();
                 drawerLayout.closeDrawers();

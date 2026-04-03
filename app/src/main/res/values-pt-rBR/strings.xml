@@ -111,4 +111,6 @@
     <string name="no_containers_available">Contêiner Não Encontrado</string>
     <string name="force_fullscreen">Forçar Tela Cheia</string>
     <string name="use_xr">Usar XR</string>
+    <string name="all_files_access_dialog_title">Acesso a Todos os Arquivos Necessário</string>
+    <string name="all_files_access_dialog_message">Para conceder acesso a dispositivos de armazenamento adicionais, como dispositivo de armazenamento USB, a permissão de Acesso a Todos os Arquivos deve ser concedida. Pressione OK para conceder o Acesso a Todos os Arquivos nas Configurações do Android.</string>
 </resources>

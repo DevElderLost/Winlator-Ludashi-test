@@ -130,6 +130,7 @@ public class ActiveWindowsDialog extends ContentDialog {
         private final List<Window> windows;
         private final Callback<Window> onBringToFront;
         private final Callback<Window> onClose;
+        private int selectedPosition = -1;
 
         public ActiveWindowsAdapter(Context context, List<Window> windows,
                                     Callback<Window> onBringToFront,
@@ -143,6 +144,11 @@ public class ActiveWindowsDialog extends ContentDialog {
         @Override public int getCount() { return windows.size(); }
         @Override public Window getItem(int position) { return windows.get(position); }
         @Override public long getItemId(int position) { return position; }
+
+        public void setSelectedPosition(int position) {
+            this.selectedPosition = position;
+            notifyDataSetChanged();
+        }
 
         @Override
         public View getView(int position, View convertView, android.view.ViewGroup parent) {
@@ -166,8 +172,20 @@ public class ActiveWindowsDialog extends ContentDialog {
 
             tvTitle.setText(title);
 
-            // Klik item → bring to front
-            convertView.setOnClickListener(v -> onBringToFront.call(window));
+            // === HIGHLIGHT WARNA SAAT DIPILIH ===
+            if (position == selectedPosition) {
+                convertView.setBackgroundColor(0xff2196f3);
+                tvTitle.setTextColor(android.graphics.Color.WHITE);
+            } else {
+                convertView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                tvTitle.setTextColor(android.graphics.Color.WHITE);
+            }
+
+            // Klik item → highlight + bring to front
+            convertView.setOnClickListener(v -> {
+                setSelectedPosition(position);
+                onBringToFront.call(window);
+            });
 
             // Tombol X → close
             btnClose.setOnClickListener(v -> onClose.call(window));
@@ -180,6 +198,7 @@ public class ActiveWindowsDialog extends ContentDialog {
         public void updateWindows(List<Window> newWindows) {
             windows.clear();
             windows.addAll(newWindows);
+            selectedPosition = -1;
             notifyDataSetChanged();
         }
     }

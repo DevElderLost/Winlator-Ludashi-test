@@ -212,7 +212,7 @@ public class WindowManager extends XResourceManager {
         }
     }
 
-    private void changeWindowZOrder(Window.StackMode stackMode, Window window, Window sibling) {
+    public void changeWindowZOrder(Window.StackMode stackMode, Window window, Window sibling) {
         Window parent = window.getParent();
         switch (stackMode) {
             case ABOVE:

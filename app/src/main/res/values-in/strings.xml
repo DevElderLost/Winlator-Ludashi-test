@@ -111,4 +111,6 @@
     <string name="no_containers_available">Kontainer Tidak Ditemukan</string>
     <string name="force_fullscreen">Paksa Layar Penuh</string>
     <string name="use_xr">Gunakan XR</string>
+    <string name="all_files_access_dialog_title">Akses Semua File Diperlukan</string>
+    <string name="all_files_access_dialog_message">Untuk memberikan akses ke perangkat penyimpanan tambahan seperti perangkat USB, izin Akses Semua File harus diberikan. Tekan Oke untuk memberikan Akses Semua File di Pengaturan Android Anda.</string>
 </resources>

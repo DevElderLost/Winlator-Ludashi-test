@@ -111,4 +111,6 @@
     <string name="no_containers_available">Контейнер не найден</string>
     <string name="force_fullscreen">Принудительный полный экран</string>
     <string name="use_xr">Использовать XR</string>
+    <string name="all_files_access_dialog_title">Требуется доступ ко всем файлам</string>
+    <string name="all_files_access_dialog_message">Чтобы предоставить доступ к дополнительным устройствам хранения, таким как USB-накопитель, необходимо предоставить разрешение «Доступ ко всем файлам». Нажмите «ОК», чтобы предоставить доступ ко всем файлам в настройках Android.</string>
 </resources>

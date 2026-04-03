@@ -30,6 +30,7 @@ public class ActiveWindowsDialog extends ContentDialog {
 
     public ActiveWindowsDialog(@NonNull Context context, XServer xServer, GLRenderer renderer) {
         super(context);
+
         this.xServer = xServer;
         this.renderer = renderer;
 
@@ -78,6 +79,7 @@ public class ActiveWindowsDialog extends ContentDialog {
     private void collectMappedWindows(Window window, List<Window> result) {
         if (window == null || !window.attributes.isMapped()) return;
 
+        // Skip root window
         if (window != xServer.windowManager.rootWindow) {
             result.add(window);
         }
@@ -121,7 +123,7 @@ public class ActiveWindowsDialog extends ContentDialog {
         new ActiveWindowsDialog(context, xServer, renderer).show();
     }
 
-    // ==================== Adapter ====================
+    // ====================== ADAPTER ======================
     private static class ActiveWindowsAdapter extends android.widget.BaseAdapter {
 
         private final Context context;
@@ -129,9 +131,9 @@ public class ActiveWindowsDialog extends ContentDialog {
         private final Callback<Window> onBringToFront;
         private final Callback<Window> onClose;
 
-        ActiveWindowsAdapter(Context context, List<Window> windows,
-                             Callback<Window> onBringToFront,
-                             Callback<Window> onClose) {
+        public ActiveWindowsAdapter(Context context, List<Window> windows,
+                                    Callback<Window> onBringToFront,
+                                    Callback<Window> onClose) {
             this.context = context;
             this.windows = new ArrayList<>(windows);
             this.onBringToFront = onBringToFront;
@@ -153,25 +155,31 @@ public class ActiveWindowsDialog extends ContentDialog {
             TextView tvTitle = convertView.findViewById(R.id.tvWindowTitle);
             ImageButton btnClose = convertView.findViewById(R.id.btnCloseWindow);
 
-            String title = window.getTitle();
+            // === PERBAIKAN TITLE ===
+            String title = window.getName();                    // WM_NAME
             if (title == null || title.trim().isEmpty()) {
-                title = window.getClassName();
-                if (title == null || title.trim().isEmpty()) {
-                    title = "Window #" + window.getId();
-                }
+                title = window.getClassName();                  // WM_CLASS
             }
+            if (title == null || title.trim().isEmpty()) {
+                title = "Window " + window.id;                  // Gunakan .id langsung
+            }
+
             tvTitle.setText(title);
 
+            // Klik item → bring to front
             convertView.setOnClickListener(v -> onBringToFront.call(window));
+
+            // Tombol X → close
             btnClose.setOnClickListener(v -> onClose.call(window));
             btnClose.setFocusable(false);
+            btnClose.setFocusableInTouchMode(false);
 
             return convertView;
         }
 
-        void updateWindows(List<Window> newList) {
+        public void updateWindows(List<Window> newWindows) {
             windows.clear();
-            windows.addAll(newList);
+            windows.addAll(newWindows);
             notifyDataSetChanged();
         }
     }

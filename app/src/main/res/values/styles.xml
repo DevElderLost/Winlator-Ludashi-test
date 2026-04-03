@@ -115,8 +115,7 @@
 
 
 
-    <style name="ContentDialog.Dark" parent="ContentDialog">
-        <item name="colorPrimaryVariant">#ff56677a</item>        
+    <style name="ContentDialog.Dark" parent="ContentDialog">        
         <item name="android:windowBackground">@drawable/content_dialog_background_dark</item>
     </style>
 

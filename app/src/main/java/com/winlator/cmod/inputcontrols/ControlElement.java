@@ -93,21 +93,32 @@ public class ControlElement {
     private RangeScroller scroller;
 
     // === CURSOR MOVE MODE (RIGHT_STICK only) ===
-    // Jika true, right stick menggerakkan pointer cursor dalam area melingkar.
-    // Posisi pointer = anchorPoint + (offsetJari_ternormalisasi * cursorMoveRadius_piksel).
-    // Saat jari dilepas, anchor diperbarui ke posisi pointer terakhir agar sentuhan
-    // berikutnya melanjutkan dari posisi yang sama (tidak kembali ke tengah).
+    // Center = tengah layar X server, PERMANEN, tidak pernah berubah.
+    // Konsep: pointer bergerak melingkar di sekitar center.
+    //
+    // Saat jari BERGERAK:
+    //   pointerPos = center + clamp(lastOffset + (currentDelta - startDelta), -1..1) * radius
+    //
+    // "lastOffset" menyimpan posisi ternormalisasi pointer saat jari terakhir dilepas,
+    // sehingga sentuhan berikutnya MELANJUTKAN dari posisi terakhir (bukan kembali ke center).
+    // "startDelta" adalah posisi jari saat pertama menyentuh — dipakai sebagai titik referensi
+    // agar gerakan jari baru dihitung relatif terhadap posisi awal sentuhan itu.
     private boolean isCursorMove = false;
-    // Radius lingkaran pergerakan pointer dalam piksel layar (default 150px).
-    // Diatur via seekbar di ControlsEditorActivity.
+    // Radius lingkaran pergerakan pointer dalam piksel X server (default 150px).
     private int cursorMoveRadius = 150;
-    // Anchor posisi pointer di koordinat X server — diperbarui setiap touch up.
-    private float cursorMoveAnchorX = -1f;
-    private float cursorMoveAnchorY = -1f;
-    // Posisi pointer terakhir yang dikirim — disimpan sendiri agar tidak bergantung
-    // pada xServer.pointer.x/y yang mungkin tidak accessible atau sudah berubah.
-    private float cursorMoveLastX = -1f;
-    private float cursorMoveLastY = -1f;
+    // Center layar — dihitung sekali, tidak pernah berubah selama mode aktif.
+    private float cursorMoveCenterX = -1f;
+    private float cursorMoveCenterY = -1f;
+    // Offset ternormalisasi (-1..1) pointer saat jari terakhir dilepas.
+    // Dipakai sebagai titik awal pergerakan pada sentuhan berikutnya.
+    private float cursorMoveLastOffsetX = 0f;
+    private float cursorMoveLastOffsetY = 0f;
+    // Posisi jari ternormalisasi saat pertama menyentuh dalam sesi ini.
+    // Delta aktual = currentDelta - startDelta, ditambahkan ke lastOffset.
+    private float cursorMoveStartDeltaX = 0f;
+    private float cursorMoveStartDeltaY = 0f;
+    // Apakah startDelta sudah direkam untuk sesi sentuhan saat ini.
+    private boolean cursorMoveStartRecorded = false;
 
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner]
     private byte[] slotIconIds = new byte[4];
@@ -231,24 +242,17 @@ public class ControlElement {
     }
 
     public void setCursorMove(boolean cursorMove) {
-    this.isCursorMove = cursorMove;
-    
-    if (cursorMove) {
-        // Anchor SELALU di tengah layar dan tidak pernah berubah
-        XServer xServer = inputControlsView.getXServer();
-        if (xServer != null) {
-            cursorMoveAnchorX = xServer.screenInfo.width / 2f;
-            cursorMoveAnchorY = xServer.screenInfo.height / 2f;
+        this.isCursorMove = cursorMove;
+        if (!cursorMove) {
+            cursorMoveCenterX        = -1f;
+            cursorMoveCenterY        = -1f;
+            cursorMoveLastOffsetX    = 0f;
+            cursorMoveLastOffsetY    = 0f;
+            cursorMoveStartDeltaX    = 0f;
+            cursorMoveStartDeltaY    = 0f;
+            cursorMoveStartRecorded  = false;
         }
-    } else {
-        // Reset saat mode dimatikan
-        cursorMoveAnchorX = -1f;
-        cursorMoveAnchorY = -1f;
     }
-    
-    cursorMoveLastX = -1f;
-    cursorMoveLastY = -1f;
-}
 
     public int getCursorMoveRadius() {
         return cursorMoveRadius;
@@ -1092,41 +1096,26 @@ public class ControlElement {
                 deltaY = deltaPoint[1];
                 currentPosition.set(x, y);
             } else if (type == Type.RIGHT_STICK) {
-    if (isCursorMove) {
-        // === CURSOR MOVE MODE - ANCHOR SELALU DI TENGAH LAYAR ===
-        XServer xServer = inputControlsView.getXServer();
+                // Delta ternormalisasi -1..1 dari posisi jari dalam bounding box (seperti STICK)
+                float localX = x - boundingBox.left;
+                float localY = y - boundingBox.top;
+                float offsetX = localX - radius;
+                float offsetY = localY - radius;
+                float distance = Mathf.lengthSq(offsetX, offsetY);
+                if (distance > radius * radius) {
+                    // Normalisasi vektor langsung — lebih cepat dari atan2/cos/sin
+                    float len = (float) Math.sqrt(distance);
+                    offsetX = offsetX / len * radius;
+                    offsetY = offsetY / len * radius;
+                }
+                deltaX = Mathf.clamp(offsetX / radius, -1, 1);
+                deltaY = Mathf.clamp(offsetY / radius, -1, 1);
 
-        // Pastikan anchor selalu di tengah (jaga-jaga)
-        if (cursorMoveAnchorX < 0 || cursorMoveAnchorY < 0) {
-            cursorMoveAnchorX = xServer.screenInfo.width / 2f;
-            cursorMoveAnchorY = xServer.screenInfo.height / 2f;
-        }
-
-        // deltaX dan deltaY sudah -1..1 dari stick
-        if (Math.abs(deltaX) < STICK_DEAD_ZONE) deltaX = 0;
-        if (Math.abs(deltaY) < STICK_DEAD_ZONE) deltaY = 0;
-
-        // Posisi pointer = anchor (tengah) + offset * radius
-        float newX = cursorMoveAnchorX + deltaX * cursorMoveRadius;
-        float newY = cursorMoveAnchorY + deltaY * cursorMoveRadius;
-
-        // Clamp ke layar
-        newX = Mathf.clamp(newX, 0, xServer.screenInfo.width);
-        newY = Mathf.clamp(newY, 0, xServer.screenInfo.height);
-
-        // Kirim pergerakan pointer
-        if (xServer.isRelativeMouseMovement()) {
-            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int) newX, (int) newY, 0);
-        } else {
-            xServer.injectPointerMove((int) newX, (int) newY);
-        }
-
-        // Simpan posisi terakhir (untuk visual & referensi)
-        cursorMoveLastX = newX;
-        cursorMoveLastY = newY;
-
-        inputControlsView.invalidate();
-    } else {
+                // Update posisi visual thumbstick (dibatasi dalam outer circle)
+                if (visualThumbPosition == null) visualThumbPosition = new PointF();
+                visualThumbPosition.x = boundingBox.left + offsetX + radius;
+                visualThumbPosition.y = boundingBox.top + offsetY + radius;
+            } else {
                 float localX = x - boundingBox.left;
                 float localY = y - boundingBox.top;
                 float offsetX = localX - radius;
@@ -1142,7 +1131,6 @@ public class ControlElement {
                 deltaX = Mathf.clamp(offsetX / radius, -1, 1);
                 deltaY = Mathf.clamp(offsetY / radius, -1, 1);
             }
-            } // end else if (type == Type.RIGHT_STICK)
 
             if (type == Type.STICK) {
                 if (currentPosition == null) currentPosition = new PointF();
@@ -1224,40 +1212,53 @@ public class ControlElement {
             } else if (type == Type.RIGHT_STICK) {
                 if (isCursorMove) {
                     // === CURSOR MOVE MODE ===
-                    // Posisi pointer = anchor + (offsetJari_ternormalisasi * cursorMoveRadius).
-                    // Pointer bergerak dalam batas lingkaran berradius cursorMoveRadius (piksel X server).
-                    // Saat jari dilepas (handleTouchUp), anchor diperbarui ke posisi pointer terakhir.
+                    // Center layar PERMANEN. Pointer melanjutkan dari posisi terakhir
+                    // tanpa kembali ke center saat jari disentuhkan lagi.
+                    //
+                    // Formula:
+                    //   totalOffset = clamp(lastOffset + (currentDelta - startDelta), -1..1)
+                    //   pointerPos  = center + totalOffset * radius
 
                     XServer xServer = inputControlsView.getXServer();
 
-                    // Inisialisasi anchor ke tengah layar hanya jika belum pernah di-set
-                    if (cursorMoveAnchorX < 0) {
-                        cursorMoveAnchorX = xServer.screenInfo.width / 2f;
-                        cursorMoveAnchorY = xServer.screenInfo.height / 2f;
+                    // Hitung center sekali — tidak pernah berubah
+                    if (cursorMoveCenterX < 0) {
+                        cursorMoveCenterX = xServer.screenInfo.width  / 2f;
+                        cursorMoveCenterY = xServer.screenInfo.height / 2f;
                     }
 
-                    // deltaX/Y sudah ternormalisasi -1..1, terapkan dead zone
-                    if (Math.abs(deltaX) < STICK_DEAD_ZONE) deltaX = 0;
-                    if (Math.abs(deltaY) < STICK_DEAD_ZONE) deltaY = 0;
+                    // Rekam posisi jari saat pertama menyentuh sebagai startDelta
+                    if (!cursorMoveStartRecorded) {
+                        cursorMoveStartDeltaX   = deltaX;
+                        cursorMoveStartDeltaY   = deltaY;
+                        cursorMoveStartRecorded = true;
+                    }
 
-                    // Posisi pointer baru = anchor + offset dalam lingkaran
-                    // cursorMoveRadius menentukan seberapa jauh (piksel) pointer bisa bergerak dari anchor
-                    float newX = cursorMoveAnchorX + deltaX * cursorMoveRadius;
-                    float newY = cursorMoveAnchorY + deltaY * cursorMoveRadius;
+                    // Hitung total offset: offset terakhir + pergerakan jari sejak sentuhan ini
+                    float totalOffsetX = cursorMoveLastOffsetX + (deltaX - cursorMoveStartDeltaX);
+                    float totalOffsetY = cursorMoveLastOffsetY + (deltaY - cursorMoveStartDeltaY);
 
-                    // Clamp agar tidak keluar dari area layar X server
-                    newX = Mathf.clamp(newX, 0, xServer.screenInfo.width);
-                    newY = Mathf.clamp(newY, 0, xServer.screenInfo.height);
+                    // Clamp agar pointer tidak keluar dari lingkaran radius
+                    totalOffsetX = Mathf.clamp(totalOffsetX, -1f, 1f);
+                    totalOffsetY = Mathf.clamp(totalOffsetY, -1f, 1f);
+
+                    // Perbarui lastOffset setiap frame — sehingga saat jari dilepas,
+                    // nilai ini sudah mencerminkan posisi pointer terakhir yang dikirim
+                    cursorMoveLastOffsetX = totalOffsetX;
+                    cursorMoveLastOffsetY = totalOffsetY;
+
+                    float newX = Mathf.clamp(
+                            cursorMoveCenterX + totalOffsetX * cursorMoveRadius,
+                            0, xServer.screenInfo.width);
+                    float newY = Mathf.clamp(
+                            cursorMoveCenterY + totalOffsetY * cursorMoveRadius,
+                            0, xServer.screenInfo.height);
 
                     if (xServer.isRelativeMouseMovement()) {
                         xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int) newX, (int) newY, 0);
                     } else {
                         xServer.injectPointerMove((int) newX, (int) newY);
                     }
-
-                    // Simpan posisi terakhir yang dikirim untuk dipakai sebagai anchor baru saat touch up
-                    cursorMoveLastX = newX;
-                    cursorMoveLastY = newY;
 
                     inputControlsView.invalidate();
                 } else {
@@ -1373,6 +1374,21 @@ public class ControlElement {
                     // Reset posisi visual thumbstick ke center
                     currentPosition = null;
                     visualThumbPosition = null;
+
+                    // Cursor Move Mode: simpan total offset saat ini sebagai lastOffset
+                    // agar sentuhan berikutnya melanjutkan dari posisi pointer terakhir
+                    if (type == Type.RIGHT_STICK && isCursorMove && cursorMoveStartRecorded) {
+                        // Hitung ulang totalOffset terakhir dengan deltaX/Y saat ini
+                        // (currentPosition sudah di-null, pakai nilai delta terakhir yang valid)
+                        // Kita tidak punya akses delta di sini, tapi cursorMoveLastOffsetX/Y
+                        // akan diperbarui di handleTouchMove sebelum touch up terjadi,
+                        // jadi kita update lastOffset = lastOffset + (lastDelta - startDelta)
+                        // Namun karena delta tidak tersedia di sini, kita simpan dengan cara
+                        // memanfaatkan bahwa handleTouchMove selalu dipanggil sebelum handleTouchUp:
+                        // lastOffset sudah benar dari update di handleTouchMove terakhir.
+                        // Yang perlu dilakukan hanya reset flag startRecorded untuk sesi berikutnya.
+                        cursorMoveStartRecorded = false;
+                    }
 
                     inputControlsView.invalidate();
                 }

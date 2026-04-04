@@ -1238,9 +1238,13 @@ public class ControlElement {
                     float totalOffsetX = cursorMoveLastOffsetX + (deltaX - cursorMoveStartDeltaX);
                     float totalOffsetY = cursorMoveLastOffsetY + (deltaY - cursorMoveStartDeltaY);
 
-                    // Clamp agar pointer tidak keluar dari lingkaran radius
-                    totalOffsetX = Mathf.clamp(totalOffsetX, -1f, 1f);
-                    totalOffsetY = Mathf.clamp(totalOffsetY, -1f, 1f);
+                    // Clamp MELINGKAR — normalkan vektor jika panjangnya > 1
+                    // agar batas pergerakan pointer berbentuk LINGKARAN, bukan kotak.
+                    float offsetLen = (float) Math.sqrt(totalOffsetX * totalOffsetX + totalOffsetY * totalOffsetY);
+                    if (offsetLen > 1f) {
+                        totalOffsetX /= offsetLen;
+                        totalOffsetY /= offsetLen;
+                    }
 
                     // Perbarui lastOffset setiap frame — sehingga saat jari dilepas,
                     // nilai ini sudah mencerminkan posisi pointer terakhir yang dikirim

@@ -122,6 +122,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
             view.findViewById(R.id.LLBindings).setVisibility(View.GONE);
             view.findViewById(R.id.LLSlotIcons).setVisibility(View.GONE);
+            view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
+            view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
 
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
@@ -146,6 +148,15 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
                 loadSlotIconsUI(view, element, new String[]{"Outer Circle", "Inner Thumb"}, 2);
+
+                // Tampilkan opsi Cursor Move hanya untuk RIGHT_STICK
+                if (type == ControlElement.Type.RIGHT_STICK) {
+                    view.findViewById(R.id.LLCursorMove).setVisibility(View.VISIBLE);
+                    view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.VISIBLE);
+                } else {
+                    view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
+                    view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
+                }
             }
             else if (type == ControlElement.Type.TRACKPAD) {
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
@@ -202,6 +213,36 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         cbToggleSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             element.setToggleSwitch(isChecked);
             profile.save();
+        });
+
+        // === CURSOR MOVE MODE (hanya RIGHT_STICK) ===
+        CheckBox cbCursorMove = view.findViewById(R.id.CBCursorMove);
+        cbCursorMove.setChecked(element.isCursorMove());
+
+        final TextView tvCursorRadius = view.findViewById(R.id.TVCursorMoveRadius);
+        SeekBar sbCursorRadius = view.findViewById(R.id.SBCursorMoveRadius);
+        tvCursorRadius.setText(element.getCursorMoveRadius() + "%");
+        sbCursorRadius.setMax(100);
+        sbCursorRadius.setProgress(element.getCursorMoveRadius());
+        sbCursorRadius.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (progress < 1) { progress = 1; seekBar.setProgress(1); }
+                tvCursorRadius.setText(progress + "%");
+                if (fromUser) {
+                    element.setCursorMoveRadius(progress);
+                    profile.save();
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        cbCursorMove.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            element.setCursorMove(isChecked);
+            profile.save();
+            // Tampilkan / sembunyikan seekbar radius sesuai state checkbox
+            view.findViewById(R.id.LLCursorMoveRadius).setVisibility(isChecked ? View.VISIBLE : View.GONE);
         });
 
         final EditText etCustomText = view.findViewById(R.id.ETCustomText);
@@ -440,10 +481,18 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
      * Icon dominan putih → background hitam (agar terlihat), dengan LayerDrawable
      * agar stroke indikator selected dari icon_background selector tetap tampil di atas.
      * Lainnya → background default drawable saja.
+     *
+     * Pada dark mode: deteksi warna dilewati sepenuhnya.
+     * icon_background_black diganti icon_background karena background tema sudah gelap,
+     * sehingga icon putih tetap terlihat tanpa lapisan hitam tambahan.
      */
     private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
         imageView.setBackgroundResource(R.drawable.icon_background);
         if (bitmap == null) return;
+
+        // Dark mode: background tema sudah gelap — tidak perlu deteksi warna,
+        // cukup pakai icon_background standar untuk semua icon.
+        if (isDarkMode) return;
 
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();

@@ -231,15 +231,24 @@ public class ControlElement {
     }
 
     public void setCursorMove(boolean cursorMove) {
-        this.isCursorMove = cursorMove;
-        // Reset semua state agar saat mode diaktifkan lagi pointer mulai dari tengah layar
-        if (!cursorMove) {
-            cursorMoveAnchorX = -1f;
-            cursorMoveAnchorY = -1f;
-            cursorMoveLastX  = -1f;
-            cursorMoveLastY  = -1f;
+    this.isCursorMove = cursorMove;
+    
+    if (cursorMove) {
+        // Anchor SELALU di tengah layar dan tidak pernah berubah
+        XServer xServer = inputControlsView.getXServer();
+        if (xServer != null) {
+            cursorMoveAnchorX = xServer.screenInfo.width / 2f;
+            cursorMoveAnchorY = xServer.screenInfo.height / 2f;
         }
+    } else {
+        // Reset saat mode dimatikan
+        cursorMoveAnchorX = -1f;
+        cursorMoveAnchorY = -1f;
     }
+    
+    cursorMoveLastX = -1f;
+    cursorMoveLastY = -1f;
+}
 
     public int getCursorMoveRadius() {
         return cursorMoveRadius;
@@ -1083,26 +1092,41 @@ public class ControlElement {
                 deltaY = deltaPoint[1];
                 currentPosition.set(x, y);
             } else if (type == Type.RIGHT_STICK) {
-                // Delta ternormalisasi -1..1 dari posisi jari dalam bounding box (seperti STICK)
-                float localX = x - boundingBox.left;
-                float localY = y - boundingBox.top;
-                float offsetX = localX - radius;
-                float offsetY = localY - radius;
-                float distance = Mathf.lengthSq(offsetX, offsetY);
-                if (distance > radius * radius) {
-                    // Normalisasi vektor langsung — lebih cepat dari atan2/cos/sin
-                    float len = (float) Math.sqrt(distance);
-                    offsetX = offsetX / len * radius;
-                    offsetY = offsetY / len * radius;
-                }
-                deltaX = Mathf.clamp(offsetX / radius, -1, 1);
-                deltaY = Mathf.clamp(offsetY / radius, -1, 1);
+    if (isCursorMove) {
+        // === CURSOR MOVE MODE - ANCHOR SELALU DI TENGAH LAYAR ===
+        XServer xServer = inputControlsView.getXServer();
 
-                // Update posisi visual thumbstick (dibatasi dalam outer circle)
-                if (visualThumbPosition == null) visualThumbPosition = new PointF();
-                visualThumbPosition.x = boundingBox.left + offsetX + radius;
-                visualThumbPosition.y = boundingBox.top + offsetY + radius;
-            } else {
+        // Pastikan anchor selalu di tengah (jaga-jaga)
+        if (cursorMoveAnchorX < 0 || cursorMoveAnchorY < 0) {
+            cursorMoveAnchorX = xServer.screenInfo.width / 2f;
+            cursorMoveAnchorY = xServer.screenInfo.height / 2f;
+        }
+
+        // deltaX dan deltaY sudah -1..1 dari stick
+        if (Math.abs(deltaX) < STICK_DEAD_ZONE) deltaX = 0;
+        if (Math.abs(deltaY) < STICK_DEAD_ZONE) deltaY = 0;
+
+        // Posisi pointer = anchor (tengah) + offset * radius
+        float newX = cursorMoveAnchorX + deltaX * cursorMoveRadius;
+        float newY = cursorMoveAnchorY + deltaY * cursorMoveRadius;
+
+        // Clamp ke layar
+        newX = Mathf.clamp(newX, 0, xServer.screenInfo.width);
+        newY = Mathf.clamp(newY, 0, xServer.screenInfo.height);
+
+        // Kirim pergerakan pointer
+        if (xServer.isRelativeMouseMovement()) {
+            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int) newX, (int) newY, 0);
+        } else {
+            xServer.injectPointerMove((int) newX, (int) newY);
+        }
+
+        // Simpan posisi terakhir (untuk visual & referensi)
+        cursorMoveLastX = newX;
+        cursorMoveLastY = newY;
+
+        inputControlsView.invalidate();
+    } else {
                 float localX = x - boundingBox.left;
                 float localY = y - boundingBox.top;
                 float offsetX = localX - radius;
@@ -1348,13 +1372,6 @@ public class ControlElement {
                     // Reset posisi visual thumbstick ke center
                     currentPosition = null;
                     visualThumbPosition = null;
-
-                    // Cursor Move Mode: perbarui anchor ke posisi pointer terakhir yang dikirim
-                    // agar sentuhan berikutnya melanjutkan dari posisi pointer terakhir
-                    if (type == Type.RIGHT_STICK && isCursorMove && cursorMoveLastX >= 0) {
-                        cursorMoveAnchorX = cursorMoveLastX;
-                        cursorMoveAnchorY = cursorMoveLastY;
-                    }
 
                     inputControlsView.invalidate();
                 }

@@ -1215,7 +1215,7 @@ public class ControlElement {
 
                         // Akselerasi: jika stick > 0.7, tambah kecepatan
                         float len = (float) Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                        if (len > 0.7f) speedScale *= TouchPadView.CURSOR_ACCELERATION;
+                        if (len > 0.7f) speedScale *= TouchpadView.CURSOR_ACCELERATION;
 
                         int dx = Mathf.roundPoint(deltaX * speedScale);
                         int dy = Mathf.roundPoint(deltaY * speedScale);

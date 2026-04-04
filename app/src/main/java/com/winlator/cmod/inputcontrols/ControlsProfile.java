@@ -230,7 +230,7 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 // Cursor Move Mode — hanya berlaku untuk RIGHT_STICK
                 if (element.getType() == ControlElement.Type.RIGHT_STICK) {
                     element.setCursorMove(elementJSONObject.optBoolean("isCursorMove", false));
-                    element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 30));
+                    element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 150));
                 }
 
                 boolean hasGamepadBinding = true;

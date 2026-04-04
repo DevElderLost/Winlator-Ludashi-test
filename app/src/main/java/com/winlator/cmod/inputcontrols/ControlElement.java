@@ -93,15 +93,21 @@ public class ControlElement {
     private RangeScroller scroller;
 
     // === CURSOR MOVE MODE (RIGHT_STICK only) ===
-    // Jika true, right stick menggerakkan pointer cursor (seperti touchpad) bukan gamepad axis.
-    // Pointer dimulai dari tengah layar saat pertama kali disentuh, namun tidak kembali ke tengah
-    // ketika disentuh lagi — posisi cursor tetap bertahan di mana terakhir kali ditinggalkan.
-    // Radius pergerakan mengikuti lingkaran stick (dapat diatur via seekbar).
+    // Jika true, right stick menggerakkan pointer cursor dalam area melingkar.
+    // Posisi pointer = anchorPoint + (offsetJari_ternormalisasi * cursorMoveRadius_piksel).
+    // Saat jari dilepas, anchor diperbarui ke posisi pointer terakhir agar sentuhan
+    // berikutnya melanjutkan dari posisi yang sama (tidak kembali ke tengah).
     private boolean isCursorMove = false;
-    // Radius sensitivitas: seberapa jauh delta pointer per frame saat stick di pinggir (0–100, default 30)
-    private int cursorMoveRadius = 30;
-    // Apakah pointer sudah pernah diinisialisasi ke tengah layar saat mode ini aktif
-    private boolean cursorMoveInitialized = false;
+    // Radius lingkaran pergerakan pointer dalam piksel layar (default 150px).
+    // Diatur via seekbar di ControlsEditorActivity.
+    private int cursorMoveRadius = 150;
+    // Anchor posisi pointer di koordinat X server — diperbarui setiap touch up.
+    private float cursorMoveAnchorX = -1f;
+    private float cursorMoveAnchorY = -1f;
+    // Posisi pointer terakhir yang dikirim — disimpan sendiri agar tidak bergantung
+    // pada xServer.pointer.x/y yang mungkin tidak accessible atau sudah berubah.
+    private float cursorMoveLastX = -1f;
+    private float cursorMoveLastY = -1f;
 
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner]
     private byte[] slotIconIds = new byte[4];
@@ -226,8 +232,13 @@ public class ControlElement {
 
     public void setCursorMove(boolean cursorMove) {
         this.isCursorMove = cursorMove;
-        // Reset inisialisasi agar pointer mulai dari tengah layar saat mode diaktifkan lagi
-        if (!cursorMove) cursorMoveInitialized = false;
+        // Reset semua state agar saat mode diaktifkan lagi pointer mulai dari tengah layar
+        if (!cursorMove) {
+            cursorMoveAnchorX = -1f;
+            cursorMoveAnchorY = -1f;
+            cursorMoveLastX  = -1f;
+            cursorMoveLastY  = -1f;
+        }
     }
 
     public int getCursorMoveRadius() {
@@ -235,7 +246,8 @@ public class ControlElement {
     }
 
     public void setCursorMoveRadius(int radius) {
-        this.cursorMoveRadius = Math.max(1, Math.min(100, radius));
+        // Range 50–500 piksel layar X server
+        this.cursorMoveRadius = Math.max(50, Math.min(500, radius));
     }
 
     public Binding getBindingAt(int index) {
@@ -1187,47 +1199,41 @@ public class ControlElement {
             } else if (type == Type.RIGHT_STICK) {
                 if (isCursorMove) {
                     // === CURSOR MOVE MODE ===
-                    // deltaX / deltaY sudah ternormalisasi -1..1 dari logika RIGHT_STICK di atas.
-                    // Kita gunakan nilai itu untuk menggerakkan pointer cursor secara delta,
-                    // dengan radius sebagai skala kecepatan (mirip TRACKPAD).
-                    // Pointer tidak di-reset ke tengah setiap sentuh — posisi bertahan.
+                    // Posisi pointer = anchor + (offsetJari_ternormalisasi * cursorMoveRadius).
+                    // Pointer bergerak dalam batas lingkaran berradius cursorMoveRadius (piksel X server).
+                    // Saat jari dilepas (handleTouchUp), anchor diperbarui ke posisi pointer terakhir.
 
                     XServer xServer = inputControlsView.getXServer();
 
-                    // Inisialisasi pointer ke tengah layar hanya jika belum pernah dilakukan
-                    if (!cursorMoveInitialized) {
-                        int screenCx = xServer.screenInfo.width / 2;
-                        int screenCy = xServer.screenInfo.height / 2;
-                        xServer.injectPointerMove(screenCx, screenCy);
-                        cursorMoveInitialized = true;
+                    // Inisialisasi anchor ke tengah layar hanya jika belum pernah di-set
+                    if (cursorMoveAnchorX < 0) {
+                        cursorMoveAnchorX = xServer.screenInfo.width / 2f;
+                        cursorMoveAnchorY = xServer.screenInfo.height / 2f;
                     }
 
-                    // Terapkan dead zone agar pointer tidak drift saat stick diam
-                    float absX = Math.abs(deltaX);
-                    float absY = Math.abs(deltaY);
-                    if (absX < STICK_DEAD_ZONE) deltaX = 0;
-                    if (absY < STICK_DEAD_ZONE) deltaY = 0;
+                    // deltaX/Y sudah ternormalisasi -1..1, terapkan dead zone
+                    if (Math.abs(deltaX) < STICK_DEAD_ZONE) deltaX = 0;
+                    if (Math.abs(deltaY) < STICK_DEAD_ZONE) deltaY = 0;
 
-                    if (deltaX != 0 || deltaY != 0) {
-                        // Skala kecepatan: cursorMoveRadius adalah nilai 1–100,
-                        // dipetakan ke rentang piksel per frame (0.5 – 25 px/frame)
-                        float speedScale = 0.5f + (cursorMoveRadius / 100.0f) * 24.5f;
+                    // Posisi pointer baru = anchor + offset dalam lingkaran
+                    // cursorMoveRadius menentukan seberapa jauh (piksel) pointer bisa bergerak dari anchor
+                    float newX = cursorMoveAnchorX + deltaX * cursorMoveRadius;
+                    float newY = cursorMoveAnchorY + deltaY * cursorMoveRadius;
 
-                        // Akselerasi: jika stick > 0.7, tambah kecepatan
-                        float len = (float) Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                        if (len > 0.7f) speedScale *= TouchpadView.CURSOR_ACCELERATION;
+                    // Clamp agar tidak keluar dari area layar X server
+                    newX = Mathf.clamp(newX, 0, xServer.screenInfo.width);
+                    newY = Mathf.clamp(newY, 0, xServer.screenInfo.height);
 
-                        int dx = Mathf.roundPoint(deltaX * speedScale);
-                        int dy = Mathf.roundPoint(deltaY * speedScale);
-
-                        if (dx != 0 || dy != 0) {
-                            if (xServer.isRelativeMouseMovement()) {
-                                xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, dx, dy, 0);
-                            } else {
-                                xServer.injectPointerMoveDelta(dx, dy);
-                            }
-                        }
+                    if (xServer.isRelativeMouseMovement()) {
+                        xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int) newX, (int) newY, 0);
+                    } else {
+                        xServer.injectPointerMove((int) newX, (int) newY);
                     }
+
+                    // Simpan posisi terakhir yang dikirim untuk dipakai sebagai anchor baru saat touch up
+                    cursorMoveLastX = newX;
+                    cursorMoveLastY = newY;
+
                     inputControlsView.invalidate();
                 } else {
                 // Logika input seperti STICK biasa: nilai ternormalisasi -1..1 dikirim ke gamepad
@@ -1342,6 +1348,14 @@ public class ControlElement {
                     // Reset posisi visual thumbstick ke center
                     currentPosition = null;
                     visualThumbPosition = null;
+
+                    // Cursor Move Mode: perbarui anchor ke posisi pointer terakhir yang dikirim
+                    // agar sentuhan berikutnya melanjutkan dari posisi pointer terakhir
+                    if (type == Type.RIGHT_STICK && isCursorMove && cursorMoveLastX >= 0) {
+                        cursorMoveAnchorX = cursorMoveLastX;
+                        cursorMoveAnchorY = cursorMoveLastY;
+                    }
+
                     inputControlsView.invalidate();
                 }
             }

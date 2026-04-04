@@ -199,6 +199,62 @@
             android:layout_height="wrap_content"
             android:text="@string/toggle_switch" />
 
+        <!-- Cursor Move Mode — hanya tampil saat type = RIGHT_STICK -->
+        <LinearLayout
+            android:id="@+id/LLCursorMove"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <CheckBox
+                android:id="@+id/CBCursorMove"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cursor Move Mode" />
+
+        </LinearLayout>
+
+        <!-- Cursor Move Speed — hanya tampil saat CBCursorMove dicentang -->
+        <LinearLayout
+            android:id="@+id/LLCursorMoveRadius"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="4dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cursor Speed" />
+
+                <TextView
+                    android:id="@+id/TVCursorMoveRadius"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="40dp"
+                    android:gravity="end"
+                    android:text="30%" />
+
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/SBCursorMoveRadius"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:progress="30" />
+
+        </LinearLayout>
+
         <LinearLayout
             android:id="@+id/LLCustomTextIcon"
             android:layout_width="match_parent"

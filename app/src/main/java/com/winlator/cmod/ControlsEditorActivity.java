@@ -152,7 +152,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 // Tampilkan opsi Cursor Move hanya untuk RIGHT_STICK
                 if (type == ControlElement.Type.RIGHT_STICK) {
                     view.findViewById(R.id.LLCursorMove).setVisibility(View.VISIBLE);
-                    view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.VISIBLE);
+                    view.findViewById(R.id.LLCursorMoveRadius).setVisibility(
+                            element.isCursorMove() ? View.VISIBLE : View.GONE);
                 } else {
                     view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
                     view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
@@ -221,16 +222,21 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         final TextView tvCursorRadius = view.findViewById(R.id.TVCursorMoveRadius);
         SeekBar sbCursorRadius = view.findViewById(R.id.SBCursorMoveRadius);
-        tvCursorRadius.setText(element.getCursorMoveRadius() + "%");
-        sbCursorRadius.setMax(100);
-        sbCursorRadius.setProgress(element.getCursorMoveRadius());
+        // Range radius: 50–500 piksel (ukuran lingkaran pergerakan pointer di layar)
+        // SeekBar max=450, progress offset +50 agar nilai aktual = progress+50
+        final int RADIUS_MIN = 50;
+        final int RADIUS_MAX = 500;
+        sbCursorRadius.setMax(RADIUS_MAX - RADIUS_MIN);
+        int initialProgress = Mathf.clamp(element.getCursorMoveRadius(), RADIUS_MIN, RADIUS_MAX) - RADIUS_MIN;
+        sbCursorRadius.setProgress(initialProgress);
+        tvCursorRadius.setText((initialProgress + RADIUS_MIN) + " px");
         sbCursorRadius.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (progress < 1) { progress = 1; seekBar.setProgress(1); }
-                tvCursorRadius.setText(progress + "%");
+                int radiusPx = progress + RADIUS_MIN;
+                tvCursorRadius.setText(radiusPx + " px");
                 if (fromUser) {
-                    element.setCursorMoveRadius(progress);
+                    element.setCursorMoveRadius(radiusPx);
                     profile.save();
                 }
             }

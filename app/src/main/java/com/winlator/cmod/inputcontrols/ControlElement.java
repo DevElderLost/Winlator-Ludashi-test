@@ -1142,6 +1142,7 @@ public class ControlElement {
                 deltaX = Mathf.clamp(offsetX / radius, -1, 1);
                 deltaY = Mathf.clamp(offsetY / radius, -1, 1);
             }
+            } // end else if (type == Type.RIGHT_STICK)
 
             if (type == Type.STICK) {
                 if (currentPosition == null) currentPosition = new PointF();

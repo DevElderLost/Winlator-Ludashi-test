@@ -1265,8 +1265,10 @@ public class ControlElement {
                     }
 
                     inputControlsView.invalidate();
-                } else {
-                // Logika input seperti STICK biasa: nilai ternormalisasi -1..1 dikirim ke gamepad
+                }
+
+                // Binding gamepad selalu dieksekusi — baik cursor move aktif maupun tidak.
+                // Cursor move hanya mengontrol pergerakan pointer, binding tetap berjalan normal.
                 final boolean[] newStates = {
                         deltaY <= -STICK_DEAD_ZONE,
                         deltaX >= STICK_DEAD_ZONE,
@@ -1303,7 +1305,6 @@ public class ControlElement {
                 }
 
                 inputControlsView.invalidate();
-                } // end else (normal gamepad mode)
             } else {
                 final boolean[] newStates = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 

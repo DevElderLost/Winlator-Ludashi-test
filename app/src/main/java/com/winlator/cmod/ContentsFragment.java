@@ -306,7 +306,7 @@ public class ContentsFragment extends Fragment {
                 default -> R.drawable.icon_settings;
             };
             holder.ivIcon.setBackground(getContext().getDrawable(iconId));
-            holder.ivIcon.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+            holder.ivIcon.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
 
             holder.tvVersionName.setText(getContext().getString(R.string.version) + ": " + profile.verName);
             holder.tvVersionCode.setText(getContext().getString(R.string.version_code) + ": " + profile.verCode);

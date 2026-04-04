@@ -92,6 +92,17 @@ public class ControlElement {
     private PointF visualThumbPosition; // posisi visual thumbstick RIGHT_STICK (terpisah dari currentPosition yang dipakai input)
     private RangeScroller scroller;
 
+    // === CURSOR MOVE MODE (RIGHT_STICK only) ===
+    // Jika true, right stick menggerakkan pointer cursor (seperti touchpad) bukan gamepad axis.
+    // Pointer dimulai dari tengah layar saat pertama kali disentuh, namun tidak kembali ke tengah
+    // ketika disentuh lagi — posisi cursor tetap bertahan di mana terakhir kali ditinggalkan.
+    // Radius pergerakan mengikuti lingkaran stick (dapat diatur via seekbar).
+    private boolean isCursorMove = false;
+    // Radius sensitivitas: seberapa jauh delta pointer per frame saat stick di pinggir (0–100, default 30)
+    private int cursorMoveRadius = 30;
+    // Apakah pointer sudah pernah diinisialisasi ke tengah layar saat mode ini aktif
+    private boolean cursorMoveInitialized = false;
+
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner]
     private byte[] slotIconIds = new byte[4];
     private CubicBezierInterpolator interpolator;
@@ -206,6 +217,25 @@ public class ControlElement {
 
     public void setToggleSwitch(boolean toggleSwitch) {
         this.toggleSwitch = toggleSwitch;
+    }
+
+    // === CURSOR MOVE MODE ===
+    public boolean isCursorMove() {
+        return isCursorMove;
+    }
+
+    public void setCursorMove(boolean cursorMove) {
+        this.isCursorMove = cursorMove;
+        // Reset inisialisasi agar pointer mulai dari tengah layar saat mode diaktifkan lagi
+        if (!cursorMove) cursorMoveInitialized = false;
+    }
+
+    public int getCursorMoveRadius() {
+        return cursorMoveRadius;
+    }
+
+    public void setCursorMoveRadius(int radius) {
+        this.cursorMoveRadius = Math.max(1, Math.min(100, radius));
     }
 
     public Binding getBindingAt(int index) {
@@ -973,6 +1003,13 @@ public class ControlElement {
                 elementJSONObject.put("selected", selected);
             }
 
+            if (type == Type.RIGHT_STICK) {
+                elementJSONObject.put("isCursorMove", isCursorMove);
+                if (isCursorMove) {
+                    elementJSONObject.put("cursorMoveRadius", cursorMoveRadius);
+                }
+            }
+
             return elementJSONObject;
         } catch (JSONException e) {
             return null;
@@ -1148,6 +1185,51 @@ public class ControlElement {
                         inputControlsView.getXServer().injectPointerMoveDelta(cursorDx, cursorDy);
                 }
             } else if (type == Type.RIGHT_STICK) {
+                if (isCursorMove) {
+                    // === CURSOR MOVE MODE ===
+                    // deltaX / deltaY sudah ternormalisasi -1..1 dari logika RIGHT_STICK di atas.
+                    // Kita gunakan nilai itu untuk menggerakkan pointer cursor secara delta,
+                    // dengan radius sebagai skala kecepatan (mirip TRACKPAD).
+                    // Pointer tidak di-reset ke tengah setiap sentuh — posisi bertahan.
+
+                    XServer xServer = inputControlsView.getXServer();
+
+                    // Inisialisasi pointer ke tengah layar hanya jika belum pernah dilakukan
+                    if (!cursorMoveInitialized) {
+                        int screenCx = xServer.screenInfo.width / 2;
+                        int screenCy = xServer.screenInfo.height / 2;
+                        xServer.injectPointerMove(screenCx, screenCy);
+                        cursorMoveInitialized = true;
+                    }
+
+                    // Terapkan dead zone agar pointer tidak drift saat stick diam
+                    float absX = Math.abs(deltaX);
+                    float absY = Math.abs(deltaY);
+                    if (absX < STICK_DEAD_ZONE) deltaX = 0;
+                    if (absY < STICK_DEAD_ZONE) deltaY = 0;
+
+                    if (deltaX != 0 || deltaY != 0) {
+                        // Skala kecepatan: cursorMoveRadius adalah nilai 1–100,
+                        // dipetakan ke rentang piksel per frame (0.5 – 25 px/frame)
+                        float speedScale = 0.5f + (cursorMoveRadius / 100.0f) * 24.5f;
+
+                        // Akselerasi: jika stick > 0.7, tambah kecepatan
+                        float len = (float) Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                        if (len > 0.7f) speedScale *= CURSOR_ACCELERATION;
+
+                        int dx = Mathf.roundPoint(deltaX * speedScale);
+                        int dy = Mathf.roundPoint(deltaY * speedScale);
+
+                        if (dx != 0 || dy != 0) {
+                            if (xServer.isRelativeMouseMovement()) {
+                                xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, dx, dy, 0);
+                            } else {
+                                xServer.injectPointerMoveDelta(dx, dy);
+                            }
+                        }
+                    }
+                    inputControlsView.invalidate();
+                } else {
                 // Logika input seperti STICK biasa: nilai ternormalisasi -1..1 dikirim ke gamepad
                 final boolean[] newStates = {
                         deltaY <= -STICK_DEAD_ZONE,
@@ -1185,6 +1267,7 @@ public class ControlElement {
                 }
 
                 inputControlsView.invalidate();
+                } // end else (normal gamepad mode)
             } else {
                 final boolean[] newStates = {deltaY <= -DPAD_DEAD_ZONE, deltaX >= DPAD_DEAD_ZONE, deltaY >= DPAD_DEAD_ZONE, deltaX <= -DPAD_DEAD_ZONE};
 

@@ -227,6 +227,12 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 if (elementJSONObject.has("range")) element.setRange(ControlElement.Range.valueOf(elementJSONObject.getString("range")));
                 if (elementJSONObject.has("orientation")) element.setOrientation((byte)elementJSONObject.getInt("orientation"));
 
+                // Cursor Move Mode — hanya berlaku untuk RIGHT_STICK
+                if (element.getType() == ControlElement.Type.RIGHT_STICK) {
+                    element.setCursorMove(elementJSONObject.optBoolean("isCursorMove", false));
+                    element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 30));
+                }
+
                 boolean hasGamepadBinding = true;
                 JSONArray bindingsJSONArray = elementJSONObject.getJSONArray("bindings");
                 for (int j = 0; j < bindingsJSONArray.length(); j++) {

@@ -117,13 +117,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
             // Reset visibility
             view.findViewById(R.id.LLShape).setVisibility(View.GONE);
+            view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
+            view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
             view.findViewById(R.id.CBToggleSwitch).setVisibility(View.GONE);
             view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.GONE);
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
             view.findViewById(R.id.LLBindings).setVisibility(View.GONE);
             view.findViewById(R.id.LLSlotIcons).setVisibility(View.GONE);
-            view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
-            view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
 
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);

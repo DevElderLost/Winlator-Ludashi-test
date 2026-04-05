@@ -305,7 +305,7 @@ public class ContentsFragment extends Fragment {
                 case CONTENT_TYPE_PROTON -> R.drawable.icon_wine;
                 default -> R.drawable.icon_settings;
             };
-            holder.ivIcon.setBackground(getContext().getDrawable(iconId));
+            holder.ivIcon.setImageResource(getContext().getDrawable(iconId));
             holder.ivIcon.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
 
             holder.tvVersionName.setText(getContext().getString(R.string.version) + ": " + profile.verName);

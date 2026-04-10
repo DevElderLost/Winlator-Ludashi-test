@@ -46,7 +46,7 @@ public class FullscreenTransformation {
      * @return koordinat [x, y] dalam ruang window asli
      */
     public short[] transformPointerCoords(short screenX, short screenY) {
-        short[] localPoint = window.rootPointToLocal(screenX, screenY, true);
+        short[] localPoint = window.rootPointToLocal(screenX, screenY);
 
         short transformedX = (short) Math.max(0.0f,
                 (localPoint[0] * ((float) window.getWidth()  / width))  + window.getRootX());

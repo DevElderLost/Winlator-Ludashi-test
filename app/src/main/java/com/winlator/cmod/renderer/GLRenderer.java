@@ -44,7 +44,9 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public final ViewTransformation viewTransformation = new ViewTransformation();
     private final Drawable rootCursorDrawable;
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
+    private final FullscreenTransformation tmpFullscreenTransformation = new FullscreenTransformation(null);
     private boolean forceWindowsFullscreen = false;
+    private String forceFullscreenWMClass = null;
     private boolean fullscreen = false;
     private boolean toggleFullscreen = false;
     public boolean viewportNeedsUpdate = true;
@@ -294,11 +296,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             texture.updateFromDrawable(drawable);
 
             if (forceFullscreen) {
-                // Gunakan FullscreenTransformation.update() dari class untuk kalkulasi
-                // posisi dan ukuran aspect-ratio-preserving — bukan inline math.
-                FullscreenTransformation fst = new FullscreenTransformation(null);
-                fst.update(xServer.screenInfo, (short) drawable.width, (short) drawable.height);
-                XForm.set(tmpXForm1, fst.x, fst.y, fst.width, fst.height);
+                // Gunakan field reusable — tidak alokasi objek baru per frame.
+                tmpFullscreenTransformation.update(xServer.screenInfo,
+                        (short) drawable.width, (short) drawable.height);
+                XForm.set(tmpXForm1,
+                        tmpFullscreenTransformation.x,
+                        tmpFullscreenTransformation.y,
+                        tmpFullscreenTransformation.width,
+                        tmpFullscreenTransformation.height);
             } else {
                 XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
             }
@@ -408,30 +413,27 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     short height = window.getHeight();
 
                     // Kandidat fullscreen: window berukuran cukup (≥320×200)
-                    // tapi lebih kecil dari layar — perlu di-scale-up.
-                    boolean smallerThanScreen = false;
-                    if (width >= (short) 320 && height >= (short) 200) {
-                        if (width < xServer.screenInfo.width
-                                && height < xServer.screenInfo.height) {
-                            smallerThanScreen = true;
-                        }
-                    }
+                    // tapi lebih kecil dari layar penuh — perlu di-scale-up.
+                    boolean smallerThanScreen = width >= 320 && height >= 200
+                            && width < xServer.screenInfo.width
+                            && height < xServer.screenInfo.height;
 
-                    if (window.getType() == Window.Type.NORMAL
-                            && smallerThanScreen
-                            && window.hasNoDecorations()) {
-
+                    if (smallerThanScreen) {
                         Window parent = window.getParent();
 
-                        // Jika parent adalah frame dekorasi tipis (BORDER + TITLE, 1 child),
-                        // aktifkan forceFullscreen dan hapus parent dari list render.
+                        // Deteksi frame dekorasi tipis: parent dengan 1 child dan
+                        // borderWidth > 0 yang menutupi window ini dengan sedikit padding.
+                        // Jika cocok, hapus parent dari list dan aktifkan forceFullscreen.
                         if (parent != xServer.windowManager.rootWindow
                                 && parent.getChildCount() == 1
-                                && parent.hasDecoration(Window.Decoration.BORDER)
-                                && parent.hasDecoration(Window.Decoration.TITLE)) {
+                                && parent.getBorderWidth() > 0) {
                             removeRenderableWindow(parent);
+                            forceFullscreen = true;
+                        } else if (window.getChildCount() == 0
+                                && window.getBorderWidth() == 0) {
+                            // Window daun tanpa border — kemungkinan window konten utama.
+                            forceFullscreen = true;
                         }
-                        forceFullscreen = true;
                     }
                 }
 
@@ -491,6 +493,16 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void setForceWindowsFullscreen(boolean forceWindowsFullscreen) {
         this.forceWindowsFullscreen = forceWindowsFullscreen;
+    }
+
+    public String getForceFullscreenWMClass() {
+        return forceFullscreenWMClass;
+    }
+
+    public void setForceFullscreenWMClass(String forceFullscreenWMClass) {
+        this.forceFullscreenWMClass = forceFullscreenWMClass;
+        // Aktifkan forceWindowsFullscreen otomatis jika WMClass di-set
+        this.forceWindowsFullscreen = (forceFullscreenWMClass != null);
     }
 
     public String[] getUnviewableWMClasses() {

@@ -20,7 +20,7 @@ import com.winlator.cmod.widget.XServerView;
 import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Drawable;
-import com.winlator.cmod.xserver.FullscreenTransformation;
+import com.winlator.cmod.renderer.FullscreenTransformation;
 import com.winlator.cmod.xserver.Pointer;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowAttributes;

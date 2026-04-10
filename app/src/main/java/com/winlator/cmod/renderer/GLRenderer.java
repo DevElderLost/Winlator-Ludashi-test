@@ -20,6 +20,7 @@ import com.winlator.cmod.widget.XServerView;
 import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Drawable;
+import com.winlator.cmod.xserver.FullscreenTransformation;
 import com.winlator.cmod.xserver.Pointer;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowAttributes;
@@ -43,12 +44,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public final ViewTransformation viewTransformation = new ViewTransformation();
     private final Drawable rootCursorDrawable;
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
-    private String forceFullscreenWMClass = null;
+    private boolean forceWindowsFullscreen = false;
     private boolean fullscreen = false;
     private boolean toggleFullscreen = false;
     public boolean viewportNeedsUpdate = true;
     private boolean cursorVisible = true;
-    private boolean rootWindowDownsized = false;
     private boolean screenOffsetYRelativeToCursor = false;
     private String[] unviewableWMClasses = null;
     private float magnifierZoom = 1.0f;
@@ -172,7 +172,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         // forceFullscreen per-window (dari collectRenderableWindows) yang menangani background besar.
         renderWindows(xrImmersive);
 
-        if (cursorVisible && !rootWindowDownsized) renderCursor();
+        if (cursorVisible) renderCursor();
 
         if (!magnifierEnabled && !fullscreen) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
@@ -281,6 +281,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         renderDrawable(drawable, x, y, material, false);
     }
 
+    /**
+     * Render drawable ke GPU.
+     * Jika {@code forceFullscreen} true, posisi dan ukuran dihitung via
+     * {@link FullscreenTransformation#update} (aspect-ratio-preserving, terpusat di layar).
+     * Jika false, render normal di koordinat (x, y) dengan ukuran asli drawable.
+     */
     private void renderDrawable(Drawable drawable, int x, int y, ShaderMaterial material, boolean forceFullscreen) {
         if (drawable == null) return;
         synchronized (drawable.renderLock) {
@@ -288,11 +294,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             texture.updateFromDrawable(drawable);
 
             if (forceFullscreen) {
-                short newHeight = (short)Math.min(xServer.screenInfo.height, ((float)xServer.screenInfo.width / drawable.width) * drawable.height);
-                short newWidth = (short)(((float)newHeight / drawable.height) * drawable.width);
-                XForm.set(tmpXForm1, (xServer.screenInfo.width - newWidth) * 0.5f, (xServer.screenInfo.height - newHeight) * 0.5f, newWidth, newHeight);
+                // Gunakan FullscreenTransformation.update() dari class untuk kalkulasi
+                // posisi dan ukuran aspect-ratio-preserving — bukan inline math.
+                FullscreenTransformation fst = new FullscreenTransformation(null);
+                fst.update(xServer.screenInfo, (short) drawable.width, (short) drawable.height);
+                XForm.set(tmpXForm1, fst.x, fst.y, fst.width, fst.height);
+            } else {
+                XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
             }
-            else XForm.set(tmpXForm1, x, y, drawable.width, drawable.height);
 
             XForm.multiply(tmpXForm1, tmpXForm1, tmpXForm2);
 
@@ -307,49 +316,19 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     private void renderWindows(boolean xrForceFullscreen) {
         windowMaterial.use();
-        GLES20.glUniform2f(windowMaterial.getUniformLocation("viewSize"), xServer.screenInfo.width, xServer.screenInfo.height);
+        GLES20.glUniform2f(windowMaterial.getUniformLocation("viewSize"),
+                xServer.screenInfo.width, xServer.screenInfo.height);
         quadVertices.bind(windowMaterial.programId);
 
         try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            rootWindowDownsized = false;
-
             if (renderableWindows.isEmpty()) {
                 quadVertices.disable();
                 return;
             }
 
-            if (xrForceFullscreen) {
-                RenderableWindow bg = renderableWindows.get(renderableWindows.size() - 1);
-                renderWindowsWithBackground(bg);
-            } else {
-                boolean hasUndersizedRoot = false;
-                if (fullscreen) {
-                    RenderableWindow root = renderableWindows.get(0);
-                    if (root.content.width < xServer.screenInfo.width
-                            || root.content.height < xServer.screenInfo.height) {
-                        rootWindowDownsized = true;
-                        hasUndersizedRoot = true;
-                    }
-                }
-
-                if (hasUndersizedRoot) {
-                    renderWindowsWithBackground(renderableWindows.get(0));
-                } else {
-                    // Mode normal: cari window forceFullscreen sebagai background besar,
-                    // render tanpa blend. Sisanya (overlay) dengan blend lazy.
-                    RenderableWindow fsBg = null;
-                    for (RenderableWindow rw : renderableWindows) {
-                        if (rw.forceFullscreen) { fsBg = rw; break; }
-                    }
-
-                    if (fsBg != null) {
-                        renderWindowsWithBackground(fsBg);
-                    } else {
-                        for (RenderableWindow window : renderableWindows) {
-                            renderDrawable(window.content, window.rootX, window.rootY, windowMaterial, false);
-                        }
-                    }
-                }
+            for (RenderableWindow rw : renderableWindows) {
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial,
+                        xrForceFullscreen || rw.forceFullscreen);
             }
         }
 
@@ -358,31 +337,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         int error = GLES20.glGetError();
         if (error != GLES20.GL_NO_ERROR) {
             Log.e("GLRenderer", "OpenGL Error: " + error);
-        }
-    }
-
-    /**
-     * Render {@code bg} sebagai background fullscreen tanpa blend,
-     * lalu render semua window lain sebagai overlay dengan blend lazy.
-     * Dipakai oleh renderWindows untuk kasus XR forceFullscreen dan hasUndersizedRoot.
-     */
-    private void renderWindowsWithBackground(RenderableWindow bg) {
-        GLES20.glDisable(GLES20.GL_BLEND);
-        renderDrawable(bg.content, bg.rootX, bg.rootY, windowMaterial, true);
-
-        boolean blendEnabled = false;
-        for (RenderableWindow rw : renderableWindows) {
-            if (rw == bg) continue;
-            if (!blendEnabled) {
-                GLES20.glEnable(GLES20.GL_BLEND);
-                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-                blendEnabled = true;
-            }
-            renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, rw.forceFullscreen);
-        }
-
-        if (!magnifierEnabled) {
-            GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
     }
 
@@ -428,6 +382,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     private void collectRenderableWindows(Window window, int x, int y) {
         if (!window.attributes.isMapped()) return;
+
         if (window != xServer.windowManager.rootWindow) {
             boolean viewable = true;
 
@@ -443,44 +398,44 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             }
 
             if (viewable) {
-                if (forceFullscreenWMClass != null) {
+                boolean forceFullscreen = false;
+
+                if (forceWindowsFullscreen) {
+                    // Mode global: semua window dipaksa fullscreen.
+                    forceFullscreen = true;
+                } else {
                     short width = window.getWidth();
                     short height = window.getHeight();
-                    boolean forceFullscreen = false;
 
-                    // forceFullscreen hanya berlaku untuk window besar yang mendekati ukuran layar
-                    // (minimal 75% dari lebar DAN tinggi layar). Window kecil seperti dialog,
-                    // popup, tooltip tetap dirender normal dengan posisi dan ukuran aslinya.
-                    float screenW = xServer.screenInfo.width;
-                    float screenH = xServer.screenInfo.height;
-                    boolean isLargeWindow = (width >= screenW * 0.75f) && (height >= screenH * 0.75f);
-
-                    if (isLargeWindow) {
-                        Window parent = window.getParent();
-                        boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
-                        boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
-
-                        if (hasWMClass) {
-                            // Window besar dengan WMClass cocok: paksa fullscreen jika
-                            // parent tidak memiliki WMClass yang sama dan tidak memiliki child.
-                            forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
-                        } else {
-                            // Window besar tanpa WMClass — cek apakah parent adalah
-                            // frame dekorasi tipis, lalu paksa fullscreen.
-                            short borderX = (short)(parent.getWidth() - width);
-                            short borderY = (short)(parent.getHeight() - height);
-                            if (parent.getChildCount() == 1 && borderX > 0 && borderY > 0 && borderX <= 12) {
-                                forceFullscreen = true;
-                                removeRenderableWindow(parent);
-                            }
+                    // Kandidat fullscreen: window berukuran cukup (≥320×200)
+                    // tapi lebih kecil dari layar — perlu di-scale-up.
+                    boolean smallerThanScreen = false;
+                    if (width >= (short) 320 && height >= (short) 200) {
+                        if (width < xServer.screenInfo.width
+                                && height < xServer.screenInfo.height) {
+                            smallerThanScreen = true;
                         }
                     }
-                    // Window kecil: forceFullscreen tetap false,
-                    // dirender dengan posisi dan ukuran aslinya di atas window utama.
 
-                    renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));
+                    if (window.getType() == Window.Type.NORMAL
+                            && smallerThanScreen
+                            && window.hasNoDecorations()) {
+
+                        Window parent = window.getParent();
+
+                        // Jika parent adalah frame dekorasi tipis (BORDER + TITLE, 1 child),
+                        // aktifkan forceFullscreen dan hapus parent dari list render.
+                        if (parent != xServer.windowManager.rootWindow
+                                && parent.getChildCount() == 1
+                                && parent.hasDecoration(Window.Decoration.BORDER)
+                                && parent.hasDecoration(Window.Decoration.TITLE)) {
+                            removeRenderableWindow(parent);
+                        }
+                        forceFullscreen = true;
+                    }
                 }
-                else renderableWindows.add(new RenderableWindow(window.getContent(), x, y));
+
+                renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));
             }
         }
 
@@ -530,12 +485,12 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         return fullscreen;
     }
 
-    public String getForceFullscreenWMClass() {
-        return forceFullscreenWMClass;
+    public boolean isForceWindowsFullscreen() {
+        return forceWindowsFullscreen;
     }
 
-    public void setForceFullscreenWMClass(String forceFullscreenWMClass) {
-        this.forceFullscreenWMClass = forceFullscreenWMClass;
+    public void setForceWindowsFullscreen(boolean forceWindowsFullscreen) {
+        this.forceWindowsFullscreen = forceWindowsFullscreen;
     }
 
     public String[] getUnviewableWMClasses() {

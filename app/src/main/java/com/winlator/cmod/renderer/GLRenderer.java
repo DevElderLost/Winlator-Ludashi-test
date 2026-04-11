@@ -330,9 +330,35 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 return;
             }
 
+            boolean blendEnabled = true; // blend aktif secara default dari onSurfaceCreated
+
             for (RenderableWindow rw : renderableWindows) {
-                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial,
-                        xrForceFullscreen || rw.forceFullscreen);
+                boolean fs = xrForceFullscreen || rw.forceFullscreen;
+
+                if (fs) {
+                    // Window besar forceFullscreen: render opaque tanpa blend
+                    // agar tidak ada artefak alpha di background.
+                    if (blendEnabled) {
+                        GLES20.glDisable(GLES20.GL_BLEND);
+                        blendEnabled = false;
+                    }
+                } else {
+                    // Window kecil (overlay/dialog): render dengan blend alpha.
+                    if (!blendEnabled) {
+                        GLES20.glEnable(GLES20.GL_BLEND);
+                        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+                        blendEnabled = true;
+                    }
+                }
+
+                renderDrawable(rw.content, rw.rootX, rw.rootY, windowMaterial, fs);
+            }
+
+            // Pastikan blend selalu aktif kembali setelah renderWindows selesai
+            // agar renderCursor dan pass berikutnya tidak terpengaruh.
+            if (!blendEnabled) {
+                GLES20.glEnable(GLES20.GL_BLEND);
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             }
         }
 

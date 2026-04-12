@@ -14,6 +14,7 @@ import com.winlator.cmod.xserver.errors.BadValue;
 import com.winlator.cmod.xserver.events.CreateNotify;
 import com.winlator.cmod.xserver.events.Event;
 import com.winlator.cmod.xserver.Property;
+import com.winlator.cmod.xserver.Atom;
 import com.winlator.cmod.xserver.Visual;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowManager;
@@ -25,6 +26,8 @@ import com.winlator.cmod.xserver.errors.XRequestError;
 import com.winlator.cmod.xserver.events.RawEvent;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.List;
 
 public abstract class WindowRequests {
@@ -448,6 +451,131 @@ public abstract class WindowRequests {
             destination.originClient.sendEvent(event);
         }
         else destination.sendEvent(eventMask, event);
+    }
+
+    /**
+     * Handle ClientMessage (opcode 33).
+     * Wine menggunakan ini saat runtime untuk mengubah _NET_WM_STATE
+     * (maximize, fullscreen, dll) via SendEvent ke root window.
+     *
+     * Format ClientMessage _NET_WM_STATE (data 32-bit):
+     *   data32[0] = action: 0=REMOVE, 1=ADD, 2=TOGGLE
+     *   data32[1] = atom pertama  (e.g. _NET_WM_STATE_MAXIMIZED_VERT)
+     *   data32[2] = atom kedua    (e.g. _NET_WM_STATE_MAXIMIZED_HORZ, atau 0)
+     *   data32[3..4] = source indication (diabaikan)
+     */
+    public static void clientMessage(XClient client, XInputStream inputStream, XOutputStream outputStream) throws XRequestError {
+        int windowId        = inputStream.readInt();
+        int messageTypeAtom = inputStream.readInt();
+
+        Window window = client.xServer.windowManager.getWindow(windowId);
+        if (window == null) {
+            client.skipRequest();
+            return;
+        }
+
+        int netWmStateAtom = Atom.getId("_NET_WM_STATE");
+        if (messageTypeAtom != netWmStateAtom) {
+            client.skipRequest();
+            return;
+        }
+
+        // Baca 5 data32 (20 byte): action, atom1, atom2, source1, source2
+        int action = inputStream.readInt();
+        int atom1  = inputStream.readInt();
+        int atom2  = inputStream.readInt();
+        inputStream.skip(8); // source indication, tidak dipakai
+
+        int maxVert = Atom.getId("_NET_WM_STATE_MAXIMIZED_VERT");
+        int maxHorz = Atom.getId("_NET_WM_STATE_MAXIMIZED_HORZ");
+        int fullscr = Atom.getId("_NET_WM_STATE_FULLSCREEN");
+
+        // Filter: hanya proses jika ada atom yang relevan dengan maximize/fullscreen
+        boolean relevant = isRelevantStateAtom(atom1, maxVert, maxHorz, fullscr)
+                        || isRelevantStateAtom(atom2, maxVert, maxHorz, fullscr);
+        if (!relevant) return;
+
+        boolean wasBefore = window.isMaximized();
+
+        if (atom1 != 0) applyNetWmStateAction(window, action, atom1);
+        if (atom2 != 0) applyNetWmStateAction(window, action, atom2);
+
+        boolean isAfter = window.isMaximized();
+
+        // Trigger updateScene hanya kalau state maximize benar-benar berubah
+        if (wasBefore != isAfter) {
+            Property prop = window.getProperty(netWmStateAtom);
+            client.xServer.windowManager.triggerOnModifyWindowProperty(window, prop);
+        }
+    }
+
+    private static boolean isRelevantStateAtom(int atom, int maxVert, int maxHorz, int fullscr) {
+        return atom == maxVert || atom == maxHorz || atom == fullscr;
+    }
+
+    /**
+     * Terapkan action ke property _NET_WM_STATE untuk satu atom.
+     * Data disimpan sebagai INT_ARRAY (4 byte per atom, little-endian),
+     * konsisten dengan format Property di X11.
+     *
+     * action: 0=REMOVE, 1=ADD, 2=TOGGLE
+     */
+    private static void applyNetWmStateAction(Window window, int action, int atomId) {
+        int netWmStateAtom = Atom.getId("_NET_WM_STATE");
+        int atomType       = Atom.getId("ATOM");
+        Property current   = window.getProperty(netWmStateAtom);
+
+        // Baca atom yang sudah ada sebagai array int
+        int[] existing = new int[0];
+        if (current != null && current.data != null) {
+            int count = current.data.capacity() / 4;
+            existing = new int[count];
+            for (int i = 0; i < count; i++) existing[i] = current.getInt(i);
+        }
+
+        // Cek apakah atom sudah ada di array
+        boolean hasAtom = false;
+        for (int a : existing) {
+            if (a == atomId) { hasAtom = true; break; }
+        }
+
+        boolean shouldAdd;
+        switch (action) {
+            case 0:  shouldAdd = false;     break; // REMOVE
+            case 1:  shouldAdd = true;      break; // ADD
+            case 2:  shouldAdd = !hasAtom;  break; // TOGGLE
+            default: return;
+        }
+
+        // Tidak ada perubahan — skip
+        if (shouldAdd == hasAtom) return;
+
+        int[] newAtoms;
+        if (shouldAdd) {
+            // Tambahkan atom di akhir array
+            newAtoms = new int[existing.length + 1];
+            System.arraycopy(existing, 0, newAtoms, 0, existing.length);
+            newAtoms[existing.length] = atomId;
+        } else {
+            // Hapus atom dari array
+            newAtoms = new int[existing.length - 1];
+            int idx = 0;
+            for (int a : existing) {
+                if (a != atomId) newAtoms[idx++] = a;
+            }
+        }
+
+        // Konversi int[] → byte[] little-endian (format INT_ARRAY)
+        ByteBuffer buf = ByteBuffer.allocate(newAtoms.length * 4).order(ByteOrder.LITTLE_ENDIAN);
+        for (int a : newAtoms) buf.putInt(a);
+
+        window.modifyProperty(
+            netWmStateAtom,
+            atomType,
+            Property.Format.INT_ARRAY,
+            Property.Mode.REPLACE,
+            buf.array()
+        );
     }
 
     public static void getScreenSaver(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException, XRequestError {

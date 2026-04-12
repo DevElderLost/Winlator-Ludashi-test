@@ -645,4 +645,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="native_rendering">Enable Native Rendering</string>
     <string name="all_files_access_dialog_title">All Files Access Required</string>
     <string name="all_files_access_dialog_message">In order to grant access to additional storage devices such as USB storage device, the All Files Access permission must be granted. Press Okay to grant All Files Access in your Android Settings.</string>
+    <string name="help_import_icons">Compress your icons in a ZIP archive and import them by pressing this button.</string>
 </resources>

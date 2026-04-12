@@ -350,6 +350,7 @@ public class ControlElement {
     }
 
 
+    public Binding getBindingAt(int index) {
         return (index >= 0 && index < bindings.size()) ? bindings.get(index) : Binding.NONE;
     }
 

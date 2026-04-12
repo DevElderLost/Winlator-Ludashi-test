@@ -450,6 +450,7 @@ public class ControlElement {
             case BUTTON:
             case TOUCHSCREEN_TOGGLE:
             case MENU_NAVIGATION:
+                switch (shape) {
                     case RECT:
                     case ROUND_RECT:
                         halfWidth = snappingSize * 4;

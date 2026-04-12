@@ -268,6 +268,11 @@ public class XClientRequestHandler implements RequestHandler {
                         WindowRequests.sendEvent(client, inputStream, outputStream);
                     }
                     break;
+                case 33: // ClientMessage — _NET_WM_STATE maximize/fullscreen dari Wine
+                    try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER)) {
+                        WindowRequests.clientMessage(client, inputStream, outputStream);
+                    }
+                    break;
                 case ClientOpcodes.GRAB_POINTER:
                     try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.INPUT_DEVICE, XServer.Lockable.CURSOR_MANAGER)) {
                         GrabRequests.grabPointer(client, inputStream, outputStream);
@@ -437,7 +442,6 @@ public class XClientRequestHandler implements RequestHandler {
                         Log.d("XClientRequestHandler", "X_GrabServer request handled successfully:" + outputStream.buffer.position());
                     }
                     break;
-
                 case 37: // X_UngrabServer
                     try (XLock lock = client.xServer.lockAll()) {
                         if (client.xServer.isGrabbedBy(client)) {

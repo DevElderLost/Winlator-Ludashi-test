@@ -181,6 +181,30 @@ public class Window extends XResource {
         return attributes.isMapped() && windowGroup == id && width > 1 && height > 1;
     }
 
+    /**
+     * Returns true jika window dalam state maximized atau fullscreen
+     * berdasarkan property _NET_WM_STATE yang di-set oleh Wine/WM via
+     * ClientMessage atau ChangeProperty.
+     *
+     * _NET_WM_STATE disimpan sebagai INT_ARRAY (4 byte per atom, little-endian).
+     * Harus iterasi semua atom — bukan hanya index 0.
+     */
+    public boolean isMaximized() {
+        Property property = getProperty(Atom.getId("_NET_WM_STATE"));
+        if (property == null || property.data == null) return false;
+
+        int maxVert = Atom.getId("_NET_WM_STATE_MAXIMIZED_VERT");
+        int maxHorz = Atom.getId("_NET_WM_STATE_MAXIMIZED_HORZ");
+        int fullscr  = Atom.getId("_NET_WM_STATE_FULLSCREEN");
+
+        int count = property.data.capacity() / 4;
+        for (int i = 0; i < count; i++) {
+            int atomId = property.getInt(i);
+            if (atomId == maxVert || atomId == maxHorz || atomId == fullscr) return true;
+        }
+        return false;
+    }
+
     public boolean isInputOutput() {
         return content != null;
     }

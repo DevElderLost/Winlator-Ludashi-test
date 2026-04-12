@@ -635,13 +635,19 @@ public class InputControlsView extends View {
                     break;
                 }
                 case MotionEvent.ACTION_MOVE: {
-                    for (byte i = 0, count = (byte)event.getPointerCount(); i < count; i++) {
+                    for (int i = 0, count = event.getPointerCount(); i < count; i++) {
+                        // Gunakan getPointerId(i) — bukan index i langsung.
+                        // ControlElement.handleTouchMove membandingkan dengan currentPointerId
+                        // yang disimpan saat ACTION_DOWN menggunakan pointer ID, bukan index.
+                        // Jika index dikirim sebagai ID, stick stuck saat ada jari kedua di layar
+                        // karena index pointer bisa bergeser sedangkan ID tetap stabil.
+                        int movePointerId = event.getPointerId(i);
                         float x = event.getX(i);
                         float y = event.getY(i);
 
                         handled = false;
                         for (ControlElement element : profile.getElements()) {
-                            if (element.handleTouchMove(i, x, y)) handled = true;
+                            if (element.handleTouchMove(movePointerId, x, y)) handled = true;
                         }
                         if (!handled) touchpadView.onTouchEvent(event);
                     }
@@ -649,9 +655,16 @@ public class InputControlsView extends View {
                 }
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_POINTER_UP:
-                case MotionEvent.ACTION_CANCEL:
                     for (ControlElement element : profile.getElements()) if (element.handleTouchUp(pointerId)) handled = true;
                     if (!handled) touchpadView.onTouchEvent(event);
+                    break;
+                case MotionEvent.ACTION_CANCEL:
+                    // ACTION_CANCEL berarti sistem membatalkan seluruh gesture (misalnya
+                    // notification bar ditarik, atau pointer capture berubah).
+                    // Semua elemen harus di-cancel tanpa peduli pointer ID,
+                    // menggunakan handleTouchCancel(-1) sebagai force-cancel global.
+                    for (ControlElement element : profile.getElements()) element.handleTouchCancel(-1);
+                    touchpadView.onTouchEvent(event);
                     break;
             }
         }

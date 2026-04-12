@@ -81,7 +81,6 @@ import com.winlator.cmod.core.WineStartMenuCreator;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.core.WineUtils;
 import com.winlator.cmod.core.LocaleHelper;
-import com.winlator.cmod.inputcontrols.ControlElement;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
@@ -137,7 +136,7 @@ import java.util.regex.Pattern;
 
 import cn.sherlock.com.sun.media.sound.SF2Soundbank;
 
-public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener, ControlElement.MenuNavigationListener {
+public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
     public static String NOTIFICATION_CHANNEL_ID = "Winlator";
     public static int NOTIFICATION_ID = -1;
     private XServerView xServerView;
@@ -813,7 +812,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         editor.apply();
     }
 
-    private void exit() {
+    public void exitApp() {
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         preloaderDialog.showOnUiThread(R.string.shutdown);
         handler.postDelayed(new Runnable() {
@@ -963,7 +962,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case R.id.main_menu_exit:
                 drawerLayout.closeDrawers();
-                exit();
+                exitApp();
                 break;
         }
         return true;
@@ -1152,7 +1151,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         // Pass final envVars to the launcher
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+        guestProgramLauncherComponent.setTerminationCallback((status) -> exitApp());
 
         // Add the launcher to our environment
         environment.addComponent(guestProgramLauncherComponent);
@@ -1308,7 +1307,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     }
 
-    private void showInputControlsDialog() {
+    public void showInputControlsDialog() {
         final ContentDialog dialog = new ContentDialog(this, R.layout.input_controls_dialog);
         dialog.setTitle(R.string.input_controls);
         dialog.setIcon(R.drawable.icon_input_controls);
@@ -1484,40 +1483,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setPointerButtonLeftEnabled(true);
         touchpadView.setPointerButtonRightEnabled(true);
 
-        // Pasang MenuNavigationListener ke semua elemen MENU_NAVIGATION di profil ini
-        attachMenuNavigationListeners(profile);
-
         inputControlsView.invalidate();
-    }
-
-    /**
-     * Iterasi semua ControlElement dalam profil dan pasang listener ke setiap
-     * elemen bertipe MENU_NAVIGATION, agar elemen bisa memicu dialog Activity.
-     */
-    private void attachMenuNavigationListeners(ControlsProfile profile) {
-        if (profile == null) return;
-        for (ControlElement element : profile.getElements()) {
-            if (element.getType() == ControlElement.Type.MENU_NAVIGATION) {
-                element.setMenuNavigationListener(this);
-            }
-        }
-    }
-
-    // ── Implementasi MenuNavigationListener ──────────────────────────────
-
-    @Override
-    public void onMenuShowKeyboard() {
-        AppUtils.showKeyboard(this);
-    }
-
-    @Override
-    public void onMenuShowInputControls() {
-        showInputControlsDialog();
-    }
-
-    @Override
-    public void onMenuExit() {
-        exit();
     }
 
     private void hideInputControls() {

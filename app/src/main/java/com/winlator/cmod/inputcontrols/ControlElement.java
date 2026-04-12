@@ -1,7 +1,6 @@
 package com.winlator.cmod.inputcontrols;
 
 import android.animation.ValueAnimator;
-import android.app.Activity;
 import android.content.Context;
 import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
@@ -10,7 +9,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
@@ -1121,9 +1119,7 @@ public class ControlElement {
             float top    = boundingBox.bottom + gap + i * (itemH + gap);
             float bottom = top + itemH;
             float itemCy = (top + bottom) * 0.5f;
-            float itemR  = r * 0.6f;
 
-            // Background semi-transparan
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, 40));
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);

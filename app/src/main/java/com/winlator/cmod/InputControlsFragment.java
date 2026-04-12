@@ -313,6 +313,10 @@ public class InputControlsFragment extends Fragment {
         // Tombol Import Icon – membuka file picker untuk memilih ZIP berisi icon
         view.findViewById(R.id.BTImportIcons).setOnClickListener((v) -> openIconZipFile());
 
+        // Tombol info tanda tanya untuk Import Icon
+        final View btHelpImportIcons = view.findViewById(R.id.BTHelpImportIcons);
+        btHelpImportIcons.setOnClickListener(v -> AppUtils.showHelpBox(context, v, R.string.help_import_icons));
+
         view.findViewById(R.id.BTControlsEditor).setOnClickListener((v) -> {
             if (currentProfile != null) {
                 Intent intent = new Intent(context, ControlsEditorActivity.class);

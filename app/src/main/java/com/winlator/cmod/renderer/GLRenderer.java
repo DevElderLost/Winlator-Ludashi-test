@@ -17,11 +17,13 @@ import com.winlator.cmod.renderer.material.ShaderMaterial;
 import com.winlator.cmod.renderer.material.WindowMaterial;
 import com.winlator.cmod.widget.FrameRating;
 import com.winlator.cmod.widget.XServerView;
+import com.winlator.cmod.xserver.Atom;
 import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Drawable;
 import com.winlator.cmod.renderer.FullscreenTransformation;
 import com.winlator.cmod.xserver.Pointer;
+import com.winlator.cmod.xserver.Property;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowAttributes;
 import com.winlator.cmod.xserver.WindowManager;
@@ -272,6 +274,19 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         if (mask.isSet(WindowAttributes.FLAG_CURSOR)) xServerView.requestRender();
     }
 
+    /**
+     * Dipanggil saat property window berubah via ChangeProperty atau ClientMessage.
+     * Jika _NET_WM_STATE berubah (maximize/fullscreen), trigger updateScene
+     * agar collectRenderableWindows mengevaluasi ulang forceFullscreen.
+     */
+    @Override
+    public void onModifyWindowProperty(Window window, Property property) {
+        if (property != null && "_NET_WM_STATE".equals(Atom.getName(property.name))) {
+            xServerView.queueEvent(this::updateScene);
+            xServerView.requestRender();
+        }
+    }
+
     @Override
     public void onPointerMove(short x, short y) {
         xServerView.requestRender();
@@ -436,22 +451,30 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     float screenW = xServer.screenInfo.width;
                     float screenH = xServer.screenInfo.height;
 
-                    // FullscreenTransformation hanya aktif untuk window BESAR (≥75% layar).
-                    // Window kecil (dialog, popup, tooltip) selalu render normal di posisi aslinya.
+                    // Deteksi maximize via _NET_WM_STATE — hanya untuk leaf window
+                    // (childCount == 0) agar tidak tumpang tindih dengan parent decoration.
+                    boolean isMaximized = window.isMaximized() && window.getChildCount() == 0;
+
+                    // FullscreenTransformation aktif untuk window BESAR (≥75% layar)
+                    // ATAU window yang sedang maximize via _NET_WM_STATE.
                     boolean isLargeWindow = (width >= screenW * 0.75f) && (height >= screenH * 0.75f);
 
-                    if (isLargeWindow) {
+                    if (isMaximized || isLargeWindow) {
                         Window parent = window.getParent();
                         boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
                         boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
 
                         if (hasWMClass) {
-                            // Window besar dengan WMClass cocok: aktifkan FullscreenTransformation
+                            // Path lama: WMClass cocok — aktifkan FullscreenTransformation
                             // jika parent tidak punya WMClass yang sama dan window adalah daun.
                             forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
+                        } else if (isMaximized) {
+                            // Path baru: maximize via _NET_WM_STATE, WMClass tidak cocok.
+                            // Sembunyikan parent (title bar/decoration) dan render window ini fullscreen.
+                            forceFullscreen = true;
+                            removeRenderableWindow(parent);
                         } else {
-                            // Window besar tanpa WMClass — deteksi frame dekorasi tipis
-                            // (parent 1 child, selisih ukuran kecil ≤12px).
+                            // Path lama: fallback deteksi frame dekorasi tipis (borderX ≤ 12px).
                             short borderX = (short) (parent.getWidth() - width);
                             short borderY = (short) (parent.getHeight() - height);
                             if (parent.getChildCount() == 1

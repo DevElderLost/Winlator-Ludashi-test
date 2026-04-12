@@ -1,6 +1,9 @@
 package com.winlator.cmod.inputcontrols;
 
 import android.animation.ValueAnimator;
+import android.app.Activity;
+import android.content.Context;
+import android.view.inputmethod.InputMethodManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -44,15 +47,6 @@ public class ControlElement {
             for (int i = 0; i < types.length; i++) names[i] = types[i].name().replace("_", "-");
             return names;
         }
-    }
-
-    // === MENU NAVIGATION LISTENER ===
-    // Interface agar ControlElement bisa memicu aksi Activity (keyboard, input controls, exit)
-    // tanpa harus memegang referensi Activity secara langsung.
-    public interface MenuNavigationListener {
-        void onMenuShowKeyboard();
-        void onMenuShowInputControls();
-        void onMenuExit();
     }
 
     public enum Shape {
@@ -146,8 +140,6 @@ public class ControlElement {
     private boolean isPressed = false;
 
     // === MENU NAVIGATION ===
-    // Listener untuk meneruskan aksi (keyboard, input controls, exit) ke Activity
-    private MenuNavigationListener menuNavigationListener;
     // true = sub-menu sedang tampil (expanded), false = tersembunyi (collapsed)
     private boolean menuExpanded = false;
     // Animasi expand/collapse sub-menu (0.0 = collapsed, 1.0 = expanded)
@@ -287,10 +279,6 @@ public class ControlElement {
     }
 
     // === MENU NAVIGATION ===
-    public void setMenuNavigationListener(MenuNavigationListener listener) {
-        this.menuNavigationListener = listener;
-    }
-
     public boolean isMenuExpanded() {
         return menuExpanded;
     }
@@ -316,7 +304,52 @@ public class ControlElement {
         animateMenu(menuExpanded);
     }
 
-    public Binding getBindingAt(int index) {
+    /**
+     * Eksekusi aksi item sub-menu langsung dari ControlElement tanpa listener.
+     * Context diambil dari inputControlsView — saat runtime di XServerDisplayActivity
+     * ini adalah instance Activity itu sendiri.
+     *
+     * Keyboard  : toggle soft keyboard via InputMethodManager
+     * Input Controls: cast ke XServerDisplayActivity, panggil showInputControlsDialog()
+     * Exit      : cast ke XServerDisplayActivity, panggil exit()
+     *
+     * @param itemIndex 0=Keyboard, 1=Input Controls, 2=Exit
+     */
+    private void executeMenuAction(int itemIndex) {
+        Context context = inputControlsView.getContext();
+        android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+        switch (itemIndex) {
+            case 0: { // Keyboard — toggle soft keyboard
+                uiHandler.post(() -> {
+                    InputMethodManager imm = (InputMethodManager)
+                            context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+                    }
+                });
+                break;
+            }
+            case 1: { // Input Controls dialog
+                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                    com.winlator.cmod.XServerDisplayActivity activity =
+                            (com.winlator.cmod.XServerDisplayActivity) context;
+                    uiHandler.post(activity::showInputControlsDialog);
+                }
+                break;
+            }
+            case 2: { // Exit
+                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                    com.winlator.cmod.XServerDisplayActivity activity =
+                            (com.winlator.cmod.XServerDisplayActivity) context;
+                    uiHandler.post(activity::exitApp);
+                }
+                break;
+            }
+        }
+    }
+
+
         return (index >= 0 && index < bindings.size()) ? bindings.get(index) : Binding.NONE;
     }
 
@@ -1015,31 +1048,52 @@ public class ControlElement {
         float w  = boundingBox.width();
         float h  = boundingBox.height();
         float r  = h * 0.5f;
+        float itemR = r * 0.6f; // radius sudut — sama dengan item sub-menu
 
         // ── Tombol utama ──────────────────────────────────────────────────
-        paint.setColor(primaryColor);
-        paint.setStrokeWidth(strokeWidth);
-        paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-        canvas.drawRoundRect(
-                boundingBox.left, boundingBox.top,
-                boundingBox.right, boundingBox.bottom,
-                r, r, paint);
+        paint.setStrokeWidth(strokeWidth * 0.75f);
 
-        paint.setStyle(Paint.Style.FILL);
-        if (slotIconIds[0] > 0) {
-            // Slot 0: icon tombol utama
+        if (slotIconIds[0] > 0 || iconId > 0) {
+            // Ada icon → tampilan penuh (stroke saja, seperti BUTTON biasa)
+            paint.setColor(primaryColor);
+            paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+            canvas.drawRoundRect(
+                    boundingBox.left, boundingBox.top,
+                    boundingBox.right, boundingBox.bottom,
+                    r, r, paint);
+
+            paint.setStyle(Paint.Style.FILL);
             float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
-            drawIconExact(canvas, cx, cy, iconSize, iconSize, slotIconIds[0]);
-        } else if (iconId > 0) {
-            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
-            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
+            drawIconExact(canvas, cx, cy, iconSize, iconSize,
+                    slotIconIds[0] > 0 ? slotIconIds[0] : iconId);
         } else {
-            // Fallback: custom text atau "≡"
+            // Tidak ada icon → tampilan identik dengan item sub-menu:
+            // background semi-transparan + border + label teks di tengah
+
+            // Background semi-transparan (fill lebih kuat saat pressed)
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, isPressed ? 80 : 40));
+            canvas.drawRoundRect(
+                    boundingBox.left, boundingBox.top,
+                    boundingBox.right, boundingBox.bottom,
+                    itemR, itemR, paint);
+
+            // Border
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setColor(primaryColor);
+            canvas.drawRoundRect(
+                    boundingBox.left, boundingBox.top,
+                    boundingBox.right, boundingBox.bottom,
+                    itemR, itemR, paint);
+
+            // Label teks — custom text atau default "≡"
+            paint.setStyle(Paint.Style.FILL);
             paint.setTextAlign(Paint.Align.CENTER);
             String label = (text != null && !text.isEmpty()) ? text : "\u2261";
-            paint.setTextSize(Math.min(
-                    getTextSizeForWidth(paint, label, w - strokeWidth * 2),
-                    snappingSize * 2 * scale));
+            float ts = Math.min(
+                    getTextSizeForWidth(paint, label, w - strokeWidth * 4),
+                    snappingSize * 1.6f * scale);
+            paint.setTextSize(ts);
             canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
         }
 
@@ -1269,16 +1323,9 @@ public class ControlElement {
                 float top    = bb.bottom + gap + i * (itemH + gap);
                 float bottom = top + itemH;
                 if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {
-                    // Item sub-menu tersentuh — tutup menu lalu eksekusi aksi
-                    menuExpanded = false;
-                    animateMenu(false);
-                    if (menuNavigationListener != null) {
-                        switch (i) {
-                            case 0: menuNavigationListener.onMenuShowKeyboard(); break;
-                            case 1: menuNavigationListener.onMenuShowInputControls(); break;
-                            case 2: menuNavigationListener.onMenuExit(); break;
-                        }
-                    }
+                    // Item sub-menu tersentuh — eksekusi aksi langsung
+                    // Menu TIDAK ditutup; hanya tombol utama yang toggle expand/collapse
+                    executeMenuAction(i);
                     return true;
                 }
             }

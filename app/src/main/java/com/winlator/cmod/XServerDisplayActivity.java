@@ -81,6 +81,7 @@ import com.winlator.cmod.core.WineStartMenuCreator;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.core.WineUtils;
 import com.winlator.cmod.core.LocaleHelper;
+import com.winlator.cmod.inputcontrols.ControlElement;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
@@ -136,7 +137,7 @@ import java.util.regex.Pattern;
 
 import cn.sherlock.com.sun.media.sound.SF2Soundbank;
 
-public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
+public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener, ControlElement.MenuNavigationListener {
     public static String NOTIFICATION_CHANNEL_ID = "Winlator";
     public static int NOTIFICATION_ID = -1;
     private XServerView xServerView;
@@ -1483,7 +1484,40 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setPointerButtonLeftEnabled(true);
         touchpadView.setPointerButtonRightEnabled(true);
 
+        // Pasang MenuNavigationListener ke semua elemen MENU_NAVIGATION di profil ini
+        attachMenuNavigationListeners(profile);
+
         inputControlsView.invalidate();
+    }
+
+    /**
+     * Iterasi semua ControlElement dalam profil dan pasang listener ke setiap
+     * elemen bertipe MENU_NAVIGATION, agar elemen bisa memicu dialog Activity.
+     */
+    private void attachMenuNavigationListeners(ControlsProfile profile) {
+        if (profile == null) return;
+        for (ControlElement element : profile.getElements()) {
+            if (element.getType() == ControlElement.Type.MENU_NAVIGATION) {
+                element.setMenuNavigationListener(this);
+            }
+        }
+    }
+
+    // ── Implementasi MenuNavigationListener ──────────────────────────────
+
+    @Override
+    public void onMenuShowKeyboard() {
+        AppUtils.showKeyboard(this);
+    }
+
+    @Override
+    public void onMenuShowInputControls() {
+        showInputControlsDialog();
+    }
+
+    @Override
+    public void onMenuExit() {
+        exit();
     }
 
     private void hideInputControls() {

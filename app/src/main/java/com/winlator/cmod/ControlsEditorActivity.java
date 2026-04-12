@@ -163,6 +163,16 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
             }
+            else if (type == ControlElement.Type.MENU_NAVIGATION) {
+                // MENU_NAVIGATION: hanya tampilkan Shape + Custom Text (label tombol utama)
+                // Tidak ada binding — tombol ini memanggil dialog, bukan mengirim input
+                view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
+                // slot 0=Main Button, 1=Keyboard, 2=Input Controls, 3=Exit
+                loadSlotIconsUI(view, element,
+                        new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
+            }
 
             loadBindingSpinners(element, view);
         };

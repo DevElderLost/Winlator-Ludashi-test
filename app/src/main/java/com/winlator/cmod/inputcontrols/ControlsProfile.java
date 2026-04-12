@@ -233,6 +233,10 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                     element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 150));
                 }
 
+                // MENU_NAVIGATION: listener dipasang dari luar (Activity) lewat
+                // attachMenuNavigationListeners() setelah setProfile() dipanggil.
+                // Tidak ada yang perlu dilakukan di sini.
+
                 boolean hasGamepadBinding = true;
                 JSONArray bindingsJSONArray = elementJSONObject.getJSONArray("bindings");
                 for (int j = 0; j < bindingsJSONArray.length(); j++) {

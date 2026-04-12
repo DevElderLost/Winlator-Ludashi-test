@@ -27,7 +27,11 @@ public class RangeScroller {
 
     public float getElementSize() {
         Rect boundingBox = element.getBoundingBox();
-        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getBindingCount();
+        // Gunakan range.max (jumlah slot total) bukan getBindingCount().
+        // getBindingCount() menjadi 1 setelah setBinding(NONE) dipanggil di
+        // handleTouchDown, sehingga elementSize menjadi jauh terlalu besar
+        // dan posisi teks/scroll menjadi tidak akurat.
+        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getRange().max;
     }
 
     public float getScrollSize() {
@@ -42,7 +46,11 @@ public class RangeScroller {
         ControlElement.Range range = element.getRange();
         byte from = (byte)Math.floor((scrollOffset / getElementSize()) % range.max);
         if (from < 0) from = (byte)(range.max + from);
-        byte to = (byte)(from + element.getBindingCount() + 1);
+        // Gunakan range.max bukan getBindingCount() — setelah setBinding(NONE)
+        // dipanggil, getBindingCount() == 1 sehingga hanya 2 elemen yang digambar.
+        // Jumlah slot visible = seluruh range (semua elemen selalu digambar, clipping
+        // dilakukan oleh canvas.clipPath di draw()).
+        byte to = (byte)(from + range.max + 1);
         return new byte[]{from, to};
     }
 

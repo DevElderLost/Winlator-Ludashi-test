@@ -1,11 +1,14 @@
 package com.winlator.cmod.inputcontrols;
 
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
+import android.graphics.RectF;
+import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -33,7 +36,7 @@ public class ControlElement {
     public static final short BUTTON_MIN_TIME_TO_KEEP_PRESSED = 300;
 
     public enum Type {
-        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE, RIGHT_STICK;
+        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE, RIGHT_STICK, MENU_NAVIGATION;
 
         public static String[] names() {
             Type[] types = values();
@@ -41,6 +44,15 @@ public class ControlElement {
             for (int i = 0; i < types.length; i++) names[i] = types[i].name().replace("_", "-");
             return names;
         }
+    }
+
+    // === MENU NAVIGATION LISTENER ===
+    // Interface agar ControlElement bisa memicu aksi Activity (keyboard, input controls, exit)
+    // tanpa harus memegang referensi Activity secara langsung.
+    public interface MenuNavigationListener {
+        void onMenuShowKeyboard();
+        void onMenuShowInputControls();
+        void onMenuExit();
     }
 
     public enum Shape {
@@ -120,8 +132,9 @@ public class ControlElement {
     // Apakah startDelta sudah direkam untuk sesi sentuhan saat ini.
     private boolean cursorMoveStartRecorded = false;
 
-    // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner]
-    private byte[] slotIconIds = new byte[4];
+    // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner],
+    // MENU_NAVIGATION=[mainButton, keyboard, inputControls, exit] → slot 0..3
+    private byte[] slotIconIds = new byte[7];
     private CubicBezierInterpolator interpolator;
     private Object touchTime;
 
@@ -131,6 +144,16 @@ public class ControlElement {
 
     // === TAMBAHAN UNTUK EFEK VISUAL PRESSED ===
     private boolean isPressed = false;
+
+    // === MENU NAVIGATION ===
+    // Listener untuk meneruskan aksi (keyboard, input controls, exit) ke Activity
+    private MenuNavigationListener menuNavigationListener;
+    // true = sub-menu sedang tampil (expanded), false = tersembunyi (collapsed)
+    private boolean menuExpanded = false;
+    // Animasi expand/collapse sub-menu (0.0 = collapsed, 1.0 = expanded)
+    private float menuAnimProgress = 0f;
+    // Animator untuk animasi slide sub-menu
+    private ValueAnimator menuAnimator;
 
     public ControlElement(InputControlsView inputControlsView) {
         this.inputControlsView = inputControlsView;
@@ -165,7 +188,7 @@ public class ControlElement {
             bindings.add(Binding.NONE);
             states = new boolean[1];
         } else {
-            // BUTTON dan tipe lain default 1 binding
+            // BUTTON, MENU_NAVIGATION, dan tipe lain default 1 binding
             bindings.add(Binding.NONE);
             states = new boolean[1];
         }
@@ -261,6 +284,36 @@ public class ControlElement {
     public void setCursorMoveRadius(int radius) {
         // Range 50–500 piksel layar X server
         this.cursorMoveRadius = Math.max(50, Math.min(500, radius));
+    }
+
+    // === MENU NAVIGATION ===
+    public void setMenuNavigationListener(MenuNavigationListener listener) {
+        this.menuNavigationListener = listener;
+    }
+
+    public boolean isMenuExpanded() {
+        return menuExpanded;
+    }
+
+    /** Mulai animasi expand (0→1) atau collapse (1→0) sub-menu. */
+    private void animateMenu(boolean expand) {
+        if (menuAnimator != null) menuAnimator.cancel();
+        float from = menuAnimProgress;
+        float to   = expand ? 1f : 0f;
+        menuAnimator = ValueAnimator.ofFloat(from, to);
+        menuAnimator.setDuration(220);
+        menuAnimator.setInterpolator(new DecelerateInterpolator());
+        menuAnimator.addUpdateListener(anim -> {
+            menuAnimProgress = (float) anim.getAnimatedValue();
+            inputControlsView.invalidate();
+        });
+        menuAnimator.start();
+    }
+
+    /** Dipanggil saat tombol utama MENU_NAVIGATION ditekan — toggle expand/collapse. */
+    private void toggleMenu() {
+        menuExpanded = !menuExpanded;
+        animateMenu(menuExpanded);
     }
 
     public Binding getBindingAt(int index) {
@@ -396,7 +449,7 @@ public class ControlElement {
         switch (type) {
             case BUTTON:
             case TOUCHSCREEN_TOGGLE:
-                switch (shape) {
+            case MENU_NAVIGATION:
                     case RECT:
                     case ROUND_RECT:
                         halfWidth = snappingSize * 4;
@@ -425,7 +478,12 @@ public class ControlElement {
                 break;
             }
             case RANGE_BUTTON: {
-                halfWidth = snappingSize * ((getBindingCount() * 4) / 2);
+                // Gunakan getRange().max (jumlah slot range) bukan getBindingCount(),
+                // karena RangeScroller dapat memanggil setBinding() saat touch-up untuk
+                // mengirim key event — itu mengubah bindings.size() menjadi 1 dan memicu
+                // boundingBoxNeedsUpdate = true, sehingga elemen menyusut menjadi satu
+                // tombol kecil saat disentuh. getRange().max selalu stabil.
+                halfWidth = snappingSize * ((getRange().max * 4) / 2);
                 halfHeight = snappingSize * 2;
 
                 if (orientation == 1) {
@@ -922,7 +980,141 @@ public class ControlElement {
                 }
                 break;
             }
+
+            case MENU_NAVIGATION: {
+                drawMenuNavigation(canvas, boundingBox, paint, primaryColor, strokeWidth, snappingSize);
+                break;
+            }
         }
+    }
+
+    /**
+     * Menggambar tombol utama MENU_NAVIGATION beserta sub-menu yang muncul ke bawah.
+     *
+     * Tampilan tombol utama identik dengan BUTTON (shape ROUND_RECT, custom text).
+     * Sub-menu terdiri dari 3 item: Keyboard, Input Controls, Exit — muncul dengan
+     * animasi slide-down (menuAnimProgress 0→1) dan menghilang dengan slide-up (1→0).
+     *
+     * Setiap item sub-menu berbentuk ROUND_RECT, lebar sama dengan tombol utama,
+     * tinggi = tinggi tombol utama, digeser ke bawah dengan offset berbasis animasi.
+     *
+     * Slot icon MENU_NAVIGATION:
+     *   slot 0 = icon tombol utama (menggantikan text/unicode)
+     *   slot 1 = icon item Keyboard
+     *   slot 2 = icon item Input Controls
+     *   slot 3 = icon item Exit
+     *
+     * Jika slot icon tersedia → icon di kiri + text label di kanan.
+     * Jika tidak → unicode fallback + label di tengah.
+     */
+    private void drawMenuNavigation(Canvas canvas, Rect boundingBox, Paint paint,
+                                    int primaryColor, float strokeWidth, int snappingSize) {
+        float cx = boundingBox.centerX();
+        float cy = boundingBox.centerY();
+        float w  = boundingBox.width();
+        float h  = boundingBox.height();
+        float r  = h * 0.5f;
+
+        // ── Tombol utama ──────────────────────────────────────────────────
+        paint.setColor(primaryColor);
+        paint.setStrokeWidth(strokeWidth);
+        paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+        canvas.drawRoundRect(
+                boundingBox.left, boundingBox.top,
+                boundingBox.right, boundingBox.bottom,
+                r, r, paint);
+
+        paint.setStyle(Paint.Style.FILL);
+        if (slotIconIds[0] > 0) {
+            // Slot 0: icon tombol utama
+            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
+            drawIconExact(canvas, cx, cy, iconSize, iconSize, slotIconIds[0]);
+        } else if (iconId > 0) {
+            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
+            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
+        } else {
+            // Fallback: custom text atau "≡"
+            paint.setTextAlign(Paint.Align.CENTER);
+            String label = (text != null && !text.isEmpty()) ? text : "\u2261";
+            paint.setTextSize(Math.min(
+                    getTextSizeForWidth(paint, label, w - strokeWidth * 2),
+                    snappingSize * 2 * scale));
+            canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+        }
+
+        // ── Sub-menu items (animasi slide-down) ───────────────────────────
+        if (menuAnimProgress <= 0f) return;
+
+        // slot 1=Keyboard, 2=InputControls, 3=Exit
+        final String[] itemFallback = {"\u2328", "\u25A3", "\u2715"};
+        final String[] itemLabels   = {"Keyboard", "Input Controls", "Exit"};
+
+        float gap    = snappingSize * 0.4f * scale;
+        float itemH  = h;
+        float totalH = (itemH + gap) * itemLabels.length;
+
+        float revealH = totalH * menuAnimProgress;
+        canvas.save();
+        canvas.clipRect(
+                boundingBox.left - 1,
+                boundingBox.bottom,
+                boundingBox.right + 1,
+                boundingBox.bottom + revealH);
+
+        for (int i = 0; i < itemLabels.length; i++) {
+            float top    = boundingBox.bottom + gap + i * (itemH + gap);
+            float bottom = top + itemH;
+            float itemCy = (top + bottom) * 0.5f;
+            float itemR  = r * 0.6f;
+
+            // Background semi-transparan
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, 40));
+            canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
+
+            // Border
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setColor(primaryColor);
+            paint.setStrokeWidth(strokeWidth * 0.75f);
+            canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+
+            // slot 1–3 untuk tiga item sub-menu
+            byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
+
+            if (slotIcon > 0) {
+                // Ada slot icon → icon di kiri, text label di kanan
+                float iconAreaW = itemH * 0.78f;
+                float iconSize  = iconAreaW * 0.80f;
+                float iconCx    = boundingBox.left + iconAreaW * 0.5f + strokeWidth;
+                drawIconExact(canvas, iconCx, itemCy, iconSize, iconSize, slotIcon);
+
+                float textLeft  = boundingBox.left + iconAreaW + strokeWidth * 2;
+                float textAvail = boundingBox.right - textLeft - strokeWidth;
+                if (textAvail > 0) {
+                    paint.setTextAlign(Paint.Align.LEFT);
+                    float ts = Math.min(
+                            getTextSizeForWidth(paint, itemLabels[i], textAvail),
+                            snappingSize * 1.55f * scale);
+                    paint.setTextSize(ts);
+                    canvas.drawText(itemLabels[i], textLeft,
+                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                }
+            } else {
+                // Tidak ada slot icon → unicode + label di tengah
+                String fullLabel = itemFallback[i] + " " + itemLabels[i];
+                paint.setTextAlign(Paint.Align.CENTER);
+                float ts = Math.min(
+                        getTextSizeForWidth(paint, fullLabel, w - strokeWidth * 4),
+                        snappingSize * 1.6f * scale);
+                paint.setTextSize(ts);
+                canvas.drawText(fullLabel, cx,
+                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+            }
+        }
+
+        canvas.restore();
     }
 
     private void drawIcon(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
@@ -1035,6 +1227,8 @@ public class ControlElement {
                 }
             }
 
+            // MENU_NAVIGATION tidak menyimpan state expanded (selalu mulai collapsed)
+
             return elementJSONObject;
         } catch (JSONException e) {
             return null;
@@ -1042,7 +1236,18 @@ public class ControlElement {
     }
 
     public boolean containsPoint(float x, float y) {
-        return getBoundingBox().contains((int) (x + 0.5f), (int) (y + 0.5f));
+        if (getBoundingBox().contains((int) (x + 0.5f), (int) (y + 0.5f))) return true;
+        // MENU_NAVIGATION: area hit-test diperluas ke bawah saat sub-menu sedang expanded
+        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {
+            Rect bb = getBoundingBox();
+            int snappingSize = inputControlsView.getSnappingSize();
+            float gap    = snappingSize * 0.4f * scale;
+            float itemH  = bb.height();
+            float totalH = (itemH + gap) * 3;
+            float bottom = bb.bottom + gap + totalH;
+            if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
+        }
+        return false;
     }
 
     private boolean isKeepButtonPressedAfterMinTime() {
@@ -1051,12 +1256,42 @@ public class ControlElement {
     }
 
     public boolean handleTouchDown(int pointerId, float x, float y) {
+        // MENU_NAVIGATION: cek apakah sentuhan mengenai item sub-menu terlebih dahulu
+        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {
+            Rect bb = getBoundingBox();
+            int snappingSize = inputControlsView.getSnappingSize();
+            float h    = bb.height();
+            float gap  = snappingSize * 0.4f * scale;
+            float itemH = h;
+
+            for (int i = 0; i < 3; i++) {
+                float top    = bb.bottom + gap + i * (itemH + gap);
+                float bottom = top + itemH;
+                if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {
+                    // Item sub-menu tersentuh — tutup menu lalu eksekusi aksi
+                    menuExpanded = false;
+                    animateMenu(false);
+                    if (menuNavigationListener != null) {
+                        switch (i) {
+                            case 0: menuNavigationListener.onMenuShowKeyboard(); break;
+                            case 1: menuNavigationListener.onMenuShowInputControls(); break;
+                            case 2: menuNavigationListener.onMenuExit(); break;
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+
         if (currentPointerId == -1 && containsPoint(x, y)) {
             currentPointerId = pointerId;
             isPressed = true;
             inputControlsView.invalidate();
 
-            if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
+            if (type == Type.MENU_NAVIGATION) {
+                // Sentuhan pada tombol utama → toggle expand/collapse sub-menu
+                return true;
+            } else if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
 
                 // Tekan SEMUA binding
@@ -1087,6 +1322,8 @@ public class ControlElement {
             float deltaX, deltaY;
             Rect boundingBox = getBoundingBox();
             float radius = boundingBox.width() * 0.5f;
+            // Hindari radius nol — dapat terjadi saat layout belum selesai
+            if (radius <= 0) return false;
             TouchpadView touchpadView = inputControlsView.getTouchpadView();
 
             if (type == Type.TRACKPAD) {
@@ -1121,11 +1358,14 @@ public class ControlElement {
                 float offsetX = localX - radius;
                 float offsetY = localY - radius;
 
-                float distance = Mathf.lengthSq(radius - localX, radius - localY);
+                // Gunakan formula yang sama dengan RIGHT_STICK (lengthSq + normalisasi vektor)
+                // untuk konsistensi dan menghindari hasil berbeda antara atan2 vs normalisasi
+                // saat jari berada persis di batas lingkaran.
+                float distance = Mathf.lengthSq(offsetX, offsetY);
                 if (distance > radius * radius) {
-                    float angle = (float) Math.atan2(offsetY, offsetX);
-                    offsetX = (float) (Math.cos(angle) * radius);
-                    offsetY = (float) (Math.sin(angle) * radius);
+                    float len = (float) Math.sqrt(distance);
+                    offsetX = offsetX / len * radius;
+                    offsetY = offsetY / len * radius;
                 }
 
                 deltaX = Mathf.clamp(offsetX / radius, -1, 1);
@@ -1329,6 +1569,13 @@ public class ControlElement {
             isPressed = false;
             inputControlsView.invalidate();
 
+            if (type == Type.MENU_NAVIGATION) {
+                // Toggle sub-menu expand/collapse saat tombol utama dilepas
+                toggleMenu();
+                currentPointerId = -1;
+                return true;
+            }
+
             if (type == Type.TOUCHSCREEN_TOGGLE) {
                 TouchpadView tp = inputControlsView.getTouchpadView();
                 if (tp != null) {
@@ -1402,6 +1649,53 @@ public class ControlElement {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Dipanggil saat Android mengirim ACTION_CANCEL — misalnya saat sistem mengambil alih
+     * gesture (scroll, notification bar), atau saat jari lain turun dan pointer capture
+     * berubah. Tanpa ini, stick stuck di posisi terakhir sampai di-sentuh ulang.
+     *
+     * Perilakunya identik dengan handleTouchUp: semua binding di-release dan state direset,
+     * tapi tanpa logika TOUCHSCREEN_TOGGLE / BUTTON karena cancel selalu berarti "batalkan".
+     *
+     * Jika pointerId == -1, force-cancel tanpa mengecek currentPointerId (dipakai saat
+     * ACTION_CANCEL global dari InputControlsView).
+     */
+    public void handleTouchCancel(int pointerId) {
+        if (pointerId == -1 || pointerId == currentPointerId) {
+            isPressed = false;
+
+            // Release semua binding yang sedang aktif
+            for (int i = 0; i < states.length; i++) {
+                if (states[i]) inputControlsView.handleInputEvent(getBindingAt(i), false);
+                states[i] = false;
+            }
+
+            if (type == Type.STICK || type == Type.RIGHT_STICK) {
+                currentPosition = null;
+                visualThumbPosition = null;
+                if (type == Type.RIGHT_STICK && isCursorMove) {
+                    cursorMoveStartRecorded = false;
+                }
+            } else if (type == Type.RANGE_BUTTON) {
+                scroller.handleTouchUp();
+            } else if (type == Type.BUTTON) {
+                // Pastikan semua binding button juga di-release saat cancel
+                for (Binding b : bindings) {
+                    if (b != Binding.NONE) inputControlsView.handleInputEvent(b, false);
+                }
+            } else if (type == Type.MENU_NAVIGATION) {
+                // Cancel: collapse sub-menu tanpa mengeksekusi aksi
+                if (menuExpanded) {
+                    menuExpanded = false;
+                    animateMenu(false);
+                }
+            }
+
+            currentPointerId = -1;
+            inputControlsView.invalidate();
+        }
     }
 
     public PointF getCurrentPosition() {

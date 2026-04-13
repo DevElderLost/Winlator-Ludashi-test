@@ -642,5 +642,4 @@
     <string name="all_files_access_dialog_title">Требуется доступ ко всем файлам</string>
     <string name="all_files_access_dialog_message">Для предоставления доступа к дополнительным устройствам хранения, таким как USB-накопитель, необходимо предоставить разрешение на доступ ко всем файлам. Нажмите «Ок», чтобы предоставить доступ ко всем файлам в настройках Android.</string>
     <string name="help_import_icons">Сожмите ваши иконки в ZIP-архив и импортируйте их, нажав эту кнопку.</string>
-    <string name="no_items_to_display">Нет активного окна</string>
 </resources>

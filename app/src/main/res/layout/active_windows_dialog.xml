@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <HorizontalScrollView
+        android:layout_width="430.0dip"
+        android:layout_height="wrap_content">
+        <LinearLayout
+            android:orientation="horizontal"
+            android:id="@+id/LLWindowList"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </HorizontalScrollView>
+    <TextView
+        android:gravity="center"
+        android:id="@+id/TVEmptyText"
+        android:visibility="gone"
+        android:layout_width="430.0dip"
+        android:layout_height="60.0dip"
+        android:text="@string/no_items_to_display" />
+</FrameLayout>

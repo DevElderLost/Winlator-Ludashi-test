@@ -181,6 +181,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         loadShapeSpinner(element, view.findViewById(R.id.SShape));
         loadRangeSpinner(element, view.findViewById(R.id.SRange));
 
+        // Jumlah slot terlihat untuk RANGE_BUTTON — mengontrol lebar/tinggi elemen
         RadioGroup rgOrientation = view.findViewById(R.id.RGOrientation);
         rgOrientation.check(element.getOrientation() == 1 ? R.id.RBVertical : R.id.RBHorizontal);
         rgOrientation.setOnCheckedChangeListener((group, checkedId) -> {
@@ -189,14 +190,29 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             inputControlsView.invalidate();
         });
 
+        // NPColumns: untuk RANGE_BUTTON mengontrol jumlah slot terlihat (rangeVisibleCount),
+        // untuk BUTTON mengontrol jumlah binding (bindingCount).
+        // NPColumns ada di dalam LLRangeOptions sehingga hanya muncul saat RANGE_BUTTON.
         NumberPicker npColumns = view.findViewById(R.id.NPColumns);
-        npColumns.setValue(element.getBindingCount());
-        npColumns.setOnValueChangeListener((numberPicker, value) -> {
-            element.setBindingCount(value);
-            profile.save();
-            inputControlsView.invalidate();
-            loadBindingSpinners(element, view);
-        });
+        if (element.getType() == ControlElement.Type.RANGE_BUTTON) {
+            int rangeMax = element.getRange().max;
+            npColumns.setMax(rangeMax);
+            npColumns.setMin(1);
+            npColumns.setValue(element.getRangeVisibleCount());
+            npColumns.setOnValueChangeListener((numberPicker, value) -> {
+                element.setRangeVisibleCount(value);
+                profile.save();
+                inputControlsView.invalidate();
+            });
+        } else {
+            npColumns.setValue(element.getBindingCount());
+            npColumns.setOnValueChangeListener((numberPicker, value) -> {
+                element.setBindingCount(value);
+                profile.save();
+                inputControlsView.invalidate();
+                loadBindingSpinners(element, view);
+            });
+        }
 
         final TextView tvScale = view.findViewById(R.id.TVScale);
         SeekBar sbScale = view.findViewById(R.id.SBScale);
@@ -702,7 +718,18 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                element.setRange(ControlElement.Range.values()[position]);
+                ControlElement.Range newRange = ControlElement.Range.values()[position];
+                element.setRange(newRange);
+                // Clamp dan refresh NPColumns saat range berubah
+                if (element.getRangeVisibleCount() > newRange.max) {
+                    element.setRangeVisibleCount(newRange.max);
+                }
+                // Update batas dan nilai NPColumns agar sesuai range baru
+                NumberPicker npColumns = ((android.view.View) parent.getParent().getParent()).findViewById(R.id.NPColumns);
+                if (npColumns != null) {
+                    npColumns.setMax(newRange.max);
+                    npColumns.setValue(element.getRangeVisibleCount());
+                }
                 profile.save();
                 inputControlsView.invalidate();
             }

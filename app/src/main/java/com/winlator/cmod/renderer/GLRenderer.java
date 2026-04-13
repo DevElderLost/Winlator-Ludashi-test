@@ -10,9 +10,12 @@ import android.widget.Toast;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.XrActivity;
+import com.winlator.cmod.core.Callback;
+import com.winlator.cmod.core.ImageUtils;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.math.XForm;
 import com.winlator.cmod.renderer.material.CursorMaterial;
+import com.winlator.cmod.renderer.material.ScreenMaterial;
 import com.winlator.cmod.renderer.material.ShaderMaterial;
 import com.winlator.cmod.renderer.material.WindowMaterial;
 import com.winlator.cmod.widget.FrameRating;
@@ -30,7 +33,11 @@ import com.winlator.cmod.xserver.WindowManager;
 import com.winlator.cmod.xserver.XLock;
 import com.winlator.cmod.xserver.XServer;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -63,6 +70,25 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     // --- CPU Saver ---
     private boolean cpuSaverMode = false;
     private FrameRating frameRating;
+
+    // --- Screenshot subsystem ---
+    // Antrian permintaan screenshot yang dieksekusi di GL thread saat onDrawFrame,
+    // sehingga tidak pernah menyebabkan stall di tengah frame render.
+    private static final int SCREENSHOT_MAX_SIZE = 256; // max sisi terpanjang thumbnail (px)
+    private final LinkedBlockingQueue<ScreenshotRequest> screenshotQueue = new LinkedBlockingQueue<>();
+    // RenderTarget dan ScreenMaterial di-reuse antar panggilan — tidak ada alokasi per permintaan.
+    private RenderTarget screenshotRenderTarget = null;
+    private ScreenMaterial screenshotMaterial = null;
+
+    /** Satu slot permintaan screenshot. */
+    private static final class ScreenshotRequest {
+        final Drawable drawable;
+        final Callback<Bitmap> callback;
+        ScreenshotRequest(Drawable drawable, Callback<Bitmap> callback) {
+            this.drawable = drawable;
+            this.callback = callback;
+        }
+    }
 
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
@@ -125,24 +151,29 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             // CPU Saver mode: skip effectComposer, render langsung.
             if (frameRating != null) frameRating.setIsNative(false);
             drawFrame();
-            return;
+        } else {
+            if (frameRating != null) frameRating.setIsNative(false);
+
+            boolean hasEffects = effectComposer != null
+                    && effectComposer.hasEffects()
+                    && surfaceWidth > 0
+                    && surfaceHeight > 0;
+
+            if (!hasEffects) {
+                drawFrame();
+            } else {
+                try {
+                    effectComposer.render();
+                } catch (Exception e) {
+                    drawFrame();
+                }
+            }
         }
 
-        if (frameRating != null) frameRating.setIsNative(false);
-
-        boolean hasEffects = effectComposer != null
-                && effectComposer.hasEffects()
-                && surfaceWidth > 0
-                && surfaceHeight > 0;
-
-        if (!hasEffects) {
-            drawFrame();
-        } else {
-            try {
-                effectComposer.render();
-            } catch (Exception e) {
-                drawFrame();
-            }
+        // Proses antrian screenshot SETELAH frame selesai dirender —
+        // menghindari stall di tengah frame dan tidak mengganggu rendering normal.
+        if (!screenshotQueue.isEmpty()) {
+            processScreenshotQueue();
         }
     }
 
@@ -638,5 +669,155 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         }
+    }
+
+    // ===================== SCREENSHOT =====================
+
+    /**
+     * Meminta screenshot async dari drawable window.
+     * Permintaan dimasukkan ke antrian dan diproses di GL thread setelah
+     * frame berikutnya selesai — tidak ada stall pada render loop utama.
+     * Callback dipanggil di GL thread; jika perlu update UI, post ke main thread sendiri.
+     *
+     * @param drawable  Drawable (content) dari window target
+     * @param callback  Dipanggil dengan Bitmap thumbnail, atau null jika gagal
+     */
+    public void takeWindowScreenshot(Drawable drawable, Callback<Bitmap> callback) {
+        if (drawable == null || callback == null) return;
+        screenshotQueue.offer(new ScreenshotRequest(drawable, callback));
+        xServerView.requestRender();
+    }
+
+    /**
+     * Diproses di GL thread (dari onDrawFrame) — aman menggunakan OpenGL.
+     * Menguras seluruh antrian dalam satu pass agar beberapa window
+     * dalam ActiveWindowsDialog tidak butuh banyak frame terpisah.
+     *
+     * Optimasi:
+     * - ScreenMaterial dan RenderTarget di-reuse antar permintaan (lazy init, destroy hanya saat perlu resize)
+     * - glReadPixels dijaga seminimal mungkin (resolusi thumbnail kecil, max 256px)
+     * - synchronized(renderLock) hanya pada bagian upload texture, bukan seluruh pipeline
+     * - Viewport dan FBO di-restore setelah selesai agar rendering normal tidak terganggu
+     */
+    private void processScreenshotQueue() {
+        // Lazy-init material (di-reuse, tidak dialokasi ulang tiap frame)
+        if (screenshotMaterial == null) {
+            screenshotMaterial = new ScreenMaterial();
+        }
+
+        // Simpan viewport saat ini agar bisa di-restore
+        int[] savedViewport = new int[4];
+        GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, savedViewport, 0);
+
+        // Pastikan blend dinonaktifkan saat render ke FBO (screenshot tidak butuh alpha compositing)
+        GLES20.glDisable(GLES20.GL_BLEND);
+
+        ScreenshotRequest req;
+        while ((req = screenshotQueue.poll()) != null) {
+            processSingleScreenshot(req);
+        }
+
+        // Restore state
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        GLES20.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
+        viewportNeedsUpdate = true; // sinyal agar viewport di-recalc di frame berikutnya
+    }
+
+    private void processSingleScreenshot(ScreenshotRequest req) {
+        Drawable drawable = req.drawable;
+        if (drawable == null || drawable.width <= 0 || drawable.height <= 0) {
+            req.callback.call(null);
+            return;
+        }
+
+        // Hitung ukuran thumbnail dengan mempertahankan aspect ratio
+        int[] scaledSize = ImageUtils.getScaledSize(
+                (float) drawable.width, (float) drawable.height, 0.0f, SCREENSHOT_MAX_SIZE);
+        int w = scaledSize[0];
+        int h = scaledSize[1];
+        if (w <= 0 || h <= 0) {
+            req.callback.call(null);
+            return;
+        }
+
+        // Reuse atau re-alokasi RenderTarget hanya jika ukuran berubah
+        if (screenshotRenderTarget == null
+                || screenshotRenderTarget.getWidth() != w
+                || screenshotRenderTarget.getHeight() != h) {
+            if (screenshotRenderTarget != null) screenshotRenderTarget.destroy();
+            screenshotRenderTarget = new RenderTarget();
+            screenshotRenderTarget.allocateFramebuffer(w, h);
+        }
+
+        // Bind FBO
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, screenshotRenderTarget.getFramebuffer());
+        GLES20.glViewport(0, 0, w, h);
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+
+        // Upload texture dari drawable — lock seminimal mungkin
+        Texture texture;
+        synchronized (drawable.renderLock) {
+            texture = drawable.getTexture();
+            texture.updateFromDrawable(drawable);
+        }
+
+        // Render texture ke FBO menggunakan ScreenMaterial (full-quad blit)
+        screenshotMaterial.use();
+        quadVertices.bind(screenshotMaterial.programId);
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture.getTextureId());
+        screenshotMaterial.setUniformInt("screenTexture", 0);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        quadVertices.disable();
+
+        // Baca pixel dari FBO — operasi paling mahal; dijaga ukurannya sekecil mungkin
+        Bitmap bitmap = null;
+        try {
+            int[] pixels = getPixelsARGB(0, 0, w, h, false);
+            bitmap = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
+        } catch (Exception e) {
+            Log.e("GLRenderer", "Screenshot readback failed: " + e.getMessage());
+        }
+
+        req.callback.call(bitmap);
+    }
+
+    /**
+     * Membaca pixel dari FBO yang sedang terikat dan mengkonversi RGBA → ARGB.
+     * Dipanggil hanya dari GL thread.
+     *
+     * @param x, y      Origin pembacaan (biasanya 0,0)
+     * @param width, height  Dimensi area baca
+     * @param flipY     true = balik vertikal (untuk pembacaan dari default framebuffer)
+     */
+    public int[] getPixelsARGB(int x, int y, int width, int height, boolean flipY) {
+        ByteBuffer pixelBuffer = ByteBuffer.allocateDirect(width * height * 4)
+                .order(ByteOrder.nativeOrder());
+        GLES20.glReadPixels(x, y, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixelBuffer);
+
+        IntBuffer colors = pixelBuffer.asIntBuffer();
+        int[] result = new int[width * height];
+
+        if (flipY) {
+            for (int row = 0; row < height; row++) {
+                colors.position((height - row - 1) * width);
+                colors.get(result, row * width, width);
+            }
+        } else {
+            colors.get(result);
+        }
+
+        // Konversi RGBA → ARGB (swap R dan B channel)
+        for (int i = 0; i < result.length; i++) {
+            int rgba = result[i];
+            result[i] = (rgba & 0xFF00FF00)           // G dan A tetap
+                    | ((rgba & 0x000000FF) << 16)      // R → pindah ke posisi merah ARGB
+                    | ((rgba & 0x00FF0000) >> 16);     // B → pindah ke posisi biru ARGB
+        }
+        return result;
     }
 }

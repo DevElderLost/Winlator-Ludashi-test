@@ -11,7 +11,6 @@ import android.widget.Toast;
 import com.winlator.cmod.R;
 import com.winlator.cmod.XrActivity;
 import com.winlator.cmod.core.Callback;
-import com.winlator.cmod.core.ImageUtils;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.math.XForm;
 import com.winlator.cmod.renderer.material.CursorMaterial;
@@ -77,7 +76,11 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private static final int SCREENSHOT_MAX_SIZE = 256; // max sisi terpanjang thumbnail (px)
     private final LinkedBlockingQueue<ScreenshotRequest> screenshotQueue = new LinkedBlockingQueue<>();
     // RenderTarget dan ScreenMaterial di-reuse antar panggilan — tidak ada alokasi per permintaan.
+    // Ukuran disimpan manual karena RenderTarget tidak menyediakan getWidth()/getHeight().
+    // Cleanup: glDeleteFramebuffers manual + Texture.destroy() untuk texture-nya.
     private RenderTarget screenshotRenderTarget = null;
+    private int screenshotRenderTargetW = 0;
+    private int screenshotRenderTargetH = 0;
     private ScreenMaterial screenshotMaterial = null;
 
     /** Satu slot permintaan screenshot. */
@@ -732,23 +735,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             return;
         }
 
-        // Hitung ukuran thumbnail dengan mempertahankan aspect ratio
-        int[] scaledSize = ImageUtils.getScaledSize(
-                (float) drawable.width, (float) drawable.height, 0.0f, SCREENSHOT_MAX_SIZE);
-        int w = scaledSize[0];
-        int h = scaledSize[1];
-        if (w <= 0 || h <= 0) {
-            req.callback.call(null);
-            return;
+        // Hitung ukuran thumbnail aspect-ratio-preserving secara inline.
+        // ImageUtils di cmod tidak punya getScaledSize(), jadi kalkulasi manual.
+        int srcW = drawable.width;
+        int srcH = drawable.height;
+        int w, h;
+        if (srcW >= srcH) {
+            w = SCREENSHOT_MAX_SIZE;
+            h = Math.max(1, (int) ((float) srcH / srcW * SCREENSHOT_MAX_SIZE));
+        } else {
+            h = SCREENSHOT_MAX_SIZE;
+            w = Math.max(1, (int) ((float) srcW / srcH * SCREENSHOT_MAX_SIZE));
         }
 
-        // Reuse atau re-alokasi RenderTarget hanya jika ukuran berubah
+        // Reuse atau re-alokasi RenderTarget hanya jika ukuran berubah.
+        // RenderTarget tidak punya getWidth()/getHeight(), ukuran dilacak manual.
+        // Texture.destroy() hanya hapus texture — FBO harus dihapus manual terlebih dahulu.
         if (screenshotRenderTarget == null
-                || screenshotRenderTarget.getWidth() != w
-                || screenshotRenderTarget.getHeight() != h) {
-            if (screenshotRenderTarget != null) screenshotRenderTarget.destroy();
+                || screenshotRenderTargetW != w
+                || screenshotRenderTargetH != h) {
+            if (screenshotRenderTarget != null) {
+                // Hapus FBO dulu (tidak ada di Texture.destroy())
+                int fbo = screenshotRenderTarget.getFramebuffer();
+                if (fbo != 0) GLES20.glDeleteFramebuffers(1, new int[]{fbo}, 0);
+                // Hapus texture via Texture.destroy() dari parent class
+                screenshotRenderTarget.destroy();
+            }
             screenshotRenderTarget = new RenderTarget();
             screenshotRenderTarget.allocateFramebuffer(w, h);
+            screenshotRenderTargetW = w;
+            screenshotRenderTargetH = h;
         }
 
         // Bind FBO

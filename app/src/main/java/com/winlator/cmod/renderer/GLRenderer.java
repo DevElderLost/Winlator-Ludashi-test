@@ -729,14 +729,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     }
 
     private void processSingleScreenshot(ScreenshotRequest req) {
+        try {
+            doProcessSingleScreenshot(req);
+        } catch (Exception e) {
+            // Tangkap semua exception (NPE, GL error, dll) agar satu window
+            // yang bermasalah tidak crash seluruh antrian / GL thread.
+            Log.e("GLRenderer", "Screenshot failed, skipping: " + e.getMessage());
+            req.callback.call(null);
+        }
+    }
+
+    private void doProcessSingleScreenshot(ScreenshotRequest req) {
         Drawable drawable = req.drawable;
+
+        // Guard 1: drawable null atau ukuran tidak valid
         if (drawable == null || drawable.width <= 0 || drawable.height <= 0) {
             req.callback.call(null);
             return;
         }
 
-        // Hitung ukuran thumbnail aspect-ratio-preserving secara inline.
-        // ImageUtils di cmod tidak punya getScaledSize(), jadi kalkulasi manual.
+        // Guard 2: getData() == null → window belum punya pixel data
+        // (wine-explorer, window internal Wine yang tidak pernah di-paint, dll).
+        // updateFromDrawable() akan return early tapi textureId tetap 0
+        // → glBindTexture(0) + glDrawArrays → GL error atau crash.
+        if (drawable.getData() == null) {
+            Log.d("GLRenderer", "Screenshot skipped: drawable has no data (unpainted window)");
+            req.callback.call(null);
+            return;
+        }
+
+        // Hitung ukuran thumbnail aspect-ratio-preserving secara inline
         int srcW = drawable.width;
         int srcH = drawable.height;
         int w, h;
@@ -748,17 +770,13 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             w = Math.max(1, (int) ((float) srcW / srcH * SCREENSHOT_MAX_SIZE));
         }
 
-        // Reuse atau re-alokasi RenderTarget hanya jika ukuran berubah.
-        // RenderTarget tidak punya getWidth()/getHeight(), ukuran dilacak manual.
-        // Texture.destroy() hanya hapus texture — FBO harus dihapus manual terlebih dahulu.
+        // Reuse atau re-alokasi RenderTarget hanya jika ukuran berubah
         if (screenshotRenderTarget == null
                 || screenshotRenderTargetW != w
                 || screenshotRenderTargetH != h) {
             if (screenshotRenderTarget != null) {
-                // Hapus FBO dulu (tidak ada di Texture.destroy())
                 int fbo = screenshotRenderTarget.getFramebuffer();
                 if (fbo != 0) GLES20.glDeleteFramebuffers(1, new int[]{fbo}, 0);
-                // Hapus texture via Texture.destroy() dari parent class
                 screenshotRenderTarget.destroy();
             }
             screenshotRenderTarget = new RenderTarget();
@@ -767,8 +785,16 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             screenshotRenderTargetH = h;
         }
 
+        // Guard 3: FBO gagal diinisialisasi
+        int fboId = screenshotRenderTarget.getFramebuffer();
+        if (fboId == 0) {
+            Log.e("GLRenderer", "Screenshot skipped: FBO allocation failed");
+            req.callback.call(null);
+            return;
+        }
+
         // Bind FBO
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, screenshotRenderTarget.getFramebuffer());
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId);
         GLES20.glViewport(0, 0, w, h);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
@@ -777,6 +803,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         synchronized (drawable.renderLock) {
             texture = drawable.getTexture();
             texture.updateFromDrawable(drawable);
+        }
+
+        // Guard 4: texture tidak berhasil dialokasi setelah updateFromDrawable
+        if (!texture.isAllocated()) {
+            Log.e("GLRenderer", "Screenshot skipped: texture not allocated after updateFromDrawable");
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            req.callback.call(null);
+            return;
         }
 
         // Render texture ke FBO menggunakan ScreenMaterial (full-quad blit)
@@ -790,7 +824,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         quadVertices.disable();
 
-        // Baca pixel dari FBO — operasi paling mahal; dijaga ukurannya sekecil mungkin
+        // Baca pixel — operasi mahal, ukuran dijaga kecil
         Bitmap bitmap = null;
         try {
             int[] pixels = getPixelsARGB(0, 0, w, h, false);

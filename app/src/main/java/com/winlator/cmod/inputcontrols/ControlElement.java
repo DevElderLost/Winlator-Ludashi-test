@@ -331,8 +331,10 @@ public class ControlElement {
             }
             case 1: { // Task Manager dialog
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                    com.winlator.cmod.XServerDisplayActivity activity =
+                            (com.winlator.cmod.XServerDisplayActivity) context;
                     uiHandler.post(() ->
-                            new com.winlator.cmod.winhandler.TaskManagerDialog(context).show());
+                            new com.winlator.cmod.winhandler.TaskManagerDialog(activity).show());
                 }
                 break;
             }

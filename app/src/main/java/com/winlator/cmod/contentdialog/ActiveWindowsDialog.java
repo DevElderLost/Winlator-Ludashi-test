@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -28,13 +29,17 @@ import java.util.List;
 
 public class ActiveWindowsDialog extends ContentDialog {
 
+    private static final String TAG = "ActiveWindowsDialog";
+
     private final XServer xServer;
     private final GLRenderer renderer;
     private final List<Window> activeWindows = new ArrayList<>();
     private LinearLayout llWindowList;
 
     public ActiveWindowsDialog(@NonNull Context context, XServer xServer, GLRenderer renderer) {
-        super(context);
+        // Wajib pass layoutResId agar ContentDialog inflate active_windows_dialog.xml
+        // ke dalam FrameLayout-nya — tanpa ini semua findViewById return null
+        super(context, R.layout.active_windows_dialog);
 
         this.xServer = xServer;
         this.renderer = renderer;
@@ -42,7 +47,9 @@ public class ActiveWindowsDialog extends ContentDialog {
         setTitle("Active Windows");
 
         llWindowList = findViewById(R.id.LLWindowList);
-        findViewById(R.id.BTConfirm).setVisibility(View.GONE);
+
+        View btnConfirm = findViewById(R.id.BTConfirm);
+        if (btnConfirm != null) btnConfirm.setVisibility(View.GONE);
 
         refreshWindows();
     }
@@ -51,26 +58,45 @@ public class ActiveWindowsDialog extends ContentDialog {
         activeWindows.clear();
 
         try (XLock lock = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.DRAWABLE_MANAGER)) {
-            collectMappedWindows(xServer.windowManager.rootWindow, activeWindows);
+            collectActiveWindows(xServer.windowManager.rootWindow, activeWindows);
         }
 
+        Log.d(TAG, "refreshWindows: found " + activeWindows.size() + " windows");
         loadWindowViews(activeWindows);
     }
 
-    private void collectMappedWindows(Window window, List<Window> result) {
-        if (window == null || !window.attributes.isMapped()) return;
+    /**
+     * Kumpulkan window aktif yang relevan secara bertingkat:
+     * 1. isApplicationWindow() — top-level Wine window (mapped + windowGroup==id + size>1×1)
+     * 2. Fallback: VIEWABLE + punya content — menangkap dialog/popup yang valid
+     * Rekursi berhenti saat window di-add agar subwindow internal tidak ikut masuk.
+     */
+    private void collectActiveWindows(Window window, List<Window> result) {
+        if (window == null) return;
 
         if (window != xServer.windowManager.rootWindow) {
-            result.add(window);
+            if (window.isApplicationWindow()) {
+                result.add(window);
+                return;
+            } else if (window.getMapState() == Window.MapState.VIEWABLE
+                    && window.getContent() != null
+                    && window.getWidth() > 1
+                    && window.getHeight() > 1) {
+                result.add(window);
+                return;
+            }
         }
 
         for (Window child : window.getChildren()) {
-            collectMappedWindows(child, result);
+            collectActiveWindows(child, result);
         }
     }
 
     private void loadWindowViews(List<Window> windows) {
-        if (llWindowList == null) return;
+        if (llWindowList == null) {
+            Log.e(TAG, "llWindowList is null — layout not inflated correctly");
+            return;
+        }
 
         llWindowList.removeAllViews();
 
@@ -88,8 +114,8 @@ public class ActiveWindowsDialog extends ContentDialog {
         int imageHeight = (int) UnitUtils.dpToPx(116.0f);
 
         for (int i = windows.size() - 1; i >= 0; i--) {
-            Window window  = windows.get(i);
-            Window parent  = window.getParent();
+            Window window = windows.get(i);
+            Window parent = window.getParent();
 
             View        itemView = inflater.inflate(R.layout.active_window_list_item, llWindowList, false);
             ImageView   ivIcon   = itemView.findViewById(R.id.IVIcon);
@@ -100,15 +126,13 @@ public class ActiveWindowsDialog extends ContentDialog {
             ImageButton btnClose = itemView.findViewById(R.id.IBtnClose);
             View        cardView = itemView.findViewById(R.id.LLWindowCard);
 
-            // --- Judul window ---
-            // getName() / getClassName() mengembalikan "" bukan null — cukup isEmpty()
+            // Judul: getName() → getClassName() → fallback id
             String name = window.getName();
             if (name.isEmpty()) name = window.getClassName();
             if (name.isEmpty()) name = "Window " + window.id;
             tvName.setText(name);
 
-            // --- Icon window ---
-            // Fallback ke icon_hide (drawable yang pasti ada di project)
+            // Icon — fallback ke icon_hide yang pasti ada
             ivIcon.setImageResource(R.drawable.icon_hide);
             Bitmap windowIcon = xServer.pixmapManager.getWindowIcon(window);
             if (windowIcon == null && parent != null) {
@@ -116,16 +140,17 @@ public class ActiveWindowsDialog extends ContentDialog {
             }
             if (windowIcon != null) ivIcon.setImageBitmap(windowIcon);
 
-            // --- Tint tombol X: putih ---
-            ImageViewCompat.setImageTintList(btnClose,
-                    ColorStateList.valueOf(Color.WHITE));
+            // Tint tombol X putih
+            if (btnClose != null) {
+                ImageViewCompat.setImageTintList(btnClose,
+                        ColorStateList.valueOf(Color.WHITE));
+                final Window fw = window;
+                btnClose.setOnClickListener(v -> closeWindow(fw));
+            }
 
-            // --- Thumbnail ---
-            // getContent() → Drawable; width/height via getWidth()/getHeight() (private fields)
-            // isIconic() tidak ada di Window cmod — deteksi via content null sebagai fallback
+            // Thumbnail via Drawable content
             Drawable content = window.getContent();
             if (content != null && content.width > 0 && content.height > 0) {
-                // Kalkulasi scaled size inline — ImageUtils.getScaledSize tidak ada di cmod
                 int srcW = content.width;
                 int srcH = content.height;
                 int scaledW, scaledH;
@@ -140,25 +165,21 @@ public class ActiveWindowsDialog extends ContentDialog {
                 tvName.setMaxWidth((int) (scaledW - iconSize));
                 ivWindow.setLayoutParams(new FrameLayout.LayoutParams(scaledW, scaledH));
 
-                // takeWindowScreenshot dipanggil dari UI thread, callback dari GL thread
-                // → post ke UI thread sebelum update ImageView
                 final ImageView target = ivWindow;
                 renderer.takeWindowScreenshot(content, bitmap -> {
                     if (bitmap != null) target.post(() -> target.setImageBitmap(bitmap));
                 });
             } else {
-                // Tidak ada content → tampilkan placeholder dashed frame
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
                 if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
                 tvName.setMaxWidth((int) (imageHeight - iconSize));
                 ivWindow.setLayoutParams(new FrameLayout.LayoutParams(imageHeight, imageHeight));
             }
 
-            // --- Listeners (logika identik dengan versi ListView semula) ---
-            final Window finalWindow = window;
-            cardView.setOnClickListener(v -> bringToFront(finalWindow));
-            itemView.setOnClickListener(v -> bringToFront(finalWindow));
-            btnClose.setOnClickListener(v -> closeWindow(finalWindow));
+            // Listeners
+            final Window fw = window;
+            if (cardView != null) cardView.setOnClickListener(v -> bringToFront(fw));
+            itemView.setOnClickListener(v -> bringToFront(fw));
 
             llWindowList.addView(itemView);
         }

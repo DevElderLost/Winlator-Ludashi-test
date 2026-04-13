@@ -101,6 +101,8 @@ public class ActiveWindowsDialog extends ContentDialog {
             ImageButton btnClose = itemView.findViewById(R.id.IBtnClose);
             View       cardView  = itemView.findViewById(R.id.LLWindowCard);
 
+            btnClose.ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(R.colors.colorPrimary));
+
             // --- Judul window ---
             String name = window.getName();
             if (name == null || name.trim().isEmpty()) {

@@ -1,16 +1,20 @@
 package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ImageButton;
-import android.widget.ListView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.core.AppUtils;
-import com.winlator.cmod.core.Callback;
+import com.winlator.cmod.core.ImageUtils;
+import com.winlator.cmod.core.UnitUtils;
 import com.winlator.cmod.renderer.GLRenderer;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.WindowManager;
@@ -25,8 +29,7 @@ public class ActiveWindowsDialog extends ContentDialog {
     private final XServer xServer;
     private final GLRenderer renderer;
     private final List<Window> activeWindows = new ArrayList<>();
-    private ActiveWindowsAdapter adapter;
-    private ListView listView;
+    private LinearLayout llWindowList;
 
     public ActiveWindowsDialog(@NonNull Context context, XServer xServer, GLRenderer renderer) {
         super(context);
@@ -36,30 +39,11 @@ public class ActiveWindowsDialog extends ContentDialog {
 
         setTitle("Active Windows");
 
-        listView = findViewById(R.id.ListView);
-        if (listView != null) {
-            listView.getLayoutParams().width = AppUtils.getPreferredDialogWidth(context);
-            listView.setVisibility(View.VISIBLE);
-        }
+        llWindowList = findViewById(R.id.LLWindowList);
 
         findViewById(R.id.BTConfirm).setVisibility(View.GONE);
 
-        setupAdapter();
         refreshWindows();
-    }
-
-    private void setupAdapter() {
-        adapter = new ActiveWindowsAdapter(getContext(), activeWindows,
-                this::bringToFront,
-                this::closeWindow);
-
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            if (position >= 0 && position < activeWindows.size()) {
-                bringToFront(activeWindows.get(position));
-            }
-        });
     }
 
     private void refreshWindows() {
@@ -69,11 +53,7 @@ public class ActiveWindowsDialog extends ContentDialog {
             collectMappedWindows(xServer.windowManager.rootWindow, activeWindows);
         }
 
-        if (adapter != null) {
-            adapter.updateWindows(activeWindows);
-        }
-
-        setMessage(activeWindows.isEmpty() ? "No active windows found." : "");
+        loadWindowViews(activeWindows);
     }
 
     private void collectMappedWindows(Window window, List<Window> result) {
@@ -86,6 +66,92 @@ public class ActiveWindowsDialog extends ContentDialog {
 
         for (Window child : window.getChildren()) {
             collectMappedWindows(child, result);
+        }
+    }
+
+    private void loadWindowViews(List<Window> windows) {
+        if (llWindowList == null) return;
+
+        llWindowList.removeAllViews();
+
+        TextView tvEmpty = findViewById(R.id.TVEmptyText);
+
+        if (windows.isEmpty()) {
+            if (tvEmpty != null) tvEmpty.setVisibility(View.VISIBLE);
+            return;
+        }
+
+        if (tvEmpty != null) tvEmpty.setVisibility(View.GONE);
+
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+        float iconSize = UnitUtils.dpToPx(24.0f);
+        int imageHeight = (int) UnitUtils.dpToPx(116.0f);
+
+        for (int i = windows.size() - 1; i >= 0; i--) {
+            Window window = windows.get(i);
+            Window parent = window.getParent();
+
+            View itemView = inflater.inflate(R.layout.active_window_list_item, llWindowList, false);
+
+            ImageView ivIcon    = itemView.findViewById(R.id.IVIcon);
+            ImageView ivWindow  = itemView.findViewById(R.id.IVWindow);
+            ImageView ivDashed  = itemView.findViewById(R.id.IVDashedFrame);
+            ImageView ivHidden  = itemView.findViewById(R.id.IVHidden);
+            TextView  tvName    = itemView.findViewById(R.id.TVName);
+            ImageButton btnClose = itemView.findViewById(R.id.IBtnClose);
+            View       cardView  = itemView.findViewById(R.id.LLWindowCard);
+
+            // --- Judul window ---
+            String name = window.getName();
+            if (name == null || name.trim().isEmpty()) {
+                name = window.getClassName();
+            }
+            if (name == null || name.trim().isEmpty()) {
+                name = "Window " + window.id;
+            }
+            tvName.setText(name);
+
+            // --- Icon window ---
+            Bitmap windowIcon = xServer.pixmapManager.getWindowIcon(window);
+            if (windowIcon == null && parent != null) {
+                windowIcon = xServer.pixmapManager.getWindowIcon(parent);
+            }
+            ivIcon.setImageResource(R.drawable.icon_window_default);
+            if (windowIcon != null) {
+                ivIcon.setImageBitmap(windowIcon);
+            }
+
+            // --- Thumbnail ---
+            if (!window.isIconic()) {
+                Window content = window.getContent();
+                if (content != null) {
+                    int[] scaledSize = ImageUtils.getScaledSize(
+                            (float) content.width, (float) content.height,
+                            0.0f, (float) imageHeight);
+                    tvName.setMaxWidth((int) (scaledSize[0] - iconSize));
+                    ivWindow.setLayoutParams(
+                            new android.widget.FrameLayout.LayoutParams(scaledSize[0], scaledSize[1]));
+                    renderer.takeWindowScreenshot(content, bitmap -> ivWindow.setImageBitmap(bitmap));
+                }
+            } else {
+                // Window sedang minimize / iconic
+                if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
+                if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
+                tvName.setMaxWidth((int) (imageHeight - iconSize));
+                ivWindow.setLayoutParams(
+                        new android.widget.FrameLayout.LayoutParams(imageHeight, imageHeight));
+            }
+
+            // --- Listener: klik kartu → bring to front (logika sama seperti sebelumnya) ---
+            final Window finalWindow = window;
+            cardView.setOnClickListener(v -> bringToFront(finalWindow));
+            // Pastikan klik pada area selain tombol X juga trigger bring to front
+            itemView.setOnClickListener(v -> bringToFront(finalWindow));
+
+            // --- Listener: tombol X kecil → close window (logika sama seperti sebelumnya) ---
+            btnClose.setOnClickListener(v -> closeWindow(finalWindow));
+
+            llWindowList.addView(itemView);
         }
     }
 
@@ -121,85 +187,5 @@ public class ActiveWindowsDialog extends ContentDialog {
 
     public static void show(Context context, XServer xServer, GLRenderer renderer) {
         new ActiveWindowsDialog(context, xServer, renderer).show();
-    }
-
-    // ====================== ADAPTER ======================
-    private static class ActiveWindowsAdapter extends android.widget.BaseAdapter {
-
-        private final Context context;
-        private final List<Window> windows;
-        private final Callback<Window> onBringToFront;
-        private final Callback<Window> onClose;
-        private int selectedPosition = -1;
-
-        public ActiveWindowsAdapter(Context context, List<Window> windows,
-                                    Callback<Window> onBringToFront,
-                                    Callback<Window> onClose) {
-            this.context = context;
-            this.windows = new ArrayList<>(windows);
-            this.onBringToFront = onBringToFront;
-            this.onClose = onClose;
-        }
-
-        @Override public int getCount() { return windows.size(); }
-        @Override public Window getItem(int position) { return windows.get(position); }
-        @Override public long getItemId(int position) { return position; }
-
-        public void setSelectedPosition(int position) {
-            this.selectedPosition = position;
-            notifyDataSetChanged();
-        }
-
-        @Override
-        public View getView(int position, View convertView, android.view.ViewGroup parent) {
-            if (convertView == null) {
-                convertView = android.view.LayoutInflater.from(context)
-                        .inflate(R.layout.active_window_spinner_item, parent, false);
-            }
-
-            Window window = getItem(position);
-            TextView tvTitle = convertView.findViewById(R.id.tvWindowTitle);
-            ImageButton btnClose = convertView.findViewById(R.id.btnCloseWindow);
-
-            // === PERBAIKAN TITLE ===
-            String title = window.getName();                    // WM_NAME
-            if (title == null || title.trim().isEmpty()) {
-                title = window.getClassName();                  // WM_CLASS
-            }
-            if (title == null || title.trim().isEmpty()) {
-                title = "Window " + window.id;                  // Gunakan .id langsung
-            }
-
-            tvTitle.setText(title);
-
-            // === HIGHLIGHT WARNA SAAT DIPILIH ===
-            if (position == selectedPosition) {
-                convertView.setBackgroundColor(0xff2196f3);
-                tvTitle.setTextColor(android.graphics.Color.WHITE);
-            } else {
-                convertView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-                tvTitle.setTextColor(android.graphics.Color.WHITE);
-            }
-
-            // Klik item → highlight + bring to front
-            convertView.setOnClickListener(v -> {
-                setSelectedPosition(position);
-                onBringToFront.call(window);
-            });
-
-            // Tombol X → close
-            btnClose.setOnClickListener(v -> onClose.call(window));
-            btnClose.setFocusable(false);
-            btnClose.setFocusableInTouchMode(false);
-
-            return convertView;
-        }
-
-        public void updateWindows(List<Window> newWindows) {
-            windows.clear();
-            windows.addAll(newWindows);
-            selectedPosition = -1;
-            notifyDataSetChanged();
-        }
     }
 }

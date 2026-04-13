@@ -1,23 +1,25 @@
 package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.core.widget.ImageViewCompat;
 
 import com.winlator.cmod.R;
-import com.winlator.cmod.core.AppUtils;
-import com.winlator.cmod.core.ImageUtils;
 import com.winlator.cmod.core.UnitUtils;
 import com.winlator.cmod.renderer.GLRenderer;
+import com.winlator.cmod.xserver.Drawable;
 import com.winlator.cmod.xserver.Window;
-import com.winlator.cmod.xserver.WindowManager;
 import com.winlator.cmod.xserver.XLock;
 import com.winlator.cmod.xserver.XServer;
 
@@ -40,7 +42,6 @@ public class ActiveWindowsDialog extends ContentDialog {
         setTitle("Active Windows");
 
         llWindowList = findViewById(R.id.LLWindowList);
-
         findViewById(R.id.BTConfirm).setVisibility(View.GONE);
 
         refreshWindows();
@@ -59,7 +60,6 @@ public class ActiveWindowsDialog extends ContentDialog {
     private void collectMappedWindows(Window window, List<Window> result) {
         if (window == null || !window.attributes.isMapped()) return;
 
-        // Skip root window
         if (window != xServer.windowManager.rootWindow) {
             result.add(window);
         }
@@ -84,73 +84,80 @@ public class ActiveWindowsDialog extends ContentDialog {
         if (tvEmpty != null) tvEmpty.setVisibility(View.GONE);
 
         LayoutInflater inflater = LayoutInflater.from(getContext());
-        float iconSize = UnitUtils.dpToPx(24.0f);
+        float iconSize  = UnitUtils.dpToPx(24.0f);
         int imageHeight = (int) UnitUtils.dpToPx(116.0f);
 
         for (int i = windows.size() - 1; i >= 0; i--) {
-            Window window = windows.get(i);
-            Window parent = window.getParent();
+            Window window  = windows.get(i);
+            Window parent  = window.getParent();
 
-            View itemView = inflater.inflate(R.layout.active_window_list_item, llWindowList, false);
-
-            ImageView ivIcon    = itemView.findViewById(R.id.IVIcon);
-            ImageView ivWindow  = itemView.findViewById(R.id.IVWindow);
-            ImageView ivDashed  = itemView.findViewById(R.id.IVDashedFrame);
-            ImageView ivHidden  = itemView.findViewById(R.id.IVHidden);
-            TextView  tvName    = itemView.findViewById(R.id.TVName);
+            View        itemView = inflater.inflate(R.layout.active_window_list_item, llWindowList, false);
+            ImageView   ivIcon   = itemView.findViewById(R.id.IVIcon);
+            ImageView   ivWindow = itemView.findViewById(R.id.IVWindow);
+            ImageView   ivDashed = itemView.findViewById(R.id.IVDashedFrame);
+            ImageView   ivHidden = itemView.findViewById(R.id.IVHidden);
+            TextView    tvName   = itemView.findViewById(R.id.TVName);
             ImageButton btnClose = itemView.findViewById(R.id.IBtnClose);
-            View       cardView  = itemView.findViewById(R.id.LLWindowCard);
-
-            btnClose.ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(R.colors.colorPrimary));
+            View        cardView = itemView.findViewById(R.id.LLWindowCard);
 
             // --- Judul window ---
+            // getName() / getClassName() mengembalikan "" bukan null — cukup isEmpty()
             String name = window.getName();
-            if (name == null || name.trim().isEmpty()) {
-                name = window.getClassName();
-            }
-            if (name == null || name.trim().isEmpty()) {
-                name = "Window " + window.id;
-            }
+            if (name.isEmpty()) name = window.getClassName();
+            if (name.isEmpty()) name = "Window " + window.id;
             tvName.setText(name);
 
             // --- Icon window ---
+            // Fallback ke icon_hide (drawable yang pasti ada di project)
+            ivIcon.setImageResource(R.drawable.icon_hide);
             Bitmap windowIcon = xServer.pixmapManager.getWindowIcon(window);
             if (windowIcon == null && parent != null) {
                 windowIcon = xServer.pixmapManager.getWindowIcon(parent);
             }
-            ivIcon.setImageResource(R.drawable.icon_window_default);
-            if (windowIcon != null) {
-                ivIcon.setImageBitmap(windowIcon);
-            }
+            if (windowIcon != null) ivIcon.setImageBitmap(windowIcon);
+
+            // --- Tint tombol X: putih ---
+            ImageViewCompat.setImageTintList(btnClose,
+                    ColorStateList.valueOf(Color.WHITE));
 
             // --- Thumbnail ---
-            if (!window.isIconic()) {
-                Window content = window.getContent();
-                if (content != null) {
-                    int[] scaledSize = ImageUtils.getScaledSize(
-                            (float) content.width, (float) content.height,
-                            0.0f, (float) imageHeight);
-                    tvName.setMaxWidth((int) (scaledSize[0] - iconSize));
-                    ivWindow.setLayoutParams(
-                            new android.widget.FrameLayout.LayoutParams(scaledSize[0], scaledSize[1]));
-                    renderer.takeWindowScreenshot(content, bitmap -> ivWindow.setImageBitmap(bitmap));
+            // getContent() → Drawable; width/height via getWidth()/getHeight() (private fields)
+            // isIconic() tidak ada di Window cmod — deteksi via content null sebagai fallback
+            Drawable content = window.getContent();
+            if (content != null && content.width > 0 && content.height > 0) {
+                // Kalkulasi scaled size inline — ImageUtils.getScaledSize tidak ada di cmod
+                int srcW = content.width;
+                int srcH = content.height;
+                int scaledW, scaledH;
+                if (srcW >= srcH) {
+                    scaledW = imageHeight;
+                    scaledH = Math.max(1, (int) ((float) srcH / srcW * imageHeight));
+                } else {
+                    scaledH = imageHeight;
+                    scaledW = Math.max(1, (int) ((float) srcW / srcH * imageHeight));
                 }
+
+                tvName.setMaxWidth((int) (scaledW - iconSize));
+                ivWindow.setLayoutParams(new FrameLayout.LayoutParams(scaledW, scaledH));
+
+                // takeWindowScreenshot dipanggil dari UI thread, callback dari GL thread
+                // → post ke UI thread sebelum update ImageView
+                final ImageView target = ivWindow;
+                renderer.takeWindowScreenshot(content, bitmap -> {
+                    if (bitmap != null) target.post(() -> target.setImageBitmap(bitmap));
+                });
             } else {
-                // Window sedang minimize / iconic
+                // Tidak ada content → tampilkan placeholder dashed frame
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
                 if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
                 tvName.setMaxWidth((int) (imageHeight - iconSize));
-                ivWindow.setLayoutParams(
-                        new android.widget.FrameLayout.LayoutParams(imageHeight, imageHeight));
+                ivWindow.setLayoutParams(new FrameLayout.LayoutParams(imageHeight, imageHeight));
             }
 
-            // --- Listener: klik kartu → bring to front (logika sama seperti sebelumnya) ---
+            // --- Listeners (logika identik dengan versi ListView semula) ---
             final Window finalWindow = window;
             cardView.setOnClickListener(v -> bringToFront(finalWindow));
-            // Pastikan klik pada area selain tombol X juga trigger bring to front
             itemView.setOnClickListener(v -> bringToFront(finalWindow));
-
-            // --- Listener: tombol X kecil → close window (logika sama seperti sebelumnya) ---
             btnClose.setOnClickListener(v -> closeWindow(finalWindow));
 
             llWindowList.addView(itemView);

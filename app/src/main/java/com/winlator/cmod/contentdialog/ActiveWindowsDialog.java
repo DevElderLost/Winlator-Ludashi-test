@@ -66,22 +66,32 @@ public class ActiveWindowsDialog extends ContentDialog {
     }
 
     /**
-     * Kumpulkan window aktif yang relevan secara bertingkat:
-     * 1. isApplicationWindow() — top-level Wine window (mapped + windowGroup==id + size>1×1)
-     * 2. Fallback: VIEWABLE + punya content — menangkap dialog/popup yang valid
-     * Rekursi berhenti saat window di-add agar subwindow internal tidak ikut masuk.
+     * Kumpulkan window aktif yang benar-benar visible dan punya pixel data.
+     *
+     * Filter berlapis untuk menghindari crash dari window Wine internal
+     * (wine explorer, window tidak ter-paint, window tanpa content):
+     *
+     * 1. isApplicationWindow() → mapped + windowGroup==id + size>1×1
+     * 2. Punya content (Drawable tidak null)
+     * 3. content.getData() tidak null → window sudah pernah di-paint
+     *    Window seperti wine explorer terdeteksi isApplicationWindow() tapi
+     *    getData()==null karena tidak pernah render pixel → skip.
      */
     private void collectActiveWindows(Window window, List<Window> result) {
         if (window == null) return;
 
         if (window != xServer.windowManager.rootWindow) {
-            if (window.isApplicationWindow()) {
+            Drawable content = window.getContent();
+            boolean hasPaintedContent = content != null
+                    && content.width > 0
+                    && content.height > 0
+                    && content.getData() != null;
+
+            if (window.isApplicationWindow() && hasPaintedContent) {
                 result.add(window);
                 return;
             } else if (window.getMapState() == Window.MapState.VIEWABLE
-                    && window.getContent() != null
-                    && window.getWidth() > 1
-                    && window.getHeight() > 1) {
+                    && hasPaintedContent) {
                 result.add(window);
                 return;
             }

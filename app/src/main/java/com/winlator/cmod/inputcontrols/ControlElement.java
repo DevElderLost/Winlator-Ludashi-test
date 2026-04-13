@@ -307,11 +307,12 @@ public class ControlElement {
      * Context diambil dari inputControlsView — saat runtime di XServerDisplayActivity
      * ini adalah instance Activity itu sendiri.
      *
-     * Keyboard  : toggle soft keyboard via InputMethodManager
-     * Input Controls: cast ke XServerDisplayActivity, panggil showInputControlsDialog()
-     * Exit      : cast ke XServerDisplayActivity, panggil exit()
+     * Keyboard      : toggle soft keyboard via InputMethodManager
+     * Task Manager  : buka TaskManagerDialog
+     * Active Windows: buka ActiveWindowsDialog
+     * Exit          : cast ke XServerDisplayActivity, panggil exitApp()
      *
-     * @param itemIndex 0=Keyboard, 1=Input Controls, 2=Exit
+     * @param itemIndex 0=Keyboard, 1=Task Manager, 2=Active Windows, 3=Exit
      */
     private void executeMenuAction(int itemIndex) {
         Context context = inputControlsView.getContext();
@@ -328,15 +329,29 @@ public class ControlElement {
                 });
                 break;
             }
-            case 1: { // Input Controls dialog
+            case 1: { // Task Manager dialog
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
-                    com.winlator.cmod.XServerDisplayActivity activity =
-                            (com.winlator.cmod.XServerDisplayActivity) context;
-                    uiHandler.post(activity::showInputControlsDialog);
+                    uiHandler.post(() ->
+                            new com.winlator.cmod.winhandler.TaskManagerDialog(context).show());
                 }
                 break;
             }
-            case 2: { // Exit
+            case 2: { // Active Windows dialog
+                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                    com.winlator.cmod.XServerDisplayActivity activity =
+                            (com.winlator.cmod.XServerDisplayActivity) context;
+                    uiHandler.post(() -> {
+                        com.winlator.cmod.renderer.GLRenderer renderer =
+                                activity.getXServerView() != null
+                                        ? activity.getXServerView().getRenderer()
+                                        : null;
+                        com.winlator.cmod.contentdialog.ActiveWindowsDialog.show(
+                                activity, activity.getXServer(), renderer);
+                    });
+                }
+                break;
+            }
+            case 3: { // Exit
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                     com.winlator.cmod.XServerDisplayActivity activity =
                             (com.winlator.cmod.XServerDisplayActivity) context;
@@ -1096,43 +1111,61 @@ public class ControlElement {
             canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
         }
 
-        // ── Sub-menu items (animasi slide-down) ───────────────────────────
+        // ── Sub-menu items (animasi pop-out scale) ────────────────────────
+        // menuAnimProgress: 0.0 = collapsed (tidak tampil), 1.0 = fully expanded
+        // Animasi: setiap item muncul dengan efek pop/membesar dari skala 0 → 1
+        // saat expand, dan mengecil dari 1 → 0 saat collapse.
         if (menuAnimProgress <= 0f) return;
 
-        // slot 1=Keyboard, 2=InputControls, 3=Exit
-        final String[] itemFallback = {"\u2328", "\u25A3", "\u2715"};
-        final String[] itemLabels   = {"Keyboard", "Input Controls", "Exit"};
+        // slot 1=Keyboard, 2=Task Manager, 3=Active Windows, 4=Exit
+        final String[] itemFallback = {"\u2328", "\u2630", "\u25A3", "\u2715"};
+        final String[] itemLabels   = {"Keyboard", "Task Manager", "Active Windows", "Exit"};
 
         float gap    = snappingSize * 0.4f * scale;
         float itemH  = h;
-        float totalH = (itemH + gap) * itemLabels.length;
 
-        float revealH = totalH * menuAnimProgress;
-        canvas.save();
-        canvas.clipRect(
-                boundingBox.left - 1,
-                boundingBox.bottom,
-                boundingBox.right + 1,
-                boundingBox.bottom + revealH);
+        // Alpha keseluruhan sub-menu mengikuti progress (fade-in/out bersama scale)
+        int menuAlpha = (int) (menuAnimProgress * 255);
 
         for (int i = 0; i < itemLabels.length; i++) {
+            // Posisi final item (saat progress = 1.0)
             float top    = boundingBox.bottom + gap + i * (itemH + gap);
             float bottom = top + itemH;
             float itemCy = (top + bottom) * 0.5f;
 
+            // Setiap item pop-out dengan sedikit delay berbasis index:
+            // item ke-i mulai muncul saat progress melewati (i * 0.15), maks 1.0
+            float itemDelay  = i * 0.15f;
+            float itemProgress = Math.min(1f, Math.max(0f,
+                    (menuAnimProgress - itemDelay) / (1f - itemDelay + 0.001f)));
+
+            // Ease-out: efek overshoot ringan agar terasa "pop"
+            // scaleVal = 1 - (1 - itemProgress)^2  → decelerating scale
+            float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
+
+            if (scaleVal <= 0f) continue;
+
+            // Gambar item dengan transform scale dari pusat item
+            canvas.save();
+            canvas.scale(scaleVal, scaleVal, cx, itemCy);
+
+            // Alpha item mengikuti scaleVal
+            int itemAlpha = (int) (scaleVal * menuAlpha);
+
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, 40));
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
             // Border
             paint.setStyle(Paint.Style.STROKE);
-            paint.setColor(primaryColor);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
             paint.setStrokeWidth(strokeWidth * 0.75f);
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
             paint.setStyle(Paint.Style.FILL);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
 
-            // slot 1–3 untuk tiga item sub-menu
+            // slot 1–4 untuk empat item sub-menu
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
 
             if (slotIcon > 0) {
@@ -1164,9 +1197,9 @@ public class ControlElement {
                 canvas.drawText(fullLabel, cx,
                         itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
             }
-        }
 
-        canvas.restore();
+            canvas.restore();
+        }
     }
 
     private void drawIcon(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
@@ -1295,7 +1328,7 @@ public class ControlElement {
             int snappingSize = inputControlsView.getSnappingSize();
             float gap    = snappingSize * 0.4f * scale;
             float itemH  = bb.height();
-            float totalH = (itemH + gap) * 3;
+            float totalH = (itemH + gap) * 4;
             float bottom = bb.bottom + gap + totalH;
             if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
         }
@@ -1316,7 +1349,7 @@ public class ControlElement {
             float gap  = snappingSize * 0.4f * scale;
             float itemH = h;
 
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 4; i++) {
                 float top    = bb.bottom + gap + i * (itemH + gap);
                 float bottom = top + itemH;
                 if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {

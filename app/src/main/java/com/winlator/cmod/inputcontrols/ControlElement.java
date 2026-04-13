@@ -91,6 +91,9 @@ public class ControlElement {
     private String text = "";
     private byte iconId;
     private Range range;
+    // Jumlah slot yang terlihat sekaligus di layar (bukan total range.max).
+    // Mengontrol lebar/tinggi bounding box RANGE_BUTTON agar tidak terlalu panjang.
+    private int rangeVisibleCount = 5;
     private byte orientation;
     private PointF currentPosition;
     private PointF visualThumbPosition; // posisi visual thumbstick RIGHT_STICK (terpisah dari currentPosition yang dipakai input)
@@ -230,6 +233,15 @@ public class ControlElement {
 
     public void setRange(Range range) {
         this.range = range;
+    }
+
+    public int getRangeVisibleCount() {
+        return rangeVisibleCount > 0 ? rangeVisibleCount : 5;
+    }
+
+    public void setRangeVisibleCount(int count) {
+        this.rangeVisibleCount = Math.max(1, Math.min(count, getRange().max));
+        boundingBoxNeedsUpdate = true;
     }
 
     public byte getOrientation() {
@@ -528,12 +540,11 @@ public class ControlElement {
                 break;
             }
             case RANGE_BUTTON: {
-                // Gunakan getRange().max (jumlah slot range) bukan getBindingCount(),
-                // karena RangeScroller dapat memanggil setBinding() saat touch-up untuk
-                // mengirim key event — itu mengubah bindings.size() menjadi 1 dan memicu
-                // boundingBoxNeedsUpdate = true, sehingga elemen menyusut menjadi satu
-                // tombol kecil saat disentuh. getRange().max selalu stabil.
-                halfWidth = snappingSize * ((getRange().max * 4) / 2);
+                // Gunakan rangeVisibleCount (jumlah slot yang terlihat di layar),
+                // bukan getRange().max (total semua slot), agar ukuran elemen
+                // terkontrol dan tidak memanjang mengikuti seluruh range.
+                int visible = getRangeVisibleCount();
+                halfWidth = snappingSize * ((visible * 4) / 2);
                 halfHeight = snappingSize * 2;
 
                 if (orientation == 1) {
@@ -1300,6 +1311,7 @@ public class ControlElement {
 
             if (type == Type.RANGE_BUTTON && range != null) {
                 elementJSONObject.put("range", range.name());
+                elementJSONObject.put("rangeVisibleCount", rangeVisibleCount);
                 if (orientation != 0) elementJSONObject.put("orientation", orientation);
             }
 

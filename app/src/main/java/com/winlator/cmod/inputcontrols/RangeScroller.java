@@ -27,11 +27,11 @@ public class RangeScroller {
 
     public float getElementSize() {
         Rect boundingBox = element.getBoundingBox();
-        // Gunakan range.max (jumlah slot total) bukan getBindingCount().
-        // getBindingCount() menjadi 1 setelah setBinding(NONE) dipanggil di
-        // handleTouchDown, sehingga elementSize menjadi jauh terlalu besar
-        // dan posisi teks/scroll menjadi tidak akurat.
-        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getRange().max;
+        // Bagi boundingBox dengan rangeVisibleCount (bukan range.max).
+        // BoundingBox sekarang dihitung berdasarkan rangeVisibleCount di computeBoundingBox(),
+        // sehingga width/height = lebar untuk N slot visible.
+        // Membagi dengan range.max akan menghasilkan cell yang terlalu kecil.
+        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getRangeVisibleCount();
     }
 
     public float getScrollSize() {
@@ -46,11 +46,9 @@ public class RangeScroller {
         ControlElement.Range range = element.getRange();
         byte from = (byte)Math.floor((scrollOffset / getElementSize()) % range.max);
         if (from < 0) from = (byte)(range.max + from);
-        // Gunakan range.max bukan getBindingCount() — setelah setBinding(NONE)
-        // dipanggil, getBindingCount() == 1 sehingga hanya 2 elemen yang digambar.
-        // Jumlah slot visible = seluruh range (semua elemen selalu digambar, clipping
-        // dilakukan oleh canvas.clipPath di draw()).
-        byte to = (byte)(from + range.max + 1);
+        // Render visibleCount+1 slot: cukup untuk mengisi area visible + 1 slot
+        // overflow di tepi agar scrolling terlihat mulus tanpa gap.
+        byte to = (byte)(from + element.getRangeVisibleCount() + 1);
         return new byte[]{from, to};
     }
 

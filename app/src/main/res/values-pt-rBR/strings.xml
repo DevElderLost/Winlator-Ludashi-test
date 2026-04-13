@@ -642,4 +642,5 @@ E.g. <b>META</b> para <i>tecla META</i>, \n
     <string name="all_files_access_dialog_title">Acesso a Todos os Arquivos Necessário</string>
     <string name="all_files_access_dialog_message">Para conceder acesso a dispositivos de armazenamento adicionais, como dispositivos de armazenamento USB, a permissão de Acesso a Todos os Arquivos deve ser concedida. Pressione OK para conceder o Acesso a Todos os Arquivos nas Configurações do Android.</string>
     <string name="help_import_icons">Compacte seus ícones em um arquivo ZIP e importe-os pressionando este botão.</string>
+    <string name="no_items_to_display">Nenhuma janela ativa</string>
 </resources>

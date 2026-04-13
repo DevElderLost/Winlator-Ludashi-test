@@ -190,28 +190,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             inputControlsView.invalidate();
         });
 
-        // NPColumns: untuk RANGE_BUTTON mengontrol jumlah slot terlihat (rangeVisibleCount),
-        // untuk BUTTON mengontrol jumlah binding (bindingCount).
-        // NPColumns ada di dalam LLRangeOptions sehingga hanya muncul saat RANGE_BUTTON.
         NumberPicker npColumns = view.findViewById(R.id.NPColumns);
-        if (element.getType() == ControlElement.Type.RANGE_BUTTON) {
-            // Batas min=1, max=26 sudah di-set via XML (app:minValue/app:maxValue).
-            // setRangeVisibleCount() meng-clamp otomatis ke 1..range.max.
-            npColumns.setValue(element.getRangeVisibleCount());
-            npColumns.setOnValueChangeListener((numberPicker, value) -> {
-                element.setRangeVisibleCount(value);
-                profile.save();
-                inputControlsView.invalidate();
-            });
-        } else {
-            npColumns.setValue(element.getBindingCount());
-            npColumns.setOnValueChangeListener((numberPicker, value) -> {
-                element.setBindingCount(value);
-                profile.save();
-                inputControlsView.invalidate();
-                loadBindingSpinners(element, view);
-            });
-        }
+        npColumns.setValue(element.getBindingCount());
+        npColumns.setOnValueChangeListener((numberPicker, value) -> {
+            element.setBindingCount(value);
+            profile.save();
+            inputControlsView.invalidate();
+        });
 
         final TextView tvScale = view.findViewById(R.id.TVScale);
         SeekBar sbScale = view.findViewById(R.id.SBScale);
@@ -717,18 +702,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                ControlElement.Range newRange = ControlElement.Range.values()[position];
-                element.setRange(newRange);
-                // Clamp dan refresh NPColumns saat range berubah
-                if (element.getRangeVisibleCount() > newRange.max) {
-                    element.setRangeVisibleCount(newRange.max);
-                }
-                // Refresh nilai NPColumns saat range berubah.
-                // Batas max sudah di-set via XML; setRangeVisibleCount() meng-clamp otomatis.
-                NumberPicker npColumns = ((android.view.View) parent.getParent().getParent()).findViewById(R.id.NPColumns);
-                if (npColumns != null) {
-                    npColumns.setValue(element.getRangeVisibleCount());
-                }
+                element.setRange(ControlElement.Range.values()[position]);
                 profile.save();
                 inputControlsView.invalidate();
             }

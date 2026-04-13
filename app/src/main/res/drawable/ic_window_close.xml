@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_window_close.xml
+    Ikon X untuk tombol close window, mirip gaya Windows 11.
+    Gunakan dengan app:tint atau ImageView.setColorFilter() untuk warna dinamis.
+    Ukuran kanvas: 24×24dp (standar Material icon grid).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!--
+        Dua garis diagonal membentuk tanda X.
+        Stroke tebal 1.8px, ujung rounded, persis seperti Windows 11 close icon.
+        Garis dimulai dan berakhir 1px dari tepi agar ada padding visual.
+
+        Diagonal kiri-atas → kanan-bawah
+    -->
+    <path
+        android:pathData="
+            M 6.5,6.5
+            L 17.5,17.5"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- Diagonal kanan-atas → kiri-bawah -->
+    <path
+        android:pathData="
+            M 17.5,6.5
+            L 6.5,17.5"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+</vector>

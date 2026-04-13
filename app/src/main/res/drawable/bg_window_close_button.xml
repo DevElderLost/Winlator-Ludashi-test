@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    bg_window_close_button.xml  (StateListDrawable)
+    Background tombol close bergaya Windows 11:
+      • Normal   : transparan
+      • Pressed  : merah gelap  (#C42B1C) — persis warna Windows 11 saat diklik
+      • Focused / Hovered : merah terang (#E81123) — warna hover Windows 11
+
+    Letakkan di  res/drawable/bg_window_close_button.xml
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- State: ditekan (pressed) -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#C42B1C" />
+            <!-- Sudut sedikit membulat agar terlihat modern, bukan kotak kaku -->
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <!-- State: focused (navigasi keyboard / gamepad) -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#E81123" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <!-- State: hovered (mouse / stylus — Android 7+) -->
+    <item android:state_hovered="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#E81123" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <!-- State: default / normal — transparan -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+</selector>

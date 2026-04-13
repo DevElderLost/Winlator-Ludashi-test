@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    dashed_frame.xml
+    Border dashed persegi panjang sebagai placeholder saat window iconic/minimize.
+    Dipakai di active_window_list_item.xml pada IVDashedFrame.
+    Warna default abu-abu (#BDBDBD), override via app:tint dari layout.
+    Ukuran kanvas 116×116dp (sama dengan layout_width/height di list item).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="116dp"
+    android:height="116dp"
+    android:viewportWidth="116"
+    android:viewportHeight="116">
+
+    <!--
+        Border dashed dibuat dengan serangkaian garis pendek (dash) yang disusun
+        mengikuti sisi-sisi persegi panjang.
+        Stroke 1.5px, dash panjang 6px, gap 4px — proporsi yang terlihat jelas
+        di ukuran 116dp namun tidak terlalu ramai.
+        Margin dalam 2px dari tepi agar stroke tidak terpotong viewport.
+
+        Android Vector tidak mendukung stroke-dasharray natively,
+        sehingga setiap dash digambar sebagai path pendek terpisah.
+        Pendekatan ini paling kompatibel lintas API level.
+
+        ── Sisi ATAS  (kiri → kanan, y=2) ──────────────────────────
+    -->
+
+    <!-- dash 1 -->
+    <path android:pathData="M 2,2 L 8,2"         android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 2 -->
+    <path android:pathData="M 12,2 L 18,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 3 -->
+    <path android:pathData="M 22,2 L 28,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 4 -->
+    <path android:pathData="M 32,2 L 38,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 5 -->
+    <path android:pathData="M 42,2 L 48,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 6 -->
+    <path android:pathData="M 52,2 L 58,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 7 -->
+    <path android:pathData="M 62,2 L 68,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 8 -->
+    <path android:pathData="M 72,2 L 78,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 9 -->
+    <path android:pathData="M 82,2 L 88,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 10 -->
+    <path android:pathData="M 92,2 L 98,2"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 11 -->
+    <path android:pathData="M 102,2 L 108,2"      android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- partial dash 12 (sisa hingga pojok) -->
+    <path android:pathData="M 112,2 L 114,2"      android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+
+    <!--
+        ── Sisi KANAN  (atas → bawah, x=114) ───────────────────────
+    -->
+    <!-- dash 1 -->
+    <path android:pathData="M 114,2 L 114,8"      android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 2 -->
+    <path android:pathData="M 114,12 L 114,18"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 3 -->
+    <path android:pathData="M 114,22 L 114,28"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 4 -->
+    <path android:pathData="M 114,32 L 114,38"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 5 -->
+    <path android:pathData="M 114,42 L 114,48"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 6 -->
+    <path android:pathData="M 114,52 L 114,58"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 7 -->
+    <path android:pathData="M 114,62 L 114,68"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 8 -->
+    <path android:pathData="M 114,72 L 114,78"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 9 -->
+    <path android:pathData="M 114,82 L 114,88"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 10 -->
+    <path android:pathData="M 114,92 L 114,98"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 11 -->
+    <path android:pathData="M 114,102 L 114,108"  android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- partial dash 12 -->
+    <path android:pathData="M 114,112 L 114,114"  android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+
+    <!--
+        ── Sisi BAWAH  (kanan → kiri, y=114) ───────────────────────
+    -->
+    <!-- dash 1 -->
+    <path android:pathData="M 114,114 L 108,114"  android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 2 -->
+    <path android:pathData="M 104,114 L 98,114"   android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 3 -->
+    <path android:pathData="M 94,114 L 88,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 4 -->
+    <path android:pathData="M 84,114 L 78,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 5 -->
+    <path android:pathData="M 74,114 L 68,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 6 -->
+    <path android:pathData="M 64,114 L 58,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 7 -->
+    <path android:pathData="M 54,114 L 48,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 8 -->
+    <path android:pathData="M 44,114 L 38,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 9 -->
+    <path android:pathData="M 34,114 L 28,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 10 -->
+    <path android:pathData="M 24,114 L 18,114"    android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 11 -->
+    <path android:pathData="M 14,114 L 8,114"     android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- partial dash 12 -->
+    <path android:pathData="M 4,114 L 2,114"      android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+
+    <!--
+        ── Sisi KIRI  (bawah → atas, x=2) ──────────────────────────
+    -->
+    <!-- dash 1 -->
+    <path android:pathData="M 2,114 L 2,108"      android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 2 -->
+    <path android:pathData="M 2,104 L 2,98"       android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 3 -->
+    <path android:pathData="M 2,94 L 2,88"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 4 -->
+    <path android:pathData="M 2,84 L 2,78"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 5 -->
+    <path android:pathData="M 2,74 L 2,68"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 6 -->
+    <path android:pathData="M 2,64 L 2,58"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 7 -->
+    <path android:pathData="M 2,54 L 2,48"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 8 -->
+    <path android:pathData="M 2,44 L 2,38"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 9 -->
+    <path android:pathData="M 2,34 L 2,28"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 10 -->
+    <path android:pathData="M 2,24 L 2,18"        android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- dash 11 -->
+    <path android:pathData="M 2,14 L 2,8"         android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+    <!-- partial dash 12 (kembali ke pojok atas-kiri) -->
+    <path android:pathData="M 2,4 L 2,2"          android:strokeColor="#FFBDBDBD" android:strokeWidth="1.5" android:strokeLineCap="square" android:fillColor="@android:color/transparent"/>
+
+</vector>

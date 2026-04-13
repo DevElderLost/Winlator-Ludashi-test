@@ -195,9 +195,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         // NPColumns ada di dalam LLRangeOptions sehingga hanya muncul saat RANGE_BUTTON.
         NumberPicker npColumns = view.findViewById(R.id.NPColumns);
         if (element.getType() == ControlElement.Type.RANGE_BUTTON) {
-            int rangeMax = element.getRange().max;
-            npColumns.setMax(rangeMax);
-            npColumns.setMin(1);
+            // Batas min=1, max=26 sudah di-set via XML (app:minValue/app:maxValue).
+            // setRangeVisibleCount() meng-clamp otomatis ke 1..range.max.
             npColumns.setValue(element.getRangeVisibleCount());
             npColumns.setOnValueChangeListener((numberPicker, value) -> {
                 element.setRangeVisibleCount(value);
@@ -724,10 +723,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 if (element.getRangeVisibleCount() > newRange.max) {
                     element.setRangeVisibleCount(newRange.max);
                 }
-                // Update batas dan nilai NPColumns agar sesuai range baru
+                // Refresh nilai NPColumns saat range berubah.
+                // Batas max sudah di-set via XML; setRangeVisibleCount() meng-clamp otomatis.
                 NumberPicker npColumns = ((android.view.View) parent.getParent().getParent()).findViewById(R.id.NPColumns);
                 if (npColumns != null) {
-                    npColumns.setMax(newRange.max);
                     npColumns.setValue(element.getRangeVisibleCount());
                 }
                 profile.save();

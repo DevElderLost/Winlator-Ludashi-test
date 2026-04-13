@@ -27,11 +27,9 @@ public class RangeScroller {
 
     public float getElementSize() {
         Rect boundingBox = element.getBoundingBox();
-        // Bagi boundingBox dengan rangeVisibleCount (bukan range.max).
-        // BoundingBox sekarang dihitung berdasarkan rangeVisibleCount di computeBoundingBox(),
-        // sehingga width/height = lebar untuk N slot visible.
-        // Membagi dengan range.max akan menghasilkan cell yang terlalu kecil.
-        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getRangeVisibleCount();
+        // Pakai getBindingCount() — sesuai pola asli upstream.
+        // setBinding(NONE) tidak mengubah size list, jadi nilai ini stabil.
+        return (float)Math.max(boundingBox.width(), boundingBox.height()) / element.getBindingCount();
     }
 
     public float getScrollSize() {
@@ -46,9 +44,7 @@ public class RangeScroller {
         ControlElement.Range range = element.getRange();
         byte from = (byte)Math.floor((scrollOffset / getElementSize()) % range.max);
         if (from < 0) from = (byte)(range.max + from);
-        // Render visibleCount+1 slot: cukup untuk mengisi area visible + 1 slot
-        // overflow di tepi agar scrolling terlihat mulus tanpa gap.
-        byte to = (byte)(from + element.getRangeVisibleCount() + 1);
+        byte to = (byte)(from + element.getBindingCount() + 1);
         return new byte[]{from, to};
     }
 

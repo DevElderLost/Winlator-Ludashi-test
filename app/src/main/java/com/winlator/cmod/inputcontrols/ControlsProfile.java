@@ -225,7 +225,6 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                     element.setSlotIconIds(slotIds);
                 }
                 if (elementJSONObject.has("range")) element.setRange(ControlElement.Range.valueOf(elementJSONObject.getString("range")));
-                if (elementJSONObject.has("rangeVisibleCount")) element.setRangeVisibleCount(elementJSONObject.getInt("rangeVisibleCount"));
                 if (elementJSONObject.has("orientation")) element.setOrientation((byte)elementJSONObject.getInt("orientation"));
 
                 // Cursor Move Mode — hanya berlaku untuk RIGHT_STICK

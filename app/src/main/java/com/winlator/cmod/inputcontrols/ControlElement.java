@@ -91,9 +91,7 @@ public class ControlElement {
     private String text = "";
     private byte iconId;
     private Range range;
-    // Jumlah slot yang terlihat sekaligus di layar (bukan total range.max).
-    // Mengontrol lebar/tinggi bounding box RANGE_BUTTON agar tidak terlalu panjang.
-    private int rangeVisibleCount = 5;
+
     private byte orientation;
     private PointF currentPosition;
     private PointF visualThumbPosition; // posisi visual thumbstick RIGHT_STICK (terpisah dari currentPosition yang dipakai input)
@@ -235,14 +233,7 @@ public class ControlElement {
         this.range = range;
     }
 
-    public int getRangeVisibleCount() {
-        return rangeVisibleCount > 0 ? rangeVisibleCount : 5;
-    }
 
-    public void setRangeVisibleCount(int count) {
-        this.rangeVisibleCount = Math.max(1, Math.min(count, getRange().max));
-        boundingBoxNeedsUpdate = true;
-    }
 
     public byte getOrientation() {
         return orientation;
@@ -419,10 +410,12 @@ public class ControlElement {
     }
 
     public void setBinding(Binding binding) {
-        bindings.clear();
-        bindings.add(binding != null ? binding : Binding.NONE);
-        states = new boolean[1];
-        boundingBoxNeedsUpdate = true;
+        // Hanya fill semua elemen — JANGAN ubah size list.
+        // RangeScroller memanggil setBinding(NONE) saat touch-down untuk reset state,
+        // tanpa bermaksud mengubah jumlah slot. Mengubah size akan merusak
+        // computeBoundingBox() yang bergantung pada getBindingCount() == bindings.size().
+        Binding b = binding != null ? binding : Binding.NONE;
+        for (int i = 0; i < bindings.size(); i++) bindings.set(i, b);
     }
 
     public float getScale() {
@@ -540,11 +533,10 @@ public class ControlElement {
                 break;
             }
             case RANGE_BUTTON: {
-                // Gunakan rangeVisibleCount (jumlah slot yang terlihat di layar),
-                // bukan getRange().max (total semua slot), agar ukuran elemen
-                // terkontrol dan tidak memanjang mengikuti seluruh range.
-                int visible = getRangeVisibleCount();
-                halfWidth = snappingSize * ((visible * 4) / 2);
+                // Gunakan getBindingCount() (= bindings.size()) sebagai jumlah slot visible.
+                // NPColumns di editor mengatur nilai ini via setBindingCount().
+                // setBinding(NONE) di RangeScroller tidak mengubah size, jadi stabil.
+                halfWidth = snappingSize * ((getBindingCount() * 4) / 2);
                 halfHeight = snappingSize * 2;
 
                 if (orientation == 1) {
@@ -1311,7 +1303,6 @@ public class ControlElement {
 
             if (type == Type.RANGE_BUTTON && range != null) {
                 elementJSONObject.put("range", range.name());
-                elementJSONObject.put("rangeVisibleCount", rangeVisibleCount);
                 if (orientation != 0) elementJSONObject.put("orientation", orientation);
             }
 

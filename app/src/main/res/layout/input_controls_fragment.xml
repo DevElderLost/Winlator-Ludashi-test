@@ -76,31 +76,6 @@
             android:min="10"
             android:max="100" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="12dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/mouse_speed" />
-
-            <TextView
-                android:id="@+id/TVMouseSpeed"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-        </LinearLayout>
-
-        <SeekBar
-            android:id="@+id/SBMouseSpeed"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:min="25"
-            android:max="300" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

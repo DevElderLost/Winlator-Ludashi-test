@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -29,16 +28,12 @@ import java.util.List;
 
 public class ActiveWindowsDialog extends ContentDialog {
 
-    private static final String TAG = "ActiveWindowsDialog";
-
     private final XServer xServer;
     private final GLRenderer renderer;
     private final List<Window> activeWindows = new ArrayList<>();
     private LinearLayout llWindowList;
 
     public ActiveWindowsDialog(@NonNull Context context, XServer xServer, GLRenderer renderer) {
-        // Wajib pass layoutResId agar ContentDialog inflate active_windows_dialog.xml
-        // ke dalam FrameLayout-nya — tanpa ini semua findViewById return null
         super(context, R.layout.active_windows_dialog);
 
         this.xServer = xServer;
@@ -58,71 +53,31 @@ public class ActiveWindowsDialog extends ContentDialog {
         activeWindows.clear();
 
         try (XLock lock = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.DRAWABLE_MANAGER)) {
-            collectActiveWindows(xServer.windowManager.rootWindow, activeWindows);
+            // Gunakan persis logika asli yang sudah terbukti bekerja — hanya isMapped()
+            collectMappedWindows(xServer.windowManager.rootWindow, activeWindows);
         }
 
-        Log.d(TAG, "refreshWindows: found " + activeWindows.size() + " windows");
         loadWindowViews(activeWindows);
     }
 
     /**
-     * Wine-internal desktop window classes yang tidak boleh muncul di task switcher.
-     * Explorer.exe di Wine berjalan sebagai desktop/shell manager, bukan sebagai
-     * aplikasi user biasa — WM_CLASS-nya adalah "explorer" atau "Progman".
-     * "plugplay", "services", "winedevice" adalah Wine system services.
+     * Persis sama dengan collectMappedWindows() versi asli yang bekerja.
+     * Tidak ada filter tambahan — hanya skip root dan cek isMapped().
      */
-    private static final String[] WINE_INTERNAL_CLASSES = {
-        "explorer", "Progman", "plugplay", "services", "winedevice", "svchost",
-        "rpcss", "tabtip", "ctfmon"
-    };
-
-    /**
-     * Kumpulkan window aktif mengikuti logika referensi asli:
-     * - Rekursi ke SEMUA children (tidak berhenti saat window di-add)
-     * - Tambahkan window jika: bukan root + mapped/renderable + nama tidak kosong
-     * - Skip window Wine internal berdasarkan WM_CLASS yang diketahui
-     *
-     * getData() TIDAK dipakai sebagai filter — window yang belum di-paint
-     * tetap valid dan harus ditampilkan (screenshot-nya akan null/placeholder).
-     */
-    private void collectActiveWindows(Window window, List<Window> result) {
-        if (window == null) return;
+    private void collectMappedWindows(Window window, List<Window> result) {
+        if (window == null || !window.attributes.isMapped()) return;
 
         if (window != xServer.windowManager.rootWindow) {
-            // Hanya proses window yang ter-mapped dan punya content drawable
-            if (window.attributes.isMapped() && window.isInputOutput()) {
-                String name = window.getName();
-                String wmClass = window.getClassName();
-
-                // Skip jika tidak punya nama sama sekali (window internal X/Wine)
-                boolean hasName = !name.isEmpty();
-
-                // Skip Wine desktop/system classes yang berjalan di background
-                boolean isWineInternal = false;
-                for (String cls : WINE_INTERNAL_CLASSES) {
-                    if (wmClass.toLowerCase().contains(cls.toLowerCase())) {
-                        isWineInternal = true;
-                        break;
-                    }
-                }
-
-                if (hasName && !isWineInternal) {
-                    result.add(window);
-                }
-            }
+            result.add(window);
         }
 
-        // Selalu rekursi ke children — sama seperti referensi asli
         for (Window child : window.getChildren()) {
-            collectActiveWindows(child, result);
+            collectMappedWindows(child, result);
         }
     }
 
     private void loadWindowViews(List<Window> windows) {
-        if (llWindowList == null) {
-            Log.e(TAG, "llWindowList is null — layout not inflated correctly");
-            return;
-        }
+        if (llWindowList == null) return;
 
         llWindowList.removeAllViews();
 
@@ -150,15 +105,16 @@ public class ActiveWindowsDialog extends ContentDialog {
             ImageView   ivHidden = itemView.findViewById(R.id.IVHidden);
             TextView    tvName   = itemView.findViewById(R.id.TVName);
             ImageButton btnClose = itemView.findViewById(R.id.IBtnClose);
-            View        cardView = itemView.findViewById(R.id.LLWindowCard);
+            // LLWindowCard sekarang adalah root itemView itu sendiri — tidak perlu cardView terpisah
 
-            // Judul: getName() → getClassName() → fallback id
+            // Judul — sama dengan versi asli
             String name = window.getName();
+            if (name.isEmpty() && parent != null) name = parent.getName();
             if (name.isEmpty()) name = window.getClassName();
             if (name.isEmpty()) name = "Window " + window.id;
             tvName.setText(name);
 
-            // Icon — fallback ke icon_hide yang pasti ada
+            // Icon
             ivIcon.setImageResource(R.drawable.icon_hide);
             Bitmap windowIcon = xServer.pixmapManager.getWindowIcon(window);
             if (windowIcon == null && parent != null) {
@@ -168,13 +124,12 @@ public class ActiveWindowsDialog extends ContentDialog {
 
             // Tint tombol X putih
             if (btnClose != null) {
-                ImageViewCompat.setImageTintList(btnClose,
-                        ColorStateList.valueOf(Color.WHITE));
+                ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.WHITE));
                 final Window fw = window;
                 btnClose.setOnClickListener(v -> closeWindow(fw));
             }
 
-            // Thumbnail via Drawable content
+            // Thumbnail
             Drawable content = window.getContent();
             if (content != null && content.width > 0 && content.height > 0) {
                 int srcW = content.width;
@@ -191,7 +146,7 @@ public class ActiveWindowsDialog extends ContentDialog {
                 tvName.setMaxWidth((int) (scaledW - iconSize));
                 ivWindow.setLayoutParams(new FrameLayout.LayoutParams(scaledW, scaledH));
 
-                // Tampilkan placeholder dulu, ganti dengan screenshot jika berhasil
+                // Tampilkan dashed sebagai placeholder sementara screenshot dimuat
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
 
                 final ImageView target = ivWindow;
@@ -200,14 +155,11 @@ public class ActiveWindowsDialog extends ContentDialog {
                     if (bitmap != null) {
                         target.post(() -> {
                             target.setImageBitmap(bitmap);
-                            // Sembunyikan dashed frame setelah screenshot berhasil
                             if (dashed != null) dashed.post(() -> dashed.setVisibility(View.GONE));
                         });
                     }
-                    // Jika null (belum di-paint): placeholder dashed tetap tampil — bukan error
                 });
             } else {
-                // Tidak ada content sama sekali
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
                 if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
                 tvName.setMaxWidth((int) (imageHeight - iconSize));
@@ -216,7 +168,6 @@ public class ActiveWindowsDialog extends ContentDialog {
 
             // Listeners
             final Window fw = window;
-            if (cardView != null) cardView.setOnClickListener(v -> bringToFront(fw));
             itemView.setOnClickListener(v -> bringToFront(fw));
 
             llWindowList.addView(itemView);

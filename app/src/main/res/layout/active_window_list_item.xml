@@ -1,44 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    active_window_list_item.xml
-    Card thumbnail window untuk ActiveWindowsDialog — scroll horizontal.
-
-    Struktur:
-      FrameLayout (root, wrap_content)
-      ├── LinearLayout#LLWindowCard   ← area klik "bring to front"
-      │   ├── [icon + title header]
-      │   └── FrameLayout
-      │       ├── ImageView#IVWindow       ← thumbnail
-      │       ├── ImageView#IVDashedFrame  ← tampil saat iconic/minimize
-      │       └── ImageView#IVHidden       ← ikon mata tertutup saat iconic
-      └── ImageButton#IBtnClose            ← tombol X, pojok kanan atas
--->
-<FrameLayout
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/LLWindowCard"
+    android:orientation="vertical"
+    android:background="?panelBackground"
+    android:padding="8dp"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:layout_marginEnd="8dp">
+    android:layout_marginEnd="8dp"
+    android:clickable="true"
+    android:focusable="true">
 
-    <!-- ── Card utama ─────────────────────────────────────────── -->
-    <LinearLayout
-        android:id="@+id/LLWindowCard"
-        android:orientation="vertical"
-        android:background="?panelBackground"
-        android:padding="8dp"
+    <!-- Header: icon + title + tombol X di pojok kanan -->
+    <RelativeLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:clickable="true"
-        android:focusable="true">
+        android:layout_marginBottom="4dp"
+        android:minWidth="80dp">
 
-        <!-- Header: icon aplikasi + judul window -->
+        <!-- Icon + Title sejajar kiri -->
         <LinearLayout
+            android:id="@+id/LLTitleRow"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
-            android:layout_marginEnd="16dp">
+            android:layout_centerVertical="true"
+            android:layout_alignParentStart="true"
+            android:layout_toStartOf="@+id/IBtnClose">
 
             <ImageView
                 android:id="@+id/IVIcon"
@@ -57,62 +47,53 @@
 
         </LinearLayout>
 
-        <!-- Area thumbnail window -->
-        <FrameLayout
+        <!-- Tombol X di pojok kanan atas header — selalu visible -->
+        <ImageButton
+            android:id="@+id/IBtnClose"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentTop="true"
+            android:layout_marginStart="6dp"
+            android:padding="2dp"
+            android:background="@drawable/bg_window_close_button"
+            android:src="@drawable/ic_window_close"
+            android:scaleType="fitCenter"
+            android:contentDescription="Close window"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            app:tint="#FFFFFFFF" />
+
+    </RelativeLayout>
+
+    <!-- Area thumbnail window -->
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+
+        <ImageView
+            android:id="@+id/IVWindow"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:scaleType="fitXY" />
 
-            <!-- Screenshot thumbnail -->
-            <ImageView
-                android:id="@+id/IVWindow"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:scaleType="fitXY" />
+        <ImageView
+            android:id="@+id/IVDashedFrame"
+            android:visibility="gone"
+            android:layout_width="116dp"
+            android:layout_height="116dp"
+            android:src="@drawable/dashed_frame"
+            app:tint="#FFBDBDBD" />
 
-            <!-- Frame dashed — tampil saat window iconic/minimize -->
-            <ImageView
-                android:id="@+id/IVDashedFrame"
-                android:visibility="gone"
-                android:layout_width="116dp"
-                android:layout_height="116dp"
-                android:src="@drawable/dashed_frame"
-                app:tint="#FFBDBDBD" />
+        <ImageView
+            android:layout_gravity="center"
+            android:id="@+id/IVHidden"
+            android:visibility="gone"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/icon_hide"
+            app:tint="#FFBDBDBD" />
 
-            <!-- Ikon "tersembunyi" — tampil di tengah saat iconic -->
-            <ImageView
-                android:layout_gravity="center"
-                android:id="@+id/IVHidden"
-                android:visibility="gone"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:src="@drawable/icon_hide"
-                app:tint="#FFBDBDBD" />
+    </FrameLayout>
 
-        </FrameLayout>
-
-    </LinearLayout>
-
-    <!-- ── Tombol Close (X) — pojok kanan atas ────────────────── -->
-    <!--
-        background  = bg_window_close_button (transparan → merah saat hover/press)
-        src         = ic_window_close  (vektor X bergaya Windows 11)
-        app:tint    = #FFFFFF — ikon X putih, kontras baik di atas merah maupun gelap.
-        Untuk override tint dari kode:
-            ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.WHITE));
-    -->
-    <ImageButton
-        android:id="@+id/IBtnClose"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_gravity="top|end"
-        android:layout_margin="3dp"
-        android:padding="3dp"
-        android:background="@drawable/bg_window_close_button"
-        android:src="@drawable/ic_window_close"
-        android:scaleType="fitCenter"
-        android:contentDescription="Close window"
-        android:focusable="false"
-        android:focusableInTouchMode="false"
-        app:tint="#FFFFFFFF" />
-
-</FrameLayout>
+</LinearLayout>

@@ -12,23 +12,41 @@
     android:clickable="true"
     android:focusable="true">
 
-    <!-- Header: icon + title + tombol X di pojok kanan -->
-    <RelativeLayout
-        android:layout_width="wrap_content"
+    <!--
+        Header row: FrameLayout agar IBtnClose bisa overlay di pojok kanan.
+        IBtnClose dideklarasi PERTAMA agar layout_toStartOf pada LLTitleRow
+        bisa resolve ID-nya tanpa forward-reference issue.
+        layout_width="match_parent" agar header selebar thumbnail di bawahnya.
+    -->
+    <FrameLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp"
-        android:minWidth="80dp">
+        android:layout_marginBottom="4dp">
 
-        <!-- Icon + Title sejajar kiri -->
+        <!-- Tombol X — dideklarasi dulu agar ID tersedia untuk layout_toEndOf -->
+        <ImageButton
+            android:id="@+id/IBtnClose"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="top|end"
+            android:padding="2dp"
+            android:background="@drawable/bg_window_close_button"
+            android:src="@drawable/ic_window_close"
+            android:scaleType="fitCenter"
+            android:contentDescription="Close window"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            app:tint="#FF000000" />
+
+        <!-- Icon + Title — margin kanan agar tidak overlap IBtnClose -->
         <LinearLayout
             android:id="@+id/LLTitleRow"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_centerVertical="true"
-            android:layout_alignParentStart="true"
-            android:layout_toStartOf="@+id/IBtnClose">
+            android:layout_gravity="center_vertical"
+            android:paddingEnd="26dp">
 
             <ImageView
                 android:id="@+id/IVIcon"
@@ -47,41 +65,24 @@
 
         </LinearLayout>
 
-        <!-- Tombol X di pojok kanan atas header — selalu visible -->
-        <ImageButton
-            android:id="@+id/IBtnClose"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentTop="true"
-            android:layout_marginStart="6dp"
-            android:padding="2dp"
-            android:background="@drawable/bg_window_close_button"
-            android:src="@drawable/ic_window_close"
-            android:scaleType="fitCenter"
-            android:contentDescription="Close window"
-            android:focusable="false"
-            android:focusableInTouchMode="false"
-            app:tint="#FFFFFFFF" />
-
-    </RelativeLayout>
+    </FrameLayout>
 
     <!-- Area thumbnail window -->
     <FrameLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content">
+        android:layout_width="116dp"
+        android:layout_height="116dp">
 
         <ImageView
             android:id="@+id/IVWindow"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:scaleType="fitXY" />
 
         <ImageView
             android:id="@+id/IVDashedFrame"
             android:visibility="gone"
-            android:layout_width="116dp"
-            android:layout_height="116dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:src="@drawable/dashed_frame"
             app:tint="#FFBDBDBD" />
 

@@ -748,12 +748,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             return;
         }
 
-        // Guard 2: getData() == null → window belum punya pixel data
-        // (wine-explorer, window internal Wine yang tidak pernah di-paint, dll).
-        // updateFromDrawable() akan return early tapi textureId tetap 0
-        // → glBindTexture(0) + glDrawArrays → GL error atau crash.
+        // Guard 2: getData() == null → window belum punya pixel data sama sekali.
+        // Tidak crash — callback dengan null agar UI tampilkan placeholder dashed frame.
+        // Ini normal untuk window yang baru dibuat tapi belum di-paint (bukan error).
         if (drawable.getData() == null) {
-            Log.d("GLRenderer", "Screenshot skipped: drawable has no data (unpainted window)");
             req.callback.call(null);
             return;
         }

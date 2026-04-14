@@ -290,7 +290,8 @@ public class ControlElement {
         float from = menuAnimProgress;
         float to   = expand ? 1f : 0f;
         menuAnimator = ValueAnimator.ofFloat(from, to);
-        menuAnimator.setDuration(220);
+        // 380ms: cukup untuk 4 item cascade terasa berurutan tanpa terasa lambat
+        menuAnimator.setDuration(380);
         menuAnimator.setInterpolator(new DecelerateInterpolator());
         menuAnimator.addUpdateListener(anim -> {
             menuAnimProgress = (float) anim.getAnimatedValue();
@@ -1132,20 +1133,25 @@ public class ControlElement {
         // Alpha keseluruhan sub-menu mengikuti progress (fade-in/out bersama scale)
         int menuAlpha = (int) (menuAnimProgress * 255);
 
+        // Setiap item diberi window animasi sendiri di dalam total progress 0..1.
+        // 4 item dibagi rata: item-0 di 0.00–0.55, item-1 di 0.20–0.70,
+        // item-2 di 0.40–0.85, item-3 di 0.55–1.00 — cukup berurutan tapi
+        // total animasi tetap terasa cepat dan tidak ada item yang "terlambat".
+        final float[] ITEM_START = {0.00f, 0.20f, 0.40f, 0.55f};
+        final float[] ITEM_END   = {0.55f, 0.70f, 0.85f, 1.00f};
+
         for (int i = 0; i < itemLabels.length; i++) {
             // Posisi final item (saat progress = 1.0)
             float top    = boundingBox.bottom + gap + i * (itemH + gap);
             float bottom = top + itemH;
             float itemCy = (top + bottom) * 0.5f;
 
-            // Setiap item pop-out dengan sedikit delay berbasis index:
-            // item ke-i mulai muncul saat progress melewati (i * 0.15), maks 1.0
-            float itemDelay  = i * 0.15f;
+            // Progress lokal item-i: 0→1 dalam window [ITEM_START[i]..ITEM_END[i]]
+            float window = ITEM_END[i] - ITEM_START[i];
             float itemProgress = Math.min(1f, Math.max(0f,
-                    (menuAnimProgress - itemDelay) / (1f - itemDelay + 0.001f)));
+                    (menuAnimProgress - ITEM_START[i]) / window));
 
-            // Ease-out: efek overshoot ringan agar terasa "pop"
-            // scaleVal = 1 - (1 - itemProgress)^2  → decelerating scale
+            // Ease-out: decelerating scale — terasa "pop" tanpa overshoot
             float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
 
             if (scaleVal <= 0f) continue;
@@ -1154,14 +1160,17 @@ public class ControlElement {
             canvas.save();
             canvas.scale(scaleVal, scaleVal, cx, itemCy);
 
-            // Alpha item mengikuti scaleVal
+            // Alpha item mengikuti menuAlpha (progress global) × scaleVal lokal
+            // → fade-in mengikuti item itu sendiri, bukan semua sekaligus
             int itemAlpha = (int) (scaleVal * menuAlpha);
 
+            // Background fill semi-transparan
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
-            // Border
+            // Border — warna SAMA dengan tombol utama (primaryColor penuh × itemAlpha)
+            // agar stroke item konsisten dengan stroke menu utama
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
             paint.setStrokeWidth(strokeWidth * 0.75f);

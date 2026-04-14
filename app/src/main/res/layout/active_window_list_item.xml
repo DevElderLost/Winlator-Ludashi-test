@@ -36,7 +36,7 @@
             android:contentDescription="Close window"
             android:focusable="false"
             android:focusableInTouchMode="false"
-            app:tint="#FF000000" />
+            app:tint="#FFFFFFFF" />
 
         <!-- Icon + Title — margin kanan agar tidak overlap IBtnClose -->
         <LinearLayout

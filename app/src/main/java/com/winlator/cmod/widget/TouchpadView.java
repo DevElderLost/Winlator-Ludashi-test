@@ -54,6 +54,13 @@ public class TouchpadView extends View {
     private static final Byte EFFECTIVE_TOUCH_DISTANCE = 20;
     private float resolutionScale;
     private static final int UPDATE_FORM_DELAYED_TIME = 50;
+    private float mouseSensitivity = 1.0f;
+    // Last absolute touch position (in screen coords) for computing delta in touchscreen relative mode
+    private float lastTouchScreenX = -1;
+    private float lastTouchScreenY = -1;
+    // Last position for SOURCE_MOUSE events in relative mode
+    private float lastMouseX = -1;
+    private float lastMouseY = -1;
 
     private Handler timeoutHandler; // Reference to the activity's timeout handler
     private Runnable hideControlsRunnable; // Runnable to hide the controls
@@ -80,6 +87,7 @@ public class TouchpadView extends View {
         updateXform(AppUtils.getScreenWidth(), AppUtils.getScreenHeight(), xServer.screenInfo.width, xServer.screenInfo.height);
         // Initialize SharedPreferences here
         this.preferences = PreferenceManager.getDefaultSharedPreferences(context);
+        this.mouseSensitivity = preferences.getFloat("mouse_speed", 1.0f);
 
         this.timeoutHandler = timeoutHandler; // Store the reference to timeout handler
         this.hideControlsRunnable = hideControlsRunnable; // Store the reference to the hide controls runnable
@@ -305,11 +313,23 @@ public class TouchpadView extends View {
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
-                    float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-                    if (xServer.isRelativeMouseMovement())
-                        xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
-                    else
+                    if (xServer.isRelativeMouseMovement()) {
+                        float curX = event.getX();
+                        float curY = event.getY();
+                        if (lastMouseX >= 0) {
+                            float[] last = XForm.transformPoint(xform, lastMouseX, lastMouseY);
+                            float[] cur  = XForm.transformPoint(xform, curX, curY);
+                            int dx = (int)((cur[0] - last[0]) * mouseSensitivity);
+                            int dy = (int)((cur[1] - last[1]) * mouseSensitivity);
+                            if (dx != 0 || dy != 0)
+                                xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, dx, dy, 0);
+                        }
+                        lastMouseX = curX;
+                        lastMouseY = curY;
+                    } else {
+                        float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
                         xServer.injectPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
+                    }
                 } else {
                     for (byte i = 0; i < MAX_FINGERS; i++) {
                         if (fingers[i] != null) {
@@ -328,6 +348,8 @@ public class TouchpadView extends View {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
+                lastMouseX = -1;
+                lastMouseY = -1;
                 if (fingers[pointerId] != null) {
                     fingers[pointerId].update(event.getX(actionIndex), event.getY(actionIndex));
                     handleFingerUp(fingers[pointerId]);
@@ -336,6 +358,8 @@ public class TouchpadView extends View {
                 }
                 break;
             case MotionEvent.ACTION_CANCEL:
+                lastMouseX = -1;
+                lastMouseY = -1;
                 for (byte i = 0; i < MAX_FINGERS; i++) fingers[i] = null;
                 numFingers = 0;
                 break;
@@ -368,6 +392,8 @@ public class TouchpadView extends View {
                 }
                 break;
             case MotionEvent.ACTION_CANCEL:
+                lastTouchScreenX = -1;
+                lastTouchScreenY = -1;
                 if (xServer.isRelativeMouseMovement()) {
                     xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTUP, 0, 0, 0);
                     xServer.getWinHandler().mouseEvent(MouseEventFlags.RIGHTUP, 0, 0, 0);
@@ -382,11 +408,14 @@ public class TouchpadView extends View {
     }
 
     private void handleTouchDown(MotionEvent event) {
-        float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-        if (xServer.isRelativeMouseMovement())
-            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
-        else
+        if (xServer.isRelativeMouseMovement()) {
+            // Reset last position so first MOVE doesn't produce a spurious large delta
+            lastTouchScreenX = event.getX();
+            lastTouchScreenY = event.getY();
+        } else {
+            float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
             xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+        }
 
         // Handle long press for right click (or use a dedicated method to detect long press)
         if (event.getPointerCount() == 1) {
@@ -398,14 +427,28 @@ public class TouchpadView extends View {
     }
 
     private void handleTouchMove(MotionEvent event) {
-        float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-        if (xServer.isRelativeMouseMovement())
-            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
-        else
+        if (xServer.isRelativeMouseMovement()) {
+            float currentX = event.getX();
+            float currentY = event.getY();
+            if (lastTouchScreenX >= 0) {
+                float rawDx = (currentX - lastTouchScreenX) * mouseSensitivity;
+                float rawDy = (currentY - lastTouchScreenY) * mouseSensitivity;
+                int dx = Mathf.roundPoint(rawDx);
+                int dy = Mathf.roundPoint(rawDy);
+                if (dx != 0 || dy != 0)
+                    xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, dx, dy, 0);
+            }
+            lastTouchScreenX = currentX;
+            lastTouchScreenY = currentY;
+        } else {
+            float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
             xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+        }
     }
 
     private void handleTouchUp(MotionEvent event) {
+        lastTouchScreenX = -1;
+        lastTouchScreenY = -1;
         if (xServer.isRelativeMouseMovement())
             xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTUP, 0, 0, 0);
         else
@@ -557,6 +600,14 @@ public class TouchpadView extends View {
 
     public void setSensitivity(float sensitivity) {
         this.sensitivity = sensitivity;
+    }
+
+    public void setMouseSensitivity(float mouseSensitivity) {
+        this.mouseSensitivity = mouseSensitivity;
+    }
+
+    public float getMouseSensitivity() {
+        return mouseSensitivity;
     }
 
     public boolean isPointerButtonLeftEnabled() {

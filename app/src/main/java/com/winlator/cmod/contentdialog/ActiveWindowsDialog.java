@@ -66,37 +66,53 @@ public class ActiveWindowsDialog extends ContentDialog {
     }
 
     /**
-     * Kumpulkan window aktif yang benar-benar visible dan punya pixel data.
+     * Wine-internal desktop window classes yang tidak boleh muncul di task switcher.
+     * Explorer.exe di Wine berjalan sebagai desktop/shell manager, bukan sebagai
+     * aplikasi user biasa — WM_CLASS-nya adalah "explorer" atau "Progman".
+     * "plugplay", "services", "winedevice" adalah Wine system services.
+     */
+    private static final String[] WINE_INTERNAL_CLASSES = {
+        "explorer", "Progman", "plugplay", "services", "winedevice", "svchost",
+        "rpcss", "tabtip", "ctfmon"
+    };
+
+    /**
+     * Kumpulkan window aktif mengikuti logika referensi asli:
+     * - Rekursi ke SEMUA children (tidak berhenti saat window di-add)
+     * - Tambahkan window jika: bukan root + mapped/renderable + nama tidak kosong
+     * - Skip window Wine internal berdasarkan WM_CLASS yang diketahui
      *
-     * Filter berlapis untuk menghindari crash dari window Wine internal
-     * (wine explorer, window tidak ter-paint, window tanpa content):
-     *
-     * 1. isApplicationWindow() → mapped + windowGroup==id + size>1×1
-     * 2. Punya content (Drawable tidak null)
-     * 3. content.getData() tidak null → window sudah pernah di-paint
-     *    Window seperti wine explorer terdeteksi isApplicationWindow() tapi
-     *    getData()==null karena tidak pernah render pixel → skip.
+     * getData() TIDAK dipakai sebagai filter — window yang belum di-paint
+     * tetap valid dan harus ditampilkan (screenshot-nya akan null/placeholder).
      */
     private void collectActiveWindows(Window window, List<Window> result) {
         if (window == null) return;
 
         if (window != xServer.windowManager.rootWindow) {
-            Drawable content = window.getContent();
-            boolean hasPaintedContent = content != null
-                    && content.width > 0
-                    && content.height > 0
-                    && content.getData() != null;
+            // Hanya proses window yang ter-mapped dan punya content drawable
+            if (window.attributes.isMapped() && window.isInputOutput()) {
+                String name = window.getName();
+                String wmClass = window.getClassName();
 
-            if (window.isApplicationWindow() && hasPaintedContent) {
-                result.add(window);
-                return;
-            } else if (window.getMapState() == Window.MapState.VIEWABLE
-                    && hasPaintedContent) {
-                result.add(window);
-                return;
+                // Skip jika tidak punya nama sama sekali (window internal X/Wine)
+                boolean hasName = !name.isEmpty();
+
+                // Skip Wine desktop/system classes yang berjalan di background
+                boolean isWineInternal = false;
+                for (String cls : WINE_INTERNAL_CLASSES) {
+                    if (wmClass.toLowerCase().contains(cls.toLowerCase())) {
+                        isWineInternal = true;
+                        break;
+                    }
+                }
+
+                if (hasName && !isWineInternal) {
+                    result.add(window);
+                }
             }
         }
 
+        // Selalu rekursi ke children — sama seperti referensi asli
         for (Window child : window.getChildren()) {
             collectActiveWindows(child, result);
         }
@@ -175,11 +191,23 @@ public class ActiveWindowsDialog extends ContentDialog {
                 tvName.setMaxWidth((int) (scaledW - iconSize));
                 ivWindow.setLayoutParams(new FrameLayout.LayoutParams(scaledW, scaledH));
 
+                // Tampilkan placeholder dulu, ganti dengan screenshot jika berhasil
+                if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
+
                 final ImageView target = ivWindow;
+                final ImageView dashed = ivDashed;
                 renderer.takeWindowScreenshot(content, bitmap -> {
-                    if (bitmap != null) target.post(() -> target.setImageBitmap(bitmap));
+                    if (bitmap != null) {
+                        target.post(() -> {
+                            target.setImageBitmap(bitmap);
+                            // Sembunyikan dashed frame setelah screenshot berhasil
+                            if (dashed != null) dashed.post(() -> dashed.setVisibility(View.GONE));
+                        });
+                    }
+                    // Jika null (belum di-paint): placeholder dashed tetap tampil — bukan error
                 });
             } else {
+                // Tidak ada content sama sekali
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
                 if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
                 tvName.setMaxWidth((int) (imageHeight - iconSize));

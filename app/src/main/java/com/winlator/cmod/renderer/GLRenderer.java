@@ -10,11 +10,9 @@ import android.widget.Toast;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.XrActivity;
-import com.winlator.cmod.core.Callback;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.math.XForm;
 import com.winlator.cmod.renderer.material.CursorMaterial;
-import com.winlator.cmod.renderer.material.ScreenMaterial;
 import com.winlator.cmod.renderer.material.ShaderMaterial;
 import com.winlator.cmod.renderer.material.WindowMaterial;
 import com.winlator.cmod.widget.FrameRating;
@@ -32,9 +30,6 @@ import com.winlator.cmod.xserver.WindowManager;
 import com.winlator.cmod.xserver.XLock;
 import com.winlator.cmod.xserver.XServer;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.util.ArrayList;
 
 import javax.microedition.khronos.egl.EGLConfig;
@@ -69,8 +64,6 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private boolean cpuSaverMode = false;
     private FrameRating frameRating;
 
-    // --- Screenshot subsystem ---
-    private static final int SCREENSHOT_MAX_SIZE = 256;
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
         this.xServer = xServer;
@@ -132,25 +125,25 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             // CPU Saver mode: skip effectComposer, render langsung.
             if (frameRating != null) frameRating.setIsNative(false);
             drawFrame();
-        } else {
-            if (frameRating != null) frameRating.setIsNative(false);
-
-            boolean hasEffects = effectComposer != null
-                    && effectComposer.hasEffects()
-                    && surfaceWidth > 0
-                    && surfaceHeight > 0;
-
-            if (!hasEffects) {
-                drawFrame();
-            } else {
-                try {
-                    effectComposer.render();
-                } catch (Exception e) {
-                    drawFrame();
-                }
-            }
+            return;
         }
 
+        if (frameRating != null) frameRating.setIsNative(false);
+
+        boolean hasEffects = effectComposer != null
+                && effectComposer.hasEffects()
+                && surfaceWidth > 0
+                && surfaceHeight > 0;
+
+        if (!hasEffects) {
+            drawFrame();
+        } else {
+            try {
+                effectComposer.render();
+            } catch (Exception e) {
+                drawFrame();
+            }
+        }
     }
 
     public void drawFrame() {
@@ -645,127 +638,5 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         }
-    }
-
-    // ===================== SCREENSHOT =====================
-
-    /**
-     * Dipanggil dari UI thread — mengikuti persis pola referensi asli:
-     * queueEvent + requestRender agar eksekusi terjadi di GL thread.
-     * Seluruh operasi GL terbungkus synchronized(drawable.renderLock).
-     */
-    public void takeWindowScreenshot(Drawable drawable, Callback<Bitmap> callback) {
-        if (drawable == null || callback == null) return;
-        xServerView.queueEvent(() -> takeWindowScreenshotGL(drawable, callback));
-        xServerView.requestRender();
-    }
-
-    /**
-     * Dieksekusi di GL thread via queueEvent — persis seperti referensi asli.
-     * Seluruh operasi GL di dalam synchronized(drawable.renderLock).
-     */
-    private void takeWindowScreenshotGL(Drawable drawable, Callback<Bitmap> callback) {
-        synchronized (drawable.renderLock) {
-            try {
-                if (drawable.width <= 0 || drawable.height <= 0) {
-                    callback.call(null);
-                    return;
-                }
-
-                Texture texture = drawable.getTexture();
-                texture.updateFromDrawable(drawable);
-
-                if (!texture.isAllocated()) {
-                    callback.call(null);
-                    return;
-                }
-
-                // Hitung ukuran thumbnail aspect-ratio-preserving
-                int srcW = drawable.width;
-                int srcH = drawable.height;
-                int w, h;
-                if (srcW >= srcH) {
-                    w = SCREENSHOT_MAX_SIZE;
-                    h = Math.max(1, (int) ((float) srcH / srcW * SCREENSHOT_MAX_SIZE));
-                } else {
-                    h = SCREENSHOT_MAX_SIZE;
-                    w = Math.max(1, (int) ((float) srcW / srcH * SCREENSHOT_MAX_SIZE));
-                }
-
-                // Buat FBO baru tiap panggilan — sama seperti referensi
-                RenderTarget renderTarget = new RenderTarget();
-                renderTarget.allocateFramebuffer(w, h);
-
-                int fboId = renderTarget.getFramebuffer();
-                if (fboId == 0) {
-                    callback.call(null);
-                    return;
-                }
-
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId);
-                GLES20.glViewport(0, 0, w, h);
-                viewportNeedsUpdate = true;
-                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-
-                ScreenMaterial screenMaterial = new ScreenMaterial();
-                screenMaterial.use();
-                quadVertices.bind(screenMaterial.programId);
-
-                GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture.getTextureId());
-                screenMaterial.setUniformInt("screenTexture", 0);
-                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
-                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-                quadVertices.disable();
-
-                Bitmap bitmap = null;
-                try {
-                    int[] pixels = getPixelsARGB(0, 0, w, h, false);
-                    bitmap = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
-                } catch (Exception e) {
-                    Log.e("GLRenderer", "Screenshot readback failed: " + e.getMessage());
-                }
-
-                // Cleanup — destroy FBO dan material setelah pakai
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-                int fbo = renderTarget.getFramebuffer();
-                if (fbo != 0) GLES20.glDeleteFramebuffers(1, new int[]{fbo}, 0);
-                renderTarget.destroy();
-                screenMaterial.destroy();
-
-                callback.call(bitmap);
-
-            } catch (Exception e) {
-                Log.e("GLRenderer", "takeWindowScreenshot failed: " + e.getMessage());
-                callback.call(null);
-            }
-        }
-    }
-
-    public int[] getPixelsARGB(int x, int y, int width, int height, boolean flipY) {
-        ByteBuffer pixelBuffer = ByteBuffer.allocateDirect(width * height * 4)
-                .order(ByteOrder.nativeOrder());
-        GLES20.glReadPixels(x, y, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixelBuffer);
-
-        IntBuffer colors = pixelBuffer.asIntBuffer();
-        int[] result = new int[width * height];
-
-        if (flipY) {
-            for (int row = 0; row < height; row++) {
-                colors.position((height - row - 1) * width);
-                colors.get(result, row * width, width);
-            }
-        } else {
-            colors.get(result);
-        }
-
-        // Konversi RGBA → ARGB (swap R dan B channel)
-        for (int i = 0; i < result.length; i++) {
-            int rgba = result[i];
-            result[i] = (rgba & 0xFF00FF00)
-                    | ((rgba & 0x000000FF) << 16)
-                    | ((rgba & 0x00FF0000) >> 16);
-        }
-        return result;
     }
 }

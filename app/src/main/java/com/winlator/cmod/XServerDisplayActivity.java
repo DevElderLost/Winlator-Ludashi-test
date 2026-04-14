@@ -163,7 +163,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private final EnvVars envVars = new EnvVars();
     private boolean firstTimeBoot = false;
     private SharedPreferences preferences;
-    private SharedPreferences.OnSharedPreferenceChangeListener prefChangeListener;
     private OnExtractFileListener onExtractFileListener;
     private WinHandler winHandler;
     private WineRequestHandler wineRequestHandler;
@@ -846,8 +845,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     protected void onDestroy() {
-        if (prefChangeListener != null && preferences != null)
-            preferences.unregisterOnSharedPreferenceChangeListener(prefChangeListener);
         super.onDestroy();
     }
 
@@ -1196,7 +1193,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
         touchpadView = new TouchpadView(this, xServer, timeoutHandler, hideControlsRunnable);
         touchpadView.setSensitivity(globalCursorSpeed);
-        touchpadView.setMouseSensitivity(preferences.getFloat("mouse_speed", 1.0f));
         touchpadView.setFourFingersTapCallback(() -> {
             if (!drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.openDrawer(GravityCompat.START);
         });
@@ -1218,16 +1214,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsView.setXServer(xServer);
         inputControlsView.setVisibility(View.GONE);
         rootView.addView(inputControlsView);
-
-        prefChangeListener = (prefs, key) -> {
-            if ("overlay_opacity".equals(key)) {
-                inputControlsView.setOverlayOpacity(prefs.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));
-                inputControlsView.invalidate();
-            } else if ("mouse_speed".equals(key)) {
-                touchpadView.setMouseSensitivity(prefs.getFloat("mouse_speed", 1.0f));
-            }
-        };
-        preferences.registerOnSharedPreferenceChangeListener(prefChangeListener);
 
 
         startTouchscreenTimeout();

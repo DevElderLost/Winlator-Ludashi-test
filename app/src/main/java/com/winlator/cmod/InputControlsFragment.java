@@ -181,27 +181,7 @@ public class InputControlsFragment extends Fragment {
         });
         sbUiOpacity.setProgress((int)(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY) * 100));
 
-        final TextView tvMouseSpeed = view.findViewById(R.id.TVMouseSpeed);
-        SeekBar sbMouseSpeed = view.findViewById(R.id.SBMouseSpeed);
-        sbMouseSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                tvMouseSpeed.setText(String.format("%.2fx", progress / 100.0f));
-                if (fromUser) {
-                    progress = (int)Mathf.roundTo(progress, 5);
-                    seekBar.setProgress(progress);
-                    preferences.edit().putFloat("mouse_speed", progress / 100.0f).apply();
-                }
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-        sbMouseSpeed.setProgress((int)(preferences.getFloat("mouse_speed", 1.0f) * 100));
-
+        cbGyroEnabled = view.findViewById(R.id.CBGyroEnabled);
         cbGyroEnabled.setChecked(preferences.getBoolean("gyro_enabled", false));
 
         sbGyroTriggerButton = view.findViewById(R.id.SBGyroTriggerButton);

@@ -61,19 +61,13 @@ public class ActiveWindowsDialog extends ContentDialog {
     }
 
     /**
-     * Mengikuti persis logika collectActiveWindows() dari referensi asli:
-     *   if (window.isRenderable()) {
-     *       if (bukan root && bukan desktop && nama tidak kosong) tambahkan;
-     *       rekursi ke semua children;
-     *   }
+     * Persis sama dengan collectMappedWindows() versi asli yang bekerja.
+     * Tidak ada filter tambahan — hanya skip root dan cek isMapped().
      */
     private void collectMappedWindows(Window window, List<Window> result) {
-        if (window == null) return;
-        if (!window.isRenderable()) return;
+        if (window == null || !window.attributes.isMapped()) return;
 
-        if (window != xServer.windowManager.rootWindow
-                && !window.isDesktopWindow()
-                && !window.getName().isEmpty()) {
+        if (window != xServer.windowManager.rootWindow) {
             result.add(window);
         }
 
@@ -129,7 +123,7 @@ public class ActiveWindowsDialog extends ContentDialog {
 
             // Tint tombol X putih
             if (btnClose != null) {
-                ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.WHITE));
+                ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.BLACK));
                 final Window fw = window;
                 btnClose.setOnClickListener(v -> closeWindow(fw));
             }

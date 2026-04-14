@@ -181,6 +181,22 @@ public class Window extends XResource {
         return attributes.isMapped() && windowGroup == id && width > 1 && height > 1;
     }
 
+    /** Window dapat dirender: ter-mapped dan ukuran > 1×1. Dari referensi. */
+    public boolean isRenderable() {
+        return attributes.isMapped() && width > (short) 1 && height > (short) 1;
+    }
+
+    /** Window sedang dalam state iconic/minimize. Dari referensi. */
+    public boolean isIconic() {
+        if (getWMHintsValue(WMHints.INITIAL_STATE) == 3) return true;
+        return height <= (short) 32;
+    }
+
+    /** Window adalah desktop shell Wine (explorer.exe). Dari referensi. */
+    public boolean isDesktopWindow() {
+        return getClassName().equals("explorer.exe");
+    }
+
     /**
      * Returns true jika window dalam state maximized atau fullscreen
      * berdasarkan property _NET_WM_STATE yang di-set oleh Wine/WM via

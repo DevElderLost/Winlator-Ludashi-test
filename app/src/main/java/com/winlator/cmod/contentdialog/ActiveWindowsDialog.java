@@ -91,7 +91,6 @@ public class ActiveWindowsDialog extends ContentDialog {
         if (tvEmpty != null) tvEmpty.setVisibility(View.GONE);
 
         LayoutInflater inflater = LayoutInflater.from(getContext());
-        float iconSize  = UnitUtils.dpToPx(24.0f);
         int imageHeight = (int) UnitUtils.dpToPx(116.0f);
 
         for (int i = windows.size() - 1; i >= 0; i--) {
@@ -124,12 +123,17 @@ public class ActiveWindowsDialog extends ContentDialog {
 
             // Tint tombol X putih
             if (btnClose != null) {
-                ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.WHITE));
+                ImageViewCompat.setImageTintList(btnClose, ColorStateList.valueOf(Color.BLACK));
                 final Window fw = window;
                 btnClose.setOnClickListener(v -> closeWindow(fw));
             }
 
             // Thumbnail
+            // thumbnailFrame adalah FrameLayout container 116x116 dari XML —
+            // kita resize container-nya agar aspect ratio thumbnail terjaga.
+            View thumbnailFrame = itemView.findViewById(R.id.IVWindow).getParent() instanceof View
+                    ? (View) itemView.findViewById(R.id.IVWindow).getParent() : null;
+
             Drawable content = window.getContent();
             if (content != null && content.width > 0 && content.height > 0) {
                 int srcW = content.width;
@@ -143,8 +147,11 @@ public class ActiveWindowsDialog extends ContentDialog {
                     scaledW = Math.max(1, (int) ((float) srcW / srcH * imageHeight));
                 }
 
-                tvName.setMaxWidth((int) (scaledW - iconSize));
-                ivWindow.setLayoutParams(new FrameLayout.LayoutParams(scaledW, scaledH));
+                // Resize container FrameLayout — IVWindow match_parent di dalamnya
+                if (thumbnailFrame != null) {
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(scaledW, scaledH);
+                    thumbnailFrame.setLayoutParams(lp);
+                }
 
                 // Tampilkan dashed sebagai placeholder sementara screenshot dimuat
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
@@ -160,10 +167,9 @@ public class ActiveWindowsDialog extends ContentDialog {
                     }
                 });
             } else {
+                // Tidak ada content — placeholder dashed ukuran default
                 if (ivDashed != null) ivDashed.setVisibility(View.VISIBLE);
                 if (ivHidden != null) ivHidden.setVisibility(View.VISIBLE);
-                tvName.setMaxWidth((int) (imageHeight - iconSize));
-                ivWindow.setLayoutParams(new FrameLayout.LayoutParams(imageHeight, imageHeight));
             }
 
             // Listeners

@@ -216,14 +216,13 @@ public class ControlElement {
         // MULTIPLE_BUTTON: inisialisasi sub-button data
         if (type == Type.MULTIPLE_BUTTON) {
             multiButtonBindings.clear();
-            // Default: 4 sub-button, arah menyebar merata (UP, RIGHT, DOWN, LEFT)
+            // Default: 4 sub-button, semua arah NONE (user mengatur sendiri)
             multiButtonCount = 4;
-            byte[] defaultDirs = {0, 2, 4, 6}; // UP, RIGHT, DOWN, LEFT
             for (int i = 0; i < MULTI_BTN_MAX; i++) {
                 List<Binding> sl = new ArrayList<>();
                 sl.add(Binding.NONE);
                 multiButtonBindings.add(sl);
-                multiButtonDirections[i] = (i < defaultDirs.length) ? defaultDirs[i] : (byte)(i * 1);
+                multiButtonDirections[i] = (byte) 0xFF; // NONE/hidden by default
                 multiButtonTexts[i] = "";
                 multiButtonIconIds[i] = 0;
             }
@@ -363,14 +362,21 @@ public class ControlElement {
         multiButtonBindings.set(index, b != null ? b : new ArrayList<>());
     }
 
-    /** Arah: 0=UP,1=UP_RIGHT,2=RIGHT,3=DOWN_RIGHT,4=DOWN,5=DOWN_LEFT,6=LEFT,7=UP_LEFT */
+    /** Arah: 0=UP,1=UP_RIGHT,2=RIGHT,3=DOWN_RIGHT,4=DOWN,5=DOWN_LEFT,6=LEFT,7=UP_LEFT
+     *  0xFF (atau nilai negatif saat cast) = NONE/hidden — button tidak ditampilkan */
     public byte getMultiButtonDirection(int index) {
         return (index >= 0 && index < MULTI_BTN_MAX) ? multiButtonDirections[index] : 0;
     }
 
     public void setMultiButtonDirection(int index, byte dir) {
-        if (index >= 0 && index < MULTI_BTN_MAX)
-            multiButtonDirections[index] = (byte)(((dir % 8) + 8) % 8);
+        if (index >= 0 && index < MULTI_BTN_MAX) {
+            // 0xFF = NONE/hidden, 0..7 = valid arah
+            if (dir == (byte) 0xFF) {
+                multiButtonDirections[index] = (byte) 0xFF;
+            } else {
+                multiButtonDirections[index] = (byte)(((dir % 8) + 8) % 8);
+            }
+        }
     }
 
     public String getMultiButtonText(int index) {
@@ -418,7 +424,9 @@ public class ControlElement {
      * Dalam koordinat Android: Y bertambah ke bawah, jadi UP = -dy.
      */
     private float[] getMultiBtnSubPos(int index, float cx, float cy, float radius, float progress) {
-        double angleDeg = multiButtonDirections[index] * 45.0;
+        byte dir = multiButtonDirections[index];
+        if (dir == (byte) 0xFF) return new float[]{cx, cy}; // tidak dipakai karena hidden
+        double angleDeg = (dir & 0xFF) * 45.0;
         // 0=UP → sudut -90° dalam polar (cos/sin standar)
         double angleRad = Math.toRadians(angleDeg - 90.0);
         float dx = (float)(Math.cos(angleRad) * radius * progress);
@@ -429,6 +437,8 @@ public class ControlElement {
     /** Radius hit-test sub-button (sama dengan radius tombol utama). */
     private boolean isMultiBtnSubHit(int index, float px, float py) {
         if (multiBtnAnimProgress < 0.3f) return false;
+        // Jangan hit-test jika direction = NONE/hidden
+        if (multiButtonDirections[index] == (byte) 0xFF) return false;
         Rect bb = getBoundingBox();
         float cx = bb.centerX();
         float cy = bb.centerY();
@@ -1461,6 +1471,9 @@ public class ControlElement {
         int menuAlpha = (int)(multiBtnAnimProgress * 255);
 
         for (int i = 0; i < multiButtonCount; i++) {
+            // Skip jika arah = NONE/hidden
+            if (multiButtonDirections[i] == (byte) 0xFF) continue;
+
             // Per-item progress: cascade sedikit agar terasa bergelombang
             float itemProgress = Math.min(1f, multiBtnAnimProgress * 1.2f - i * 0.05f);
             if (itemProgress <= 0f) continue;
@@ -1648,7 +1661,9 @@ public class ControlElement {
                     List<Binding> sbList = getMultiButtonBindings(i);
                     for (Binding b : sbList) mbBindings.put(b.name());
                     mbObj.put("bindings", mbBindings);
-                    mbObj.put("direction", multiButtonDirections[i]);
+                    // Simpan direction: 0xFF (hidden) → -1, lainnya normal
+                    int dirInt = (multiButtonDirections[i] == (byte) 0xFF) ? -1 : (multiButtonDirections[i] & 0xFF);
+                    mbObj.put("direction", dirInt);
                     mbObj.put("text", multiButtonTexts[i] != null ? multiButtonTexts[i] : "");
                     mbObj.put("iconId", multiButtonIconIds[i]);
                     mbArr.put(mbObj);

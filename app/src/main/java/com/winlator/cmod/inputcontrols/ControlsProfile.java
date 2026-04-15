@@ -240,7 +240,6 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                         JSONArray mbArr = elementJSONObject.getJSONArray("multiButtons");
                         for (int j = 0; j < mbArr.length() && j < ControlElement.MULTI_BTN_MAX; j++) {
                             JSONObject mbObj = mbArr.getJSONObject(j);
-                            // bindings
                             if (mbObj.has("bindings")) {
                                 JSONArray mbBindings = mbObj.getJSONArray("bindings");
                                 java.util.List<Binding> sbList = new java.util.ArrayList<>();
@@ -249,7 +248,10 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                                 }
                                 element.setMultiButtonBindings(j, sbList);
                             }
-                            element.setMultiButtonDirection(j, (byte) mbObj.optInt("direction", j * 2));
+                            // direction: -1 = NONE/hidden (0xFF), 0..7 = valid
+                            int dirInt = mbObj.optInt("direction", -1);
+                            byte dirByte = (dirInt < 0) ? (byte) 0xFF : (byte) (dirInt & 0x07);
+                            element.setMultiButtonDirection(j, dirByte);
                             element.setMultiButtonText(j, mbObj.optString("text", ""));
                             element.setMultiButtonIconId(j, (byte) mbObj.optInt("iconId", 0));
                         }

@@ -174,6 +174,17 @@ public class ControlElement {
     private ValueAnimator multiBtnAnimator;
     // Index sub-button yang sedang ditekan (-1 = tidak ada)
     private int multiBtnPressedIndex = -1;
+    // Inisialisasi awal list — diisi lengkap saat reset() dipanggil
+    {
+        for (int _i = 0; _i < MULTI_BTN_MAX; _i++) {
+            List<Binding> sl = new ArrayList<>();
+            sl.add(Binding.NONE);
+            multiButtonBindings.add(sl);
+            multiButtonDirections[_i] = (byte) 0xFF;
+            multiButtonTexts[_i] = "";
+            multiButtonIconIds[_i] = 0;
+        }
+    }
 
     public ControlElement(InputControlsView inputControlsView) {
         this.inputControlsView = inputControlsView;
@@ -345,12 +356,20 @@ public class ControlElement {
     }
 
     public List<Binding> getMultiButtonBindings(int index) {
+        // Pastikan list sudah diinisialisasi (guard untuk elemen yang di-load dari JSON lama)
+        if (multiButtonBindings == null) multiButtonBindings = new ArrayList<>();
         while (multiButtonBindings.size() <= index) {
             List<Binding> sl = new ArrayList<>();
             sl.add(Binding.NONE);
             multiButtonBindings.add(sl);
         }
-        return multiButtonBindings.get(index);
+        List<Binding> sl = multiButtonBindings.get(index);
+        if (sl == null || sl.isEmpty()) {
+            sl = new ArrayList<>();
+            sl.add(Binding.NONE);
+            multiButtonBindings.set(index, sl);
+        }
+        return sl;
     }
 
     public void setMultiButtonBindings(int index, List<Binding> b) {

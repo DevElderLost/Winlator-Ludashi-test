@@ -585,6 +585,15 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ControlElement.Type type = element.getType();
 
+        // MULTIPLE_BUTTON dan MENU_NAVIGATION punya binding system sendiri,
+        // LLBindings tidak ditampilkan untuk tipe ini — langsung return
+        if (type == ControlElement.Type.MULTIPLE_BUTTON ||
+            type == ControlElement.Type.MENU_NAVIGATION) {
+            ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
+            btnAddBinding.setVisibility(View.GONE);
+            return;
+        }
+
         // Hanya BUTTON yang boleh pakai tombol Add dan multiple binding
         if (type == ControlElement.Type.BUTTON) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
@@ -1029,17 +1038,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         bindContainer.setOrientation(LinearLayout.VERTICAL);
         body.addView(bindContainer);
 
-        // Tombol + Add Binding — identik dengan btnAddBinding di BUTTON
+        // Tombol + Add Binding — gunakan resource dan background yang sama dengan btnAddBinding di XML
         ImageButton btnAdd = new ImageButton(this);
         btnAdd.setImageResource(R.drawable.icon_add_24dp);
-        btnAdd.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
-        try {
-            // Gunakan attr yang sama dengan XML
-            int[] attrs = {android.R.attr.selectableItemBackgroundBorderless};
-            android.content.res.TypedArray ta = obtainStyledAttributes(attrs);
-            btnAdd.setBackgroundDrawable(ta.getDrawable(0));
-            ta.recycle();
-        } catch (Exception ignored) {}
+        btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
         int btnPad = (int) UnitUtils.dpToPx(8);
         btnAdd.setPadding(btnPad, btnPad, btnPad, btnPad);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(

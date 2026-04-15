@@ -291,5 +291,21 @@
                     android:orientation="horizontal" />
             </HorizontalScrollView>
         </LinearLayout>
+
+        <!--
+            MULTIPLE_BUTTON options — hanya tampil saat type = MULTIPLE_BUTTON.
+            Seluruh UI sub-button dibangun secara dinamis oleh loadMultiButtonUI()
+            di ControlsEditorActivity: jumlah tombol, arah, label, dan combo binding
+            per sub-button dirender sebagai section collapsible di dalam container ini.
+        -->
+        <LinearLayout
+            android:id="@+id/LLMultiButtonOptions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp" />
+
     </LinearLayout>
 </ScrollView>

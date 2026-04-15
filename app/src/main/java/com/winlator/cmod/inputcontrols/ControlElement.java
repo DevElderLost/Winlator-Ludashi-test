@@ -37,7 +37,7 @@ public class ControlElement {
     public static final short BUTTON_MIN_TIME_TO_KEEP_PRESSED = 300;
 
     public enum Type {
-        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE, RIGHT_STICK, MENU_NAVIGATION;
+        BUTTON, D_PAD, RANGE_BUTTON, STICK, TRACKPAD, TOUCHSCREEN_TOGGLE, RIGHT_STICK, MENU_NAVIGATION, MULTIPLE_BUTTON;
 
         public static String[] names() {
             Type[] types = values();
@@ -146,6 +146,35 @@ public class ControlElement {
     // Animator untuk animasi slide sub-menu
     private ValueAnimator menuAnimator;
 
+    // === MULTIPLE BUTTON ===
+    // Maksimal 8 sub-button, masing-masing punya:
+    //   - bindings sendiri (combo, seperti BUTTON)
+    //   - arah animasi keluar (8 arah): 0=UP, 1=UP_RIGHT, 2=RIGHT, 3=DOWN_RIGHT,
+    //                                   4=DOWN, 5=DOWN_LEFT, 6=LEFT, 7=UP_LEFT
+    //   - text/icon sendiri
+    //
+    // Tap tombol utama → toggle expanded/collapsed
+    // Tap sub-button   → tekan semua binding sub-button itu (lepas saat jari diangkat)
+    //
+    // Data per sub-button disimpan dalam array paralel berindeks 0..multiButtonCount-1
+    public static final int MULTI_BTN_MAX = 8;
+    // Jumlah sub-button aktif
+    private int multiButtonCount = 4;
+    // Bindings per sub-button: List<List<Binding>>, diinisialisasi di reset()
+    private List<List<Binding>> multiButtonBindings = new ArrayList<>();
+    // Arah per sub-button (nilai 0..7)
+    private byte[] multiButtonDirections = new byte[MULTI_BTN_MAX];
+    // Text per sub-button
+    private String[] multiButtonTexts = new String[MULTI_BTN_MAX];
+    // Icon ID per sub-button (0 = tidak ada icon)
+    private byte[] multiButtonIconIds = new byte[MULTI_BTN_MAX];
+    // State expand/collapse (sama dengan MENU_NAVIGATION)
+    private boolean multiBtnExpanded = false;
+    private float multiBtnAnimProgress = 0f;
+    private ValueAnimator multiBtnAnimator;
+    // Index sub-button yang sedang ditekan (-1 = tidak ada)
+    private int multiBtnPressedIndex = -1;
+
     public ControlElement(InputControlsView inputControlsView) {
         this.inputControlsView = inputControlsView;
     }
@@ -182,6 +211,22 @@ public class ControlElement {
             // BUTTON, MENU_NAVIGATION, dan tipe lain default 1 binding
             bindings.add(Binding.NONE);
             states = new boolean[1];
+        }
+
+        // MULTIPLE_BUTTON: inisialisasi sub-button data
+        if (type == Type.MULTIPLE_BUTTON) {
+            multiButtonBindings.clear();
+            // Default: 4 sub-button, arah menyebar merata (UP, RIGHT, DOWN, LEFT)
+            multiButtonCount = 4;
+            byte[] defaultDirs = {0, 2, 4, 6}; // UP, RIGHT, DOWN, LEFT
+            for (int i = 0; i < MULTI_BTN_MAX; i++) {
+                List<Binding> sl = new ArrayList<>();
+                sl.add(Binding.NONE);
+                multiButtonBindings.add(sl);
+                multiButtonDirections[i] = (i < defaultDirs.length) ? defaultDirs[i] : (byte)(i * 1);
+                multiButtonTexts[i] = "";
+                multiButtonIconIds[i] = 0;
+            }
         }
 
         text = "";
@@ -284,7 +329,116 @@ public class ControlElement {
         return menuExpanded;
     }
 
-    /** Mulai animasi expand (0→1) atau collapse (1→0) sub-menu. */
+    // === MULTIPLE BUTTON ===
+    public boolean isMultiBtnExpanded() { return multiBtnExpanded; }
+
+    public int getMultiButtonCount() { return multiButtonCount; }
+
+    public void setMultiButtonCount(int count) {
+        count = Math.max(1, Math.min(MULTI_BTN_MAX, count));
+        while (multiButtonBindings.size() < MULTI_BTN_MAX) {
+            List<Binding> sl = new ArrayList<>();
+            sl.add(Binding.NONE);
+            multiButtonBindings.add(sl);
+        }
+        this.multiButtonCount = count;
+        boundingBoxNeedsUpdate = true;
+    }
+
+    public List<Binding> getMultiButtonBindings(int index) {
+        while (multiButtonBindings.size() <= index) {
+            List<Binding> sl = new ArrayList<>();
+            sl.add(Binding.NONE);
+            multiButtonBindings.add(sl);
+        }
+        return multiButtonBindings.get(index);
+    }
+
+    public void setMultiButtonBindings(int index, List<Binding> b) {
+        while (multiButtonBindings.size() <= index) {
+            List<Binding> sl = new ArrayList<>();
+            sl.add(Binding.NONE);
+            multiButtonBindings.add(sl);
+        }
+        multiButtonBindings.set(index, b != null ? b : new ArrayList<>());
+    }
+
+    /** Arah: 0=UP,1=UP_RIGHT,2=RIGHT,3=DOWN_RIGHT,4=DOWN,5=DOWN_LEFT,6=LEFT,7=UP_LEFT */
+    public byte getMultiButtonDirection(int index) {
+        return (index >= 0 && index < MULTI_BTN_MAX) ? multiButtonDirections[index] : 0;
+    }
+
+    public void setMultiButtonDirection(int index, byte dir) {
+        if (index >= 0 && index < MULTI_BTN_MAX)
+            multiButtonDirections[index] = (byte)(((dir % 8) + 8) % 8);
+    }
+
+    public String getMultiButtonText(int index) {
+        if (index >= 0 && index < MULTI_BTN_MAX) {
+            String t = multiButtonTexts[index];
+            return t != null ? t : "";
+        }
+        return "";
+    }
+
+    public void setMultiButtonText(int index, String text) {
+        if (index >= 0 && index < MULTI_BTN_MAX)
+            multiButtonTexts[index] = text != null ? text : "";
+    }
+
+    public byte getMultiButtonIconId(int index) {
+        return (index >= 0 && index < MULTI_BTN_MAX) ? multiButtonIconIds[index] : 0;
+    }
+
+    public void setMultiButtonIconId(int index, byte id) {
+        if (index >= 0 && index < MULTI_BTN_MAX) multiButtonIconIds[index] = id;
+    }
+
+    private void animateMultiBtn(boolean expand) {
+        if (multiBtnAnimator != null) multiBtnAnimator.cancel();
+        float to = expand ? 1f : 0f;
+        multiBtnAnimator = ValueAnimator.ofFloat(multiBtnAnimProgress, to);
+        multiBtnAnimator.setDuration(280);
+        multiBtnAnimator.setInterpolator(new DecelerateInterpolator());
+        multiBtnAnimator.addUpdateListener(anim -> {
+            multiBtnAnimProgress = (float) anim.getAnimatedValue();
+            inputControlsView.invalidate();
+        });
+        multiBtnAnimator.start();
+    }
+
+    private void toggleMultiBtn() {
+        multiBtnExpanded = !multiBtnExpanded;
+        animateMultiBtn(multiBtnExpanded);
+    }
+
+    /**
+     * Hitung posisi pusat sub-button ke-i berdasarkan arahnya.
+     * angleDeg: 0=UP searah jarum jam tiap 45°.
+     * Dalam koordinat Android: Y bertambah ke bawah, jadi UP = -dy.
+     */
+    private float[] getMultiBtnSubPos(int index, float cx, float cy, float radius, float progress) {
+        double angleDeg = multiButtonDirections[index] * 45.0;
+        // 0=UP → sudut -90° dalam polar (cos/sin standar)
+        double angleRad = Math.toRadians(angleDeg - 90.0);
+        float dx = (float)(Math.cos(angleRad) * radius * progress);
+        float dy = (float)(Math.sin(angleRad) * radius * progress);
+        return new float[]{cx + dx, cy + dy};
+    }
+
+    /** Radius hit-test sub-button (sama dengan radius tombol utama). */
+    private boolean isMultiBtnSubHit(int index, float px, float py) {
+        if (multiBtnAnimProgress < 0.3f) return false;
+        Rect bb = getBoundingBox();
+        float cx = bb.centerX();
+        float cy = bb.centerY();
+        float btnR = bb.width() * 0.5f;
+        float radius = btnR * 2.4f;
+        float[] pos = getMultiBtnSubPos(index, cx, cy, radius, multiBtnAnimProgress);
+        float dist = (float)Math.sqrt((px - pos[0])*(px - pos[0]) + (py - pos[1])*(py - pos[1]));
+        return dist <= btnR;
+    }
+
     private void animateMenu(boolean expand) {
         if (menuAnimator != null) menuAnimator.cancel();
         float from = menuAnimProgress;
@@ -505,6 +659,7 @@ public class ControlElement {
             case BUTTON:
             case TOUCHSCREEN_TOGGLE:
             case MENU_NAVIGATION:
+            case MULTIPLE_BUTTON:
                 switch (shape) {
                     case RECT:
                     case ROUND_RECT:
@@ -1039,6 +1194,11 @@ public class ControlElement {
                 drawMenuNavigation(canvas, boundingBox, paint, primaryColor, strokeWidth, snappingSize);
                 break;
             }
+
+            case MULTIPLE_BUTTON: {
+                drawMultipleButton(canvas, boundingBox, paint, primaryColor, strokeWidth, snappingSize);
+                break;
+            }
         }
     }
 
@@ -1216,6 +1376,155 @@ public class ControlElement {
         }
     }
 
+    /**
+     * Menggambar MULTIPLE_BUTTON:
+     *
+     * Tombol utama: identik dengan BUTTON (shape ROUND_RECT/CIRCLE/dll, text/icon).
+     * Saat expanded: hingga 8 sub-button muncul ke 8 arah yang dapat dikonfigurasi,
+     * masing-masing dengan animasi scale pop dari pusat tombol utama.
+     *
+     * Sub-button yang sedang ditekan (multiBtnPressedIndex) ditampilkan FILL.
+     * Setiap sub-button menampilkan text atau icon yang dikonfigurasi per-key.
+     */
+    private void drawMultipleButton(Canvas canvas, Rect boundingBox, Paint paint,
+                                    int primaryColor, float strokeWidth, int snappingSize) {
+        float cx = boundingBox.centerX();
+        float cy = boundingBox.centerY();
+        float w  = boundingBox.width();
+        float h  = boundingBox.height();
+        float r  = h * 0.5f;
+
+        // ── Tombol utama ────────────────────────────────────────────────
+        paint.setStrokeWidth(strokeWidth * 0.75f);
+
+        if (iconId > 0) {
+            paint.setColor(primaryColor);
+            paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
+            switch (shape) {
+                case CIRCLE:
+                    canvas.drawCircle(cx, cy, r, paint);
+                    break;
+                default: {
+                    float rad = r * 0.6f;
+                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
+                            boundingBox.right, boundingBox.bottom, rad, rad, paint);
+                }
+            }
+            paint.setStyle(Paint.Style.FILL);
+            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
+            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
+        } else {
+            // Background semi-transparan + border + teks (identik dengan MENU_NAVIGATION tanpa icon)
+            float itemR = r * 0.6f;
+
+            paint.setStyle(Paint.Style.FILL);
+            // Tampil lebih terang saat expanded
+            int bgAlpha = multiBtnExpanded ? (isPressed ? 100 : 65) : (isPressed ? 80 : 40);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, bgAlpha));
+            switch (shape) {
+                case CIRCLE:
+                    canvas.drawCircle(cx, cy, r, paint);
+                    break;
+                default:
+                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
+                            boundingBox.right, boundingBox.bottom, itemR, itemR, paint);
+            }
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setColor(primaryColor);
+            switch (shape) {
+                case CIRCLE:
+                    canvas.drawCircle(cx, cy, r, paint);
+                    break;
+                default:
+                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
+                            boundingBox.right, boundingBox.bottom, itemR, itemR, paint);
+            }
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTextAlign(Paint.Align.CENTER);
+            String label = (text != null && !text.isEmpty()) ? text : "\u2395"; // ⎕ fallback
+            float ts = Math.min(
+                    getTextSizeForWidth(paint, label, w - strokeWidth * 4),
+                    snappingSize * 1.6f * scale);
+            paint.setTextSize(ts);
+            canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+        }
+
+        // ── Sub-buttons (animasi pop radial) ────────────────────────────
+        if (multiBtnAnimProgress <= 0f) return;
+
+        float btnR    = w * 0.5f;
+        float radius  = btnR * 2.4f; // jarak center sub-button dari center tombol utama
+        float subSize = btnR * 1.8f; // diameter lingkaran sub-button
+
+        int menuAlpha = (int)(multiBtnAnimProgress * 255);
+
+        for (int i = 0; i < multiButtonCount; i++) {
+            // Per-item progress: cascade sedikit agar terasa bergelombang
+            float itemProgress = Math.min(1f, multiBtnAnimProgress * 1.2f - i * 0.05f);
+            if (itemProgress <= 0f) continue;
+
+            // Ease-out scale
+            float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
+            if (scaleVal <= 0f) continue;
+
+            float[] pos = getMultiBtnSubPos(i, cx, cy, radius, multiBtnAnimProgress);
+            float subCx = pos[0];
+            float subCy = pos[1];
+
+            canvas.save();
+            canvas.scale(scaleVal, scaleVal, subCx, subCy);
+
+            int itemAlpha = (int)(scaleVal * menuAlpha);
+            boolean subPressed = (multiBtnPressedIndex == i);
+
+            // Background
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
+                    subPressed ? (int)(itemAlpha * 0.55f) : (int)(itemAlpha * 0.22f)));
+            canvas.drawCircle(subCx, subCy, subSize * 0.5f, paint);
+
+            // Border
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(strokeWidth * 0.7f);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+            canvas.drawCircle(subCx, subCy, subSize * 0.5f, paint);
+
+            // Icon atau teks sub-button
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+            byte subIcon = multiButtonIconIds[i];
+            String subText = multiButtonTexts[i];
+            if (subIcon > 0) {
+                drawIconExact(canvas, subCx, subCy, subSize * 0.75f, subSize * 0.75f, subIcon);
+            } else if (subText != null && !subText.isEmpty()) {
+                paint.setTextAlign(Paint.Align.CENTER);
+                float subTs = Math.min(
+                        getTextSizeForWidth(paint, subText, subSize - strokeWidth * 3),
+                        snappingSize * 1.4f * scale);
+                paint.setTextSize(subTs);
+                canvas.drawText(subText, subCx,
+                        subCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+            } else {
+                // Fallback: tampilkan indeks binding pertama
+                List<Binding> sb = getMultiButtonBindings(i);
+                String bindLabel = sb.isEmpty() ? "?" : sb.get(0).toString()
+                        .replace("NUMPAD ", "NP").replace("BUTTON ", "");
+                if (bindLabel.length() > 5) bindLabel = bindLabel.substring(0, 4) + "..";
+                paint.setTextAlign(Paint.Align.CENTER);
+                float subTs = Math.min(
+                        getTextSizeForWidth(paint, bindLabel, subSize - strokeWidth * 3),
+                        snappingSize * 1.2f * scale);
+                paint.setTextSize(subTs);
+                canvas.drawText(bindLabel, subCx,
+                        subCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+            }
+
+            canvas.restore();
+        }
+    }
+
     private void drawIcon(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
         // Pola defensif seperti TouchAreaButton: cek null sebelum akses bitmap
         Bitmap icon = inputControlsView.getIcon((byte) iconId);
@@ -1328,6 +1637,25 @@ public class ControlElement {
 
             // MENU_NAVIGATION tidak menyimpan state expanded (selalu mulai collapsed)
 
+            // MULTIPLE_BUTTON: simpan semua data sub-button
+            if (type == Type.MULTIPLE_BUTTON) {
+                elementJSONObject.put("multiButtonCount", multiButtonCount);
+                JSONArray mbArr = new JSONArray();
+                for (int i = 0; i < MULTI_BTN_MAX; i++) {
+                    JSONObject mbObj = new JSONObject();
+                    // bindings sub-button ke-i
+                    JSONArray mbBindings = new JSONArray();
+                    List<Binding> sbList = getMultiButtonBindings(i);
+                    for (Binding b : sbList) mbBindings.put(b.name());
+                    mbObj.put("bindings", mbBindings);
+                    mbObj.put("direction", multiButtonDirections[i]);
+                    mbObj.put("text", multiButtonTexts[i] != null ? multiButtonTexts[i] : "");
+                    mbObj.put("iconId", multiButtonIconIds[i]);
+                    mbArr.put(mbObj);
+                }
+                elementJSONObject.put("multiButtons", mbArr);
+            }
+
             return elementJSONObject;
         } catch (JSONException e) {
             return null;
@@ -1346,6 +1674,12 @@ public class ControlElement {
             float bottom = bb.bottom + gap + totalH;
             if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
         }
+        // MULTIPLE_BUTTON: hit-test meluas ke sub-buttons saat expanded
+        if (type == Type.MULTIPLE_BUTTON && multiBtnExpanded && multiBtnAnimProgress > 0.1f) {
+            for (int i = 0; i < multiButtonCount; i++) {
+                if (isMultiBtnSubHit(i, x, y)) return true;
+            }
+        }
         return false;
     }
 
@@ -1356,8 +1690,7 @@ public class ControlElement {
 
     public boolean handleTouchDown(int pointerId, float x, float y) {
         // MENU_NAVIGATION: cek apakah sentuhan mengenai item sub-menu terlebih dahulu
-        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {
-            Rect bb = getBoundingBox();
+        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {            Rect bb = getBoundingBox();
             int snappingSize = inputControlsView.getSnappingSize();
             float h    = bb.height();
             float gap  = snappingSize * 0.4f * scale;
@@ -1375,6 +1708,21 @@ public class ControlElement {
             }
         }
 
+        // MULTIPLE_BUTTON: cek sub-button hit sebelum tombol utama
+        if (type == Type.MULTIPLE_BUTTON && multiBtnExpanded && multiBtnAnimProgress > 0.3f) {
+            for (int i = 0; i < multiButtonCount; i++) {
+                if (isMultiBtnSubHit(i, x, y)) {
+                    multiBtnPressedIndex = i;
+                    inputControlsView.invalidate();
+                    List<Binding> sb = getMultiButtonBindings(i);
+                    for (Binding b : sb) {
+                        if (b != Binding.NONE) inputControlsView.handleInputEvent(b, true);
+                    }
+                    return true;
+                }
+            }
+        }
+
         if (currentPointerId == -1 && containsPoint(x, y)) {
             currentPointerId = pointerId;
             isPressed = true;
@@ -1382,6 +1730,9 @@ public class ControlElement {
 
             if (type == Type.MENU_NAVIGATION) {
                 // Sentuhan pada tombol utama → toggle expand/collapse sub-menu
+                return true;
+            } else if (type == Type.MULTIPLE_BUTTON) {
+                // Sentuhan pada tombol utama → toggle expand/collapse sub-buttons
                 return true;
             } else if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
@@ -1657,6 +2008,18 @@ public class ControlElement {
     }
 
     public boolean handleTouchUp(int pointerId) {
+        // MULTIPLE_BUTTON: lepaskan sub-button yang sedang ditekan
+        if (type == Type.MULTIPLE_BUTTON && multiBtnPressedIndex >= 0) {
+            int idx = multiBtnPressedIndex;
+            multiBtnPressedIndex = -1;
+            inputControlsView.invalidate();
+            List<Binding> sb = getMultiButtonBindings(idx);
+            for (Binding b : sb) {
+                if (b != Binding.NONE) inputControlsView.handleInputEvent(b, false);
+            }
+            return true;
+        }
+
         if (pointerId == currentPointerId) {
             isPressed = false;
             inputControlsView.invalidate();
@@ -1664,6 +2027,13 @@ public class ControlElement {
             if (type == Type.MENU_NAVIGATION) {
                 // Toggle sub-menu expand/collapse saat tombol utama dilepas
                 toggleMenu();
+                currentPointerId = -1;
+                return true;
+            }
+
+            if (type == Type.MULTIPLE_BUTTON) {
+                // Tombol utama dilepas → toggle expand/collapse sub-buttons
+                toggleMultiBtn();
                 currentPointerId = -1;
                 return true;
             }
@@ -1782,6 +2152,20 @@ public class ControlElement {
                 if (menuExpanded) {
                     menuExpanded = false;
                     animateMenu(false);
+                }
+            } else if (type == Type.MULTIPLE_BUTTON) {
+                // Cancel: lepaskan sub-button yang ditekan jika ada, collapse
+                if (multiBtnPressedIndex >= 0) {
+                    int idx = multiBtnPressedIndex;
+                    multiBtnPressedIndex = -1;
+                    List<Binding> sb = getMultiButtonBindings(idx);
+                    for (Binding b : sb) {
+                        if (b != Binding.NONE) inputControlsView.handleInputEvent(b, false);
+                    }
+                }
+                if (multiBtnExpanded) {
+                    multiBtnExpanded = false;
+                    animateMultiBtn(false);
                 }
             }
 

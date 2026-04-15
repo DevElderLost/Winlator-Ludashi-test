@@ -233,6 +233,29 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                     element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 150));
                 }
 
+                // MULTIPLE_BUTTON: load data sub-button
+                if (element.getType() == ControlElement.Type.MULTIPLE_BUTTON) {
+                    element.setMultiButtonCount(elementJSONObject.optInt("multiButtonCount", 4));
+                    if (elementJSONObject.has("multiButtons")) {
+                        JSONArray mbArr = elementJSONObject.getJSONArray("multiButtons");
+                        for (int j = 0; j < mbArr.length() && j < ControlElement.MULTI_BTN_MAX; j++) {
+                            JSONObject mbObj = mbArr.getJSONObject(j);
+                            // bindings
+                            if (mbObj.has("bindings")) {
+                                JSONArray mbBindings = mbObj.getJSONArray("bindings");
+                                java.util.List<Binding> sbList = new java.util.ArrayList<>();
+                                for (int k = 0; k < mbBindings.length(); k++) {
+                                    sbList.add(Binding.fromString(mbBindings.getString(k)));
+                                }
+                                element.setMultiButtonBindings(j, sbList);
+                            }
+                            element.setMultiButtonDirection(j, (byte) mbObj.optInt("direction", j * 2));
+                            element.setMultiButtonText(j, mbObj.optString("text", ""));
+                            element.setMultiButtonIconId(j, (byte) mbObj.optInt("iconId", 0));
+                        }
+                    }
+                }
+
                 // MENU_NAVIGATION: listener dipasang dari luar (Activity) lewat
                 // attachMenuNavigationListeners() setelah setProfile() dipanggil.
                 // Tidak ada yang perlu dilakukan di sini.

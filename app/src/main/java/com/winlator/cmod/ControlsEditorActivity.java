@@ -124,6 +124,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
             view.findViewById(R.id.LLBindings).setVisibility(View.GONE);
             view.findViewById(R.id.LLSlotIcons).setVisibility(View.GONE);
+            view.findViewById(R.id.LLMultiButtonOptions).setVisibility(View.GONE);
 
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
@@ -172,6 +173,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 // slot 0=Main Button, 1=Keyboard, 2=Input Controls, 3=Exit
                 loadSlotIconsUI(view, element,
                         new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
+            }
+            else if (type == ControlElement.Type.MULTIPLE_BUTTON) {
+                view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLMultiButtonOptions).setVisibility(View.VISIBLE);
+                loadMultiButtonUI(view, element);
             }
 
             loadBindingSpinners(element, view);
@@ -829,9 +836,349 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         super.onBackPressed();
         overridePendingTransition(R.anim.slide_in_down, R.anim.slide_out_up);
     }
-    
+
+    /**
+     * Membangun UI editor untuk MULTIPLE_BUTTON di dalam LLMultiButtonOptions.
+     *
+     * Layout yang dibuat secara dinamis:
+     *
+     *  ┌─────────────────────────────────────────────────────┐
+     *  │  Number of buttons: [Spinner 1–8]                   │
+     *  ├─────────────────────────────────────────────────────┤
+     *  │  [Button 1 ▼]                                       │
+     *  │    Direction: [Spinner 8 arah]                      │
+     *  │    Text     : [EditText]                            │
+     *  │    Bindings : [Spinner key 1] [+] [Spinner key 2]… │
+     *  ├─────────────────────────────────────────────────────┤
+     *  │  [Button 2 ▼] …                                     │
+     *  └─────────────────────────────────────────────────────┘
+     *
+     * Setiap sub-button dapat memiliki:
+     *  - Arah animasi pop keluar: 8 arah (UP, UP_RIGHT, RIGHT, … UP_LEFT)
+     *  - Text label (opsional — kosong = tampilkan binding)
+     *  - Binding key 1..N (sama seperti BUTTON combo binding)
+     */
+    private void loadMultiButtonUI(View settingsView, ControlElement element) {
+        LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
+        container.removeAllViews();
+
+        Context ctx = container.getContext();
+        int pad4  = (int) UnitUtils.dpToPx(4);
+        int pad8  = (int) UnitUtils.dpToPx(8);
+        int pad12 = (int) UnitUtils.dpToPx(12);
+
+        final String[] DIRECTION_LABELS = {
+                "↑ Up", "↗ Up-Right", "→ Right", "↘ Down-Right",
+                "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"
+        };
+
+        // ── Row: jumlah sub-button ──────────────────────────────────────
+        {
+            LinearLayout row = new LinearLayout(ctx);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(pad8, pad4, pad8, pad4);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+            TextView lbl = new TextView(ctx);
+            lbl.setText("Number of buttons:");
+            lbl.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(lbl);
+
+            Spinner spCount = new Spinner(ctx);
+            String[] countOpts = {"1","2","3","4","5","6","7","8"};
+            ArrayAdapter<String> countAdapter = new ArrayAdapter<>(ctx,
+                    android.R.layout.simple_spinner_item, countOpts);
+            countAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            spCount.setAdapter(countAdapter);
+            spCount.setSelection(element.getMultiButtonCount() - 1);
+            spCount.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            row.addView(spCount);
+
+            container.addView(row);
+
+            // Saat count berubah, rebuild seluruh UI sub-button
+            spCount.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    element.setMultiButtonCount(pos + 1);
+                    profile.save();
+                    inputControlsView.invalidate();
+                    loadMultiButtonUI(settingsView, element);
+                }
+                @Override public void onNothingSelected(AdapterView<?> p) {}
+            });
+        }
+
+        // Divider
+        addDivider(container, ctx);
+
+        // ── Per-sub-button sections ─────────────────────────────────────
+        int count = element.getMultiButtonCount();
+        for (int i = 0; i < count; i++) {
+            final int idx = i;
+
+            // Header collapse/expand
+            LinearLayout header = new LinearLayout(ctx);
+            header.setOrientation(LinearLayout.HORIZONTAL);
+            header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            header.setPadding(pad8, pad8, pad8, pad8);
+            header.setBackgroundResource(android.R.drawable.list_selector_background);
+
+            TextView headerTxt = new TextView(ctx);
+            headerTxt.setText("Button " + (i + 1));
+            headerTxt.setTextSize(14);
+            headerTxt.setTypeface(null, android.graphics.Typeface.BOLD);
+            headerTxt.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            header.addView(headerTxt);
+
+            TextView chevron = new TextView(ctx);
+            chevron.setText("▼");
+            header.addView(chevron);
+
+            container.addView(header);
+
+            // Body (content per sub-button)
+            LinearLayout body = new LinearLayout(ctx);
+            body.setOrientation(LinearLayout.VERTICAL);
+            body.setPadding(pad12, 0, pad8, pad8);
+            body.setTag("multibtn_body_" + i);
+
+            // ── Direction spinner ──────────────────────────────────────
+            {
+                LinearLayout row = new LinearLayout(ctx);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(0, pad4, 0, pad4);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+                TextView lbl = new TextView(ctx);
+                lbl.setText("Direction:");
+                lbl.setLayoutParams(new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                row.addView(lbl);
+
+                Spinner spDir = new Spinner(ctx);
+                ArrayAdapter<String> dirAdapter = new ArrayAdapter<>(ctx,
+                        android.R.layout.simple_spinner_item, DIRECTION_LABELS);
+                dirAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                spDir.setAdapter(dirAdapter);
+                spDir.setSelection(element.getMultiButtonDirection(idx) & 0xFF);
+                spDir.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+                row.addView(spDir);
+                body.addView(row);
+
+                spDir.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                    @Override
+                    public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                        element.setMultiButtonDirection(idx, (byte) pos);
+                        profile.save();
+                        inputControlsView.invalidate();
+                    }
+                    @Override public void onNothingSelected(AdapterView<?> p) {}
+                });
+            }
+
+            // ── Text label ─────────────────────────────────────────────
+            {
+                LinearLayout row = new LinearLayout(ctx);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(0, pad4, 0, pad4);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+                TextView lbl = new TextView(ctx);
+                lbl.setText("Label text:");
+                lbl.setLayoutParams(new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                row.addView(lbl);
+
+                android.widget.EditText etText = new android.widget.EditText(ctx);
+                etText.setText(element.getMultiButtonText(idx));
+                etText.setHint("(auto)");
+                etText.setSingleLine(true);
+                LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f);
+                etLp.setMarginStart(pad8);
+                etText.setLayoutParams(etLp);
+                row.addView(etText);
+                body.addView(row);
+
+                etText.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+                    @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
+                    @Override public void afterTextChanged(android.text.Editable s) {
+                        element.setMultiButtonText(idx, s.toString());
+                        profile.save();
+                        inputControlsView.invalidate();
+                    }
+                });
+            }
+
+            // ── Bindings (combo) — identik dengan BUTTON multi-binding ──
+            {
+                TextView bindLbl = new TextView(ctx);
+                bindLbl.setText("Key Bindings:");
+                bindLbl.setPadding(0, pad8, 0, pad4);
+                body.addView(bindLbl);
+
+                LinearLayout bindContainer = new LinearLayout(ctx);
+                bindContainer.setOrientation(LinearLayout.VERTICAL);
+                bindContainer.setTag("multibtn_bindings_" + idx);
+                body.addView(bindContainer);
+
+                // Tombol tambah binding
+                ImageButton btnAdd = new ImageButton(ctx);
+                btnAdd.setImageResource(android.R.drawable.ic_input_add);
+                btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
+                LinearLayout.LayoutParams addLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                addLp.topMargin = pad4;
+                btnAdd.setLayoutParams(addLp);
+                body.addView(btnAdd);
+
+                // Populate binding rows
+                Runnable rebuildBindingRows = new Runnable() {
+                    @Override public void run() {
+                        buildMultiBtnBindingRows(ctx, bindContainer, element, idx);
+                    }
+                };
+                rebuildBindingRows.run();
+
+                btnAdd.setOnClickListener(v -> {
+                    List<Binding> sb = element.getMultiButtonBindings(idx);
+                    if (sb.size() < 8) {
+                        sb.add(Binding.NONE);
+                        element.setMultiButtonBindings(idx, sb);
+                        profile.save();
+                        rebuildBindingRows.run();
+                    }
+                });
+            }
+
+            container.addView(body);
+
+            // Toggle collapse/expand body saat header diklik
+            final LinearLayout bodyRef = body;
+            header.setOnClickListener(v -> {
+                boolean visible = bodyRef.getVisibility() == View.VISIBLE;
+                bodyRef.setVisibility(visible ? View.GONE : View.VISIBLE);
+                chevron.setText(visible ? "▶" : "▼");
+            });
+
+            // Default: tampilkan hanya sub-button pertama, sisanya collapsed
+            if (i > 0) {
+                body.setVisibility(View.GONE);
+                chevron.setText("▶");
+            }
+
+            if (i < count - 1) addDivider(container, ctx);
+        }
+    }
+
+    /**
+     * Bangun baris binding spinner untuk satu sub-button MULTIPLE_BUTTON.
+     * Setiap baris punya Spinner (pilih Binding) + tombol hapus.
+     * Logika persis sama dengan BUTTON multi-binding di loadBindingSpinners().
+     */
+    private void buildMultiBtnBindingRows(Context ctx, LinearLayout bindContainer,
+                                          ControlElement element, int subIdx) {
+        bindContainer.removeAllViews();
+        List<Binding> sb = element.getMultiButtonBindings(subIdx);
+        if (sb.isEmpty()) {
+            sb.add(Binding.NONE);
+            element.setMultiButtonBindings(subIdx, sb);
+        }
+
+        // Daftar nama binding untuk Spinner
+        Binding[] allBindings = Binding.values();
+        String[] bindNames = new String[allBindings.length];
+        for (int k = 0; k < allBindings.length; k++) bindNames[k] = allBindings[k].toString();
+
+        int pad4 = (int) UnitUtils.dpToPx(4);
+        int pad8 = (int) UnitUtils.dpToPx(8);
+
+        for (int k = 0; k < sb.size(); k++) {
+            final int bindIdx = k;
+            LinearLayout row = new LinearLayout(ctx);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(0, pad4, 0, pad4);
+
+            Spinner sp = new Spinner(ctx);
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(ctx,
+                    android.R.layout.simple_spinner_item, bindNames);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            sp.setAdapter(adapter);
+
+            // Set current selection
+            Binding cur = sb.get(bindIdx);
+            for (int m = 0; m < allBindings.length; m++) {
+                if (allBindings[m] == cur) { sp.setSelection(m); break; }
+            }
+
+            sp.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(sp);
+
+            sp.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    List<Binding> cur2 = element.getMultiButtonBindings(subIdx);
+                    if (bindIdx < cur2.size()) {
+                        cur2.set(bindIdx, allBindings[pos]);
+                        element.setMultiButtonBindings(subIdx, cur2);
+                        profile.save();
+                    }
+                }
+                @Override public void onNothingSelected(AdapterView<?> p) {}
+            });
+
+            // Tombol hapus binding — hanya tampil jika ada > 1 binding
+            ImageButton btnDel = new ImageButton(ctx);
+            btnDel.setImageResource(android.R.drawable.ic_delete);
+            btnDel.setBackgroundResource(android.R.drawable.btn_default_small);
+            LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            delLp.setMarginStart(pad8);
+            btnDel.setLayoutParams(delLp);
+            btnDel.setVisibility(sb.size() > 1 ? View.VISIBLE : View.GONE);
+            row.addView(btnDel);
+
+            btnDel.setOnClickListener(v -> {
+                List<Binding> cur2 = element.getMultiButtonBindings(subIdx);
+                if (cur2.size() > 1) {
+                    cur2.remove(bindIdx);
+                    element.setMultiButtonBindings(subIdx, cur2);
+                    profile.save();
+                    buildMultiBtnBindingRows(ctx, bindContainer, element, subIdx);
+                }
+            });
+
+            bindContainer.addView(row);
+        }
+    }
+
+    /** Helper: tambahkan divider tipis antar section. */
+    private void addDivider(LinearLayout parent, Context ctx) {
+        View div = new View(ctx);
+        int h = (int) UnitUtils.dpToPx(1);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, h);
+        lp.topMargin    = (int) UnitUtils.dpToPx(6);
+        lp.bottomMargin = (int) UnitUtils.dpToPx(6);
+        div.setLayoutParams(lp);
+        div.setBackgroundColor(0x33FFFFFF);
+        parent.addView(div);
+    }
+
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
-    
+
 }

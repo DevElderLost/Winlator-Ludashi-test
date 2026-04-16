@@ -951,8 +951,8 @@ public class ControlElement {
         float gap    = snappingSize * 0.4f * scale;
         float itemH  = h;
         int menuAlpha = (int) (menuAnimProgress * 255);
-        final float[] ITEM_START = {0.00f, 0.20f, 0.40f, 0.55f};
-        final float[] ITEM_END   = {0.55f, 0.70f, 0.85f, 1.00f};
+        final float[] ITEM_START = {0.00f, 0.16f, 0.32f, 0.48f, 0.64f};
+        final float[] ITEM_END   = {0.46f, 0.62f, 0.78f, 0.92f, 1.00f};
 
         for (int i = 0; i < itemLabels.length; i++) {
             float top    = bb.bottom + gap + i * (itemH + gap);
@@ -1261,6 +1261,9 @@ public class ControlElement {
             for (int i = 0; i < subButtons.size(); i++) {
                 if (isMultiBtnSubHit(i, x, y)) {
                     multiBtnPressedIndex = i;
+                    // FIX: Simpan currentPointerId agar handleTouchUp dapat mengidentifikasi
+                    // pointer yang benar dan mengirim key release event dengan tepat.
+                    currentPointerId = pointerId;
                     inputControlsView.invalidate();
                     SubButton sb = subButtons.get(i);
                     for (Binding b : sb.bindings)
@@ -1470,9 +1473,12 @@ public class ControlElement {
     }
 
     public boolean handleTouchUp(int pointerId) {
-        if (type == Type.MULTIPLE_BUTTON && multiBtnPressedIndex >= 0) {
+        if (type == Type.MULTIPLE_BUTTON && multiBtnPressedIndex >= 0
+                && (pointerId == currentPointerId || currentPointerId == -1)) {
             int idx = multiBtnPressedIndex;
             multiBtnPressedIndex = -1;
+            // FIX: Reset currentPointerId yang di-set saat sub-button touchDown
+            currentPointerId = -1;
             inputControlsView.invalidate();
             SubButton sb = getSubButton(idx);
             if (sb != null) for (Binding b : sb.bindings) if (b != Binding.NONE) inputControlsView.handleInputEvent(b, false);

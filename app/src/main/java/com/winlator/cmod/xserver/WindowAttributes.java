@@ -1,6 +1,6 @@
 package com.winlator.cmod.xserver;
 
-import com.winlator.cmod.core.Bitmask;
+import com.winlator.xserver.Bitmask;
 import com.winlator.cmod.xconnector.XInputStream;
 
 public class WindowAttributes {

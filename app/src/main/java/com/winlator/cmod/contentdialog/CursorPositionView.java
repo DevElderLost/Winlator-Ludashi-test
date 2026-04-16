@@ -1,6 +1,7 @@
 package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.DashPathEffect;
@@ -9,15 +10,20 @@ import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 
+import androidx.preference.PreferenceManager;
+
 public class CursorPositionView extends View {
-    private final Paint crosshairPaint;
-    private final Paint circlePaint;
+    private Paint crosshairPaint;
+    private Paint circlePaint;
     private final float circleRadius;
 
     private float circleX, circleY;
     private float offsetRelativeX = 0.5f;
     private float offsetRelativeY = 0.5f;
     private OnOffsetChangedListener listener;
+
+    // Warna berdasarkan tema
+    private int lineColor = Color.BLACK;
 
     public interface OnOffsetChangedListener {
         void onOffsetChanged(float relativeX, float relativeY);
@@ -26,16 +32,38 @@ public class CursorPositionView extends View {
     public CursorPositionView(Context context, AttributeSet attrs) {
         super(context, attrs);
         circleRadius = 30f;
+        initPaints(context);
+    }
 
+    private void initPaints(Context context) {
+        // Baca preferensi tema
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        boolean isDarkMode = prefs.getBoolean("dark_mode", false);
+        lineColor = isDarkMode ? Color.WHITE : Color.BLACK;
+
+        // Crosshair: garis putus-putus
         crosshairPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        crosshairPaint.setColor(Color.WHITE);
+        crosshairPaint.setColor(lineColor);
         crosshairPaint.setStyle(Paint.Style.STROKE);
         crosshairPaint.setStrokeWidth(2f);
         crosshairPaint.setPathEffect(new DashPathEffect(new float[]{10, 10}, 0));
 
+        // Lingkaran: garis putus-putus, tidak diisi
         circlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        circlePaint.setColor(Color.GREEN);
-        circlePaint.setStyle(Paint.Style.FILL);
+        circlePaint.setColor(lineColor);
+        circlePaint.setStyle(Paint.Style.STROKE);
+        circlePaint.setStrokeWidth(4f);
+        circlePaint.setPathEffect(new DashPathEffect(new float[]{8, 8}, 0));
+    }
+
+    /**
+     * Memungkinkan pembaruan warna saat tema berubah (dipanggil dari dialog)
+     */
+    public void updateTheme(boolean isDarkMode) {
+        lineColor = isDarkMode ? Color.WHITE : Color.BLACK;
+        crosshairPaint.setColor(lineColor);
+        circlePaint.setColor(lineColor);
+        invalidate();
     }
 
     @Override
@@ -50,11 +78,11 @@ public class CursorPositionView extends View {
         int width = getWidth();
         int height = getHeight();
 
-        // Crosshair putus-putus
+        // Crosshair putus-putus tepat di tengah view
         canvas.drawLine(width / 2f, 0, width / 2f, height, crosshairPaint);
         canvas.drawLine(0, height / 2f, width, height / 2f, crosshairPaint);
 
-        // Lingkaran hijau
+        // Lingkaran putus-putus
         canvas.drawCircle(circleX, circleY, circleRadius, circlePaint);
     }
 
@@ -66,7 +94,7 @@ public class CursorPositionView extends View {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_MOVE:
-                // Batasi agar lingkaran tidak keluar view
+                // Batasi lingkaran agar tidak keluar view
                 x = Math.max(circleRadius, Math.min(getWidth() - circleRadius, x));
                 y = Math.max(circleRadius, Math.min(getHeight() - circleRadius, y));
 

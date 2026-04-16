@@ -54,8 +54,6 @@ import java.util.List;
 
 public class ControlsEditorActivity extends AppCompatActivity implements View.OnClickListener {
 
-    private int pendingExpandSubButtonIndex = -1; // <-- tambahkan ini
-
     private InputControlsView inputControlsView;
     private ControlsProfile profile;
     private boolean isDarkMode;
@@ -87,7 +85,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         container.findViewById(R.id.BTAddElement).setOnClickListener(this);
         container.findViewById(R.id.BTRemoveElement).setOnClickListener(this);
         container.findViewById(R.id.BTElementSettings).setOnClickListener(this);
-        pendingExpandSubButtonIndex = -1;
     }
 
     @Override
@@ -463,132 +460,353 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadMultiButtonUI(View settingsView, ControlElement element) {
-    LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
-    container.removeAllViews();
+        LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
+        container.removeAllViews();
 
-    ImageButton btnAddSub = new ImageButton(this);
-    btnAddSub.setImageResource(R.drawable.icon_add_24dp);
-    btnAddSub.setBackgroundColor(Color.TRANSPARENT);
-    btnAddSub.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
-    int pad = (int) UnitUtils.dpToPx(8);
-    btnAddSub.setPadding(pad, pad, pad, pad);
-    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-    btnLp.gravity = Gravity.END;
-    btnAddSub.setLayoutParams(btnLp);
-    btnAddSub.setOnClickListener(v -> {
-        element.addSubButton();
-        profile.save();
-        // Tandai sub‑button baru (indeks terakhir) untuk di‑expand
-        pendingExpandSubButtonIndex = element.getSubButtonCount() - 1;
-        loadMultiButtonUI(settingsView, element);
-        inputControlsView.invalidate();
-    });
-    container.addView(btnAddSub);
+        // Header hint
+        TextView tvHint = new TextView(this);
+        tvHint.setText("Tap a direction to configure its sub button (max 8 total)");
+        tvHint.setTextSize(11);
+        tvHint.setPadding(0, 0, 0, (int) UnitUtils.dpToPx(8));
+        container.addView(tvHint);
 
-    List<ControlElement.SubButton> subButtons = element.getSubButtons();
-    for (int i = 0; i < subButtons.size(); i++) {
-        // Tentukan apakah section ini harus expanded
-        boolean expanded = (i == pendingExpandSubButtonIndex);
-        addSubButtonSection(container, element, i, expanded);
-        if (i < subButtons.size() - 1) addSeparator(container);
-    }
-    // Reset pending index setelah semua section dibuat
-    pendingExpandSubButtonIndex = -1;
-}
-
-    private void addSubButtonSection(LinearLayout container, ControlElement element, int index, boolean expanded) {
-    ControlElement.SubButton sb = element.getSubButton(index);
-
-    // Header
-    LinearLayout header = new LinearLayout(this);
-    header.setOrientation(LinearLayout.HORIZONTAL);
-    header.setGravity(Gravity.CENTER_VERTICAL);
-    header.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-    header.setBackgroundResource(android.R.drawable.list_selector_background);
-
-    TextView tvHeader = new TextView(this);
-    tvHeader.setText("Button " + (index + 1));
-    tvHeader.setTypeface(null, Typeface.BOLD);
-    tvHeader.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-    header.addView(tvHeader);
-
-    ImageButton btnRemove = new ImageButton(this);
-    btnRemove.setImageResource(R.drawable.icon_remove_24dp);
-    btnRemove.setBackgroundColor(Color.TRANSPARENT);
-    btnRemove.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
-    btnRemove.setPadding((int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4));
-    btnRemove.setOnClickListener(v -> {
-        element.removeSubButton(index);
-        profile.save();
-        // Reset pending expand (tidak perlu expand setelah remove)
-        pendingExpandSubButtonIndex = -1;
-        loadMultiButtonUI((View) container.getParent(), element);
-        inputControlsView.invalidate();
-    });
-    header.addView(btnRemove);
-
-    TextView tvChevron = new TextView(this);
-    tvChevron.setText(expanded ? "▼" : "▶");
-    header.addView(tvChevron);
-
-    container.addView(header);
-
-    // Body
-    LinearLayout body = new LinearLayout(this);
-    body.setOrientation(LinearLayout.VERTICAL);
-    body.setPadding((int) UnitUtils.dpToPx(8), (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-    body.setVisibility(expanded ? View.VISIBLE : View.GONE);
-    container.addView(body);
-
-    header.setOnClickListener(v -> {
-        boolean currentlyExpanded = body.getVisibility() == View.VISIBLE;
-        body.setVisibility(currentlyExpanded ? View.GONE : View.VISIBLE);
-        tvChevron.setText(currentlyExpanded ? "▶" : "▼");
-    });
-
-    addDirectionSpinner(body, element, index, sb);
-    addLabelField(body, element, index, sb);
-    addIconPicker(body, element, index, sb);
-    addBindingSection(body, element, index, sb);
-}
-
-    private void addDirectionSpinner(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
-        final String[] DIRECTION_NAMES = {
-                "NONE (hidden)", "↑ Up", "↗ Up-Right", "→ Right",
-                "↘ Down-Right", "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"
+        // 8-direction grid:
+        // Layout:  [UL]  [U]  [UR]
+        //          [L ]  [--] [R ]
+        //          [DL]  [D]  [DR]
+        // Directions: 0=Up, 1=UpRight, 2=Right, 3=DownRight, 4=Down, 5=DownLeft, 6=Left, 7=UpLeft
+        final String[] DIR_LABELS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
+        // grid positions [row][col] -> dirIndex, -1 = center (unused)
+        final int[][] GRID = {
+                {7, 0, 1},
+                {6, -1, 2},
+                {5, 4, 3}
         };
 
-        TextView lblDir = new TextView(this);
-        lblDir.setText("Direction:");
-        lblDir.setPadding(0, (int) UnitUtils.dpToPx(4), 0, 0);
-        body.addView(lblDir);
+        int btnSize = (int) UnitUtils.dpToPx(48);
+        int btnMargin = (int) UnitUtils.dpToPx(4);
 
-        Spinner spDir = new Spinner(this);
-        spDir.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_dropdown_item, DIRECTION_NAMES));
+        for (int row = 0; row < 3; row++) {
+            LinearLayout rowLayout = new LinearLayout(this);
+            rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+            rowLayout.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowLp.setMargins(0, btnMargin / 2, 0, btnMargin / 2);
+            rowLayout.setLayoutParams(rowLp);
 
-        byte curDir = sb.direction;
-        int dirSelection = (curDir == (byte) 0xFF || curDir < 0) ? 0 : (curDir & 0xFF) + 1;
-        if (dirSelection > 8) dirSelection = 0;
-        spDir.setSelection(dirSelection, false);
-        spDir.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        body.addView(spDir);
+            for (int col = 0; col < 3; col++) {
+                int dirIdx = GRID[row][col];
 
-        spDir.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                byte dirVal = (pos == 0) ? (byte) 0xFF : (byte) (pos - 1);
-                element.setMultiButtonDirection(index, dirVal);
-                profile.save();
+                LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(btnSize, btnSize);
+                cellLp.setMargins(btnMargin, btnMargin, btnMargin, btnMargin);
+
+                if (dirIdx == -1) {
+                    // Center placeholder
+                    View spacer = new View(this);
+                    spacer.setLayoutParams(cellLp);
+                    rowLayout.addView(spacer);
+                    continue;
+                }
+
+                // Find existing SubButton for this direction
+                final int finalDir = dirIdx;
+                ControlElement.SubButton existingSb = null;
+                int existingIdx = -1;
+                for (int i = 0; i < element.getSubButtonCount(); i++) {
+                    ControlElement.SubButton sb = element.getSubButton(i);
+                    if (sb != null && (sb.direction & 0xFF) == dirIdx) {
+                        existingSb = sb;
+                        existingIdx = i;
+                        break;
+                    }
+                }
+                boolean hasSubBtn = (existingSb != null);
+
+                TextView dirBtn = new TextView(this);
+                dirBtn.setLayoutParams(cellLp);
+                dirBtn.setText(DIR_LABELS[dirIdx]);
+                dirBtn.setTextSize(18);
+                dirBtn.setGravity(Gravity.CENTER);
+                dirBtn.setTypeface(null, hasSubBtn ? Typeface.BOLD : Typeface.NORMAL);
+                // Visual: filled = has subbutton, outline = empty
+                int primaryColor = ContextCompat.getColor(this, R.color.colorPrimary);
+                if (hasSubBtn) {
+                    dirBtn.setBackgroundColor(primaryColor);
+                    dirBtn.setTextColor(Color.WHITE);
+                } else {
+                    dirBtn.setBackgroundColor(Color.argb(40, 128, 128, 128));
+                    dirBtn.setTextColor(primaryColor);
+                }
+
+                final int fExistingIdx = existingIdx;
+
+                dirBtn.setOnClickListener(v -> {
+                    showDirectionSubButtonDialog(settingsView, element, finalDir, fExistingIdx, container);
+                });
+
+                rowLayout.addView(dirBtn);
+            }
+            container.addView(rowLayout);
+        }
+
+        // Sub button count info
+        TextView tvCount = new TextView(this);
+        tvCount.setText("Active: " + element.getSubButtonCount() + " / 8 sub buttons");
+        tvCount.setTextSize(11);
+        tvCount.setPadding(0, (int) UnitUtils.dpToPx(8), 0, 0);
+        container.addView(tvCount);
+    }
+
+    /**
+     * Tampilkan dialog untuk satu direction: checkbox aktif/nonaktif,
+     * icon picker (slot-style 1-row + badge 1-8), dan binding section.
+     */
+    private void showDirectionSubButtonDialog(View settingsView, ControlElement element,
+                                               int dirIdx, int existingSubBtnIdx,
+                                               LinearLayout dirGridContainer) {
+        final String[] DIR_LABELS = {"↑ Up", "↗ Up-Right", "→ Right", "↘ Down-Right",
+                "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"};
+
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        builder.setTitle("Direction: " + DIR_LABELS[dirIdx]);
+
+        LinearLayout dialogLayout = new LinearLayout(this);
+        dialogLayout.setOrientation(LinearLayout.VERTICAL);
+        int dp8 = (int) UnitUtils.dpToPx(8);
+        dialogLayout.setPadding(dp8 * 2, dp8, dp8 * 2, dp8);
+
+        // --- Checkbox aktifkan sub button ---
+        CheckBox cbEnable = new CheckBox(this);
+        cbEnable.setText("Enable sub button for this direction");
+        boolean hasExisting = (existingSubBtnIdx >= 0);
+        cbEnable.setChecked(hasExisting);
+        dialogLayout.addView(cbEnable);
+
+        // --- Container content (tampil hanya jika checkbox aktif) ---
+        LinearLayout contentLayout = new LinearLayout(this);
+        contentLayout.setOrientation(LinearLayout.VERTICAL);
+        contentLayout.setVisibility(hasExisting ? View.VISIBLE : View.GONE);
+        dialogLayout.addView(contentLayout);
+
+        // Siapkan atau ambil SubButton
+        final int[] subIdxHolder = {existingSubBtnIdx};
+
+        // Fungsi helper rebuild content
+        Runnable[] rebuildContent = {null};
+
+        cbEnable.setOnCheckedChangeListener((btn, isChecked) -> {
+            if (isChecked) {
+                // Buat SubButton baru jika belum ada
+                if (subIdxHolder[0] < 0) {
+                    if (element.getSubButtonCount() >= 8) {
+                        cbEnable.setChecked(false);
+                        AppUtils.showToast(this, "Maximum 8 sub buttons reached");
+                        return;
+                    }
+                    element.addSubButton();
+                    subIdxHolder[0] = element.getSubButtonCount() - 1;
+                    element.setMultiButtonDirection(subIdxHolder[0], (byte) dirIdx);
+                    profile.save();
+                }
+                contentLayout.setVisibility(View.VISIBLE);
+                if (rebuildContent[0] != null) rebuildContent[0].run();
+            } else {
+                // Hapus SubButton
+                if (subIdxHolder[0] >= 0) {
+                    element.removeSubButton(subIdxHolder[0]);
+                    subIdxHolder[0] = -1;
+                    profile.save();
+                }
+                contentLayout.setVisibility(View.GONE);
                 inputControlsView.invalidate();
             }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
         });
+
+        // Build content layout (icon picker + binding)
+        rebuildContent[0] = () -> {
+            contentLayout.removeAllViews();
+            int idx = subIdxHolder[0];
+            if (idx < 0) return;
+            ControlElement.SubButton sb = element.getSubButton(idx);
+            if (sb == null) return;
+
+            // --- Icon picker (slot-style: satu baris, badge 1-8 total sub buttons) ---
+            TextView lblIcon = new TextView(this);
+            lblIcon.setText("Icon (optional):");
+            lblIcon.setPadding(0, dp8, 0, (int) UnitUtils.dpToPx(4));
+            contentLayout.addView(lblIcon);
+
+            // Tampilkan semua sub button yang aktif sebagai "slot" badge
+            // Badge menunjukkan posisi slot di antara semua sub button yang aktif
+            int totalActive = element.getSubButtonCount();
+            // Cari posisi idx di antara semua sub button (urutan berdasarkan index)
+            int slotPos = idx; // posisi 0-based di list
+
+            addSubButtonIconPickerSlotStyle(contentLayout, element, idx, totalActive);
+
+            // --- Label field ---
+            addLabelField(contentLayout, element, idx, sb);
+
+            // --- Binding section ---
+            addBindingSection(contentLayout, element, idx, sb);
+        };
+
+        if (hasExisting) {
+            rebuildContent[0].run();
+        }
+
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(dialogLayout);
+
+        builder.setView(sv);
+        builder.setPositiveButton("Done", (d, w) -> {
+            // Refresh direction grid
+            loadMultiButtonUI(settingsView, element);
+            inputControlsView.invalidate();
+        });
+
+        builder.show();
     }
+
+    /**
+     * Icon picker untuk sub button, menggunakan gaya loadSlotIconsUI:
+     * satu baris horizontal scroll, badge angka menunjukkan slot aktif
+     * di antara semua sub button (maks 8).
+     */
+    private void addSubButtonIconPickerSlotStyle(LinearLayout parent, ControlElement element,
+                                                  int subIdx, int totalActive) {
+        byte[] availableIconIds = loadAllIconIds();
+
+        int iconSize    = (int) UnitUtils.dpToPx(40);
+        int iconMargin  = (int) UnitUtils.dpToPx(2);
+        int iconPadding = (int) UnitUtils.dpToPx(4);
+        int badgeSize   = (int) UnitUtils.dpToPx(14);
+
+        // Hint: slot X of Y
+        TextView tvHint = new TextView(this);
+        tvHint.setText("Icon (slot " + (subIdx + 1) + " of " + totalActive + "):");
+        tvHint.setTextSize(11);
+        tvHint.setPadding(0, 0, 0, (int) UnitUtils.dpToPx(4));
+        parent.addView(tvHint);
+
+        HorizontalScrollView hsv = new HorizontalScrollView(this);
+        hsv.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout iconRow = new LinearLayout(this);
+        iconRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        final List<FrameLayout> iconFrames = new ArrayList<>();
+        // selectedId holder
+        final byte[] selectedHolder = new byte[]{element.getMultiButtonIconId(subIdx)};
+
+        final Runnable refreshBadges = () -> {
+            for (FrameLayout frame : iconFrames) {
+                Object tagObj = frame.getTag();
+                if (tagObj == null) continue;
+                byte fId = (byte) tagObj;
+
+                ImageView fIv    = (ImageView) frame.getChildAt(0);
+                TextView  fBadge = (TextView)  frame.getChildAt(1);
+
+                if (fId != 0 && fId == selectedHolder[0]) {
+                    fIv.setSelected(true);
+                    fBadge.setVisibility(View.VISIBLE);
+                    // Badge menampilkan nomor slot (1-based) di antara semua sub button aktif
+                    fBadge.setText(String.valueOf(subIdx + 1));
+                } else {
+                    fIv.setSelected(false);
+                    fBadge.setVisibility(View.GONE);
+                }
+            }
+        };
+
+        // "None" button
+        FrameLayout noneFrame = new FrameLayout(this);
+        LinearLayout.LayoutParams nfp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        nfp.setMargins(iconMargin, 0, iconMargin, 0);
+        noneFrame.setLayoutParams(nfp);
+        ImageView noneIv = new ImageView(this);
+        noneIv.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        noneIv.setBackgroundResource(R.drawable.icon_background);
+        noneFrame.addView(noneIv);
+        TextView noneLabel = new TextView(this);
+        noneLabel.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        noneLabel.setText("×");
+        noneLabel.setTextSize(20);
+        noneLabel.setGravity(Gravity.CENTER);
+        noneFrame.addView(noneLabel);
+        noneFrame.setOnClickListener(v -> {
+            selectedHolder[0] = 0;
+            element.setMultiButtonIconId(subIdx, (byte) 0);
+            profile.save();
+            inputControlsView.invalidate();
+            refreshBadges.run();
+        });
+        iconRow.addView(noneFrame);
+
+        for (final byte id : availableIconIds) {
+            FrameLayout frame = new FrameLayout(this);
+            frame.setTag(id);
+            LinearLayout.LayoutParams frameParams = new LinearLayout.LayoutParams(iconSize, iconSize);
+            frameParams.setMargins(iconMargin, 0, iconMargin, 0);
+            frame.setLayoutParams(frameParams);
+
+            ImageView iv = new ImageView(this);
+            iv.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            iv.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+            try (java.io.InputStream is = openIconStream(id)) {
+                if (is != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
+                    iv.setImageBitmap(bmp);
+                    applyIconBackground(iv, bmp);
+                } else {
+                    iv.setBackgroundResource(R.drawable.icon_background);
+                }
+            } catch (IOException e) {
+                iv.setBackgroundResource(R.drawable.icon_background);
+            }
+            frame.addView(iv);
+
+            TextView badge = new TextView(this);
+            FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(badgeSize, badgeSize);
+            badgeParams.gravity = Gravity.TOP | Gravity.END;
+            badge.setLayoutParams(badgeParams);
+            badge.setTextSize(8);
+            badge.setGravity(Gravity.CENTER);
+            badge.setTextColor(Color.WHITE);
+            badge.setBackgroundColor(Color.argb(200, 0, 100, 220));
+            badge.setVisibility(View.GONE);
+            frame.addView(badge);
+
+            iconFrames.add(frame);
+
+            frame.setOnClickListener(v -> {
+                selectedHolder[0] = id;
+                element.setMultiButtonIconId(subIdx, id);
+                profile.save();
+                inputControlsView.invalidate();
+                refreshBadges.run();
+            });
+
+            iconRow.addView(frame);
+        }
+
+        refreshBadges.run();
+
+        hsv.addView(iconRow);
+        parent.addView(hsv);
+    }
+
+
+
+
 
     private void addLabelField(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
         TextView lblText = new TextView(this);
@@ -616,86 +834,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         });
     }
 
-    private void addIconPicker(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
-        TextView lblIcon = new TextView(this);
-        lblIcon.setText("Icon (optional):");
-        lblIcon.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
-        body.addView(lblIcon);
 
-        byte[] iconIds = loadAllIconIds();
-        int iconSize = (int) UnitUtils.dpToPx(40);
-        int margin = (int) UnitUtils.dpToPx(2);
-        int padding = (int) UnitUtils.dpToPx(4);
-
-        HorizontalScrollView hsv = new HorizontalScrollView(this);
-        LinearLayout iconRow = new LinearLayout(this);
-        iconRow.setOrientation(LinearLayout.HORIZONTAL);
-
-        final byte[] selectedHolder = { sb.iconId };
-
-        FrameLayout noneFrame = new FrameLayout(this);
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(iconSize, iconSize);
-        nlp.setMargins(margin, 0, margin, 0);
-        noneFrame.setLayoutParams(nlp);
-        ImageView noneIv = new ImageView(this);
-        noneIv.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        noneIv.setBackgroundResource(R.drawable.icon_background);
-        noneFrame.addView(noneIv);
-        TextView noneLabel = new TextView(this);
-        noneLabel.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        noneLabel.setText("×");
-        noneLabel.setTextSize(20);
-        noneLabel.setGravity(Gravity.CENTER);
-        noneFrame.addView(noneLabel);
-        noneFrame.setOnClickListener(v -> {
-            selectedHolder[0] = 0;
-            element.setMultiButtonIconId(index, (byte) 0);
-            profile.save();
-            inputControlsView.invalidate();
-            refreshIconSelection(iconRow, (byte) 0);
-        });
-        iconRow.addView(noneFrame);
-
-        for (final byte id : iconIds) {
-            FrameLayout frame = new FrameLayout(this);
-            LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(iconSize, iconSize);
-            flp.setMargins(margin, 0, margin, 0);
-            frame.setLayoutParams(flp);
-
-            ImageView iv = new ImageView(this);
-            iv.setLayoutParams(new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-            iv.setPadding(padding, padding, padding, padding);
-            iv.setTag(id);
-            iv.setSelected(id == selectedHolder[0]);
-
-            try (InputStream is = openIconStream(id)) {
-                if (is != null) {
-                    Bitmap bmp = BitmapFactory.decodeStream(is);
-                    iv.setImageBitmap(bmp);
-                    applyIconBackground(iv, bmp);
-                }
-            } catch (IOException e) {
-                iv.setBackgroundResource(R.drawable.icon_background);
-            }
-
-            iv.setOnClickListener(v -> {
-                selectedHolder[0] = id;
-                element.setMultiButtonIconId(index, id);
-                profile.save();
-                inputControlsView.invalidate();
-                refreshIconSelection(iconRow, id);
-            });
-
-            frame.addView(iv);
-            iconRow.addView(frame);
-        }
-
-        hsv.addView(iconRow);
-        body.addView(hsv);
-    }
 
     private void refreshIconSelection(LinearLayout iconRow, byte selectedId) {
         for (int i = 0; i < iconRow.getChildCount(); i++) {
@@ -764,10 +903,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     Spinner sBinding     = row.findViewById(R.id.SBinding);
     ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-    // Flag untuk memblokir callback onItemSelected yang dipicu secara otomatis
-    // oleh setAdapter()/setSelection() selama proses inisialisasi.
-    final boolean[] isInitializing = { true };
-
     Runnable updateBindingSpinner = () -> {
         String[] entries = null;
         Binding[] values = null;
@@ -800,30 +935,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
     };
 
-    // Pasang listener sBinding SEBELUM updateBindingSpinner.run() agar urutan
-    // setup tidak memicu write-back ke binding. Flag isInitializing akan
-    // memblokir semua callback spurious yang diposting oleh setAdapter/setSelection.
-    sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-        @Override
-        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-            if (isInitializing[0]) return; // abaikan callback selama setup
-            Binding newBinding = Binding.NONE;
-            switch (sBindingType.getSelectedItemPosition()) {
-                case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
-                case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
-                case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
-            }
-            List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
-            if (bindIdx < sb2.size()) {
-                sb2.set(bindIdx, newBinding);
-                element.setMultiButtonBindings(subIdx, sb2);
-                profile.save();
-                inputControlsView.invalidate();
-            }
-        }
-        @Override public void onNothingSelected(AdapterView<?> p) {}
-    });
-
     sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
         @Override
         public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
@@ -840,9 +951,25 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     updateBindingSpinner.run();
 
-    // Aktifkan flag setelah semua pending callback dari setAdapter/setSelection
-    // sudah dieksekusi dan diabaikan oleh guard di atas.
-    sBinding.post(() -> isInitializing[0] = false);
+    sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+            Binding newBinding = Binding.NONE;
+            switch (sBindingType.getSelectedItemPosition()) {
+                case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
+                case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
+                case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
+            }
+            List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
+            if (bindIdx < sb2.size()) {
+                sb2.set(bindIdx, newBinding);
+                element.setMultiButtonBindings(subIdx, sb2);
+                profile.save();
+                inputControlsView.invalidate();
+            }
+        }
+        @Override public void onNothingSelected(AdapterView<?> p) {}
+    });
 
 
     if (bindIdx >= 1) {

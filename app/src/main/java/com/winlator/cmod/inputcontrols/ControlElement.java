@@ -349,12 +349,6 @@ public class ControlElement {
                 break;
             case 1:
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
-                    com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
-                    uiHandler.post(() -> new com.winlator.cmod.winhandler.TaskManagerDialog(activity).show());
-                }
-                break;
-            case 2:
-                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                 com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
                 uiHandler.post(() -> {
                     com.winlator.cmod.renderer.GLRenderer renderer = activity.getXServerView() != null 
@@ -363,6 +357,12 @@ public class ControlElement {
                         new com.winlator.cmod.contentdialog.CursorPositionDialog(activity, renderer, activity.getXServer()).show();
                     }
                 });
+                }
+                break;
+            case 2:
+                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                    com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
+                    uiHandler.post(() -> new com.winlator.cmod.winhandler.TaskManagerDialog(activity).show());
                 }
                 break;
             case 3:
@@ -909,65 +909,78 @@ public class ControlElement {
         }
     }
 
+    // ========== Potongan ControlElement.java (hanya method yang diubah) ==========
+
     private void drawMenuNavigation(Canvas canvas, Rect bb, Paint paint, int primaryColor,
                                     float strokeWidth, int snappingSize) {
         float cx = bb.centerX();
         float cy = bb.centerY();
         float w = bb.width(), h = bb.height();
-        float r = h * 0.5f;
-        float itemR = r * 0.6f;
 
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
+        // ─── Tombol utama ─────────────────────────────────────────────
         if (slotIconIds[0] > 0 || iconId > 0) {
+            // Ada icon: hanya gambar icon (tanpa shape)
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(primaryColor);
             float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
-            drawIconExact(canvas, cx, cy, iconSize, iconSize, slotIconIds[0] > 0 ? slotIconIds[0] : iconId);
+            drawIconExact(canvas, cx, cy, iconSize, iconSize,
+                    slotIconIds[0] > 0 ? slotIconIds[0] : iconId);
         } else {
+            // Tidak ada icon: gambar shape sesuai properti 'shape'
             paint.setColor(primaryColor);
             paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-            canvas.drawRoundRect(bb.left, bb.top, bb.right, bb.bottom, r, r, paint);
+            drawShape(canvas, paint, bb);   // ← menggunakan drawShape (menangani CIRCLE, SQUARE, dll.)
+
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(primaryColor);
             paint.setTextAlign(Paint.Align.CENTER);
             String label = (text != null && !text.isEmpty()) ? text : "\u2261";
-            float ts = Math.min(getTextSizeForWidth(paint, label, w - strokeWidth * 4), snappingSize * 1.6f * scale);
+            float ts = Math.min(getTextSizeForWidth(paint, label, w - strokeWidth * 4),
+                    snappingSize * 1.6f * scale);
             paint.setTextSize(ts);
             canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
         }
 
         if (menuAnimProgress <= 0f) return;
 
-        final String[] itemFallback = {"\u2328", "\u25CF", "\u2630", "\u25A3", "\u2715"};
-        final String[] itemLabels   = {"Keyboard", "Cursor pos", "Task Manager", "Active Windows", "Exit"};
-        float gap = snappingSize * 0.4f * scale;
-        float itemH = h;
-        int menuAlpha = (int)(menuAnimProgress * 255);
-        final float[] ITEM_START = {0.00f, 0.16f, 0.32f, 0.48f, 0.64f};
-        final float[] ITEM_END   = {0.46f, 0.62f, 0.78f, 0.92f, 1.00f};
+        // ─── Sub‑menu items ───────────────────────────────────────────
+        final String[] itemFallback = {"\u2328", "\u26CF", "\u2630", "\u25A3", "\u2715"};
+        final String[] itemLabels   = {"Keyboard", "Cursor Pos", "Task Manager", "Active Windows", "Exit"};
+        float gap    = snappingSize * 0.4f * scale;
+        float itemH  = h;
+        int menuAlpha = (int) (menuAnimProgress * 255);
+        final float[] ITEM_START = {0.00f, 0.20f, 0.40f, 0.55f};
+        final float[] ITEM_END   = {0.55f, 0.70f, 0.85f, 1.00f};
 
         for (int i = 0; i < itemLabels.length; i++) {
-            float top = bb.bottom + gap + i * (itemH + gap);
+            float top    = bb.bottom + gap + i * (itemH + gap);
             float bottom = top + itemH;
             float itemCy = (top + bottom) * 0.5f;
+
             float window = ITEM_END[i] - ITEM_START[i];
-            float itemProgress = Math.min(1f, Math.max(0f, (menuAnimProgress - ITEM_START[i]) / window));
+            float itemProgress = Math.min(1f, Math.max(0f,
+                    (menuAnimProgress - ITEM_START[i]) / window));
             float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
             if (scaleVal <= 0f) continue;
 
             canvas.save();
             canvas.scale(scaleVal, scaleVal, cx, itemCy);
-            int itemAlpha = (int)(scaleVal * menuAlpha);
 
+            int itemAlpha = (int) (scaleVal * menuAlpha);
+            RectF itemRect = new RectF(bb.left, top, bb.right, bottom);
+
+            // Background semi‑transparan
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
-            canvas.drawRoundRect(bb.left, top, bb.right, bottom, itemR, itemR, paint);
+            drawShapeRect(canvas, paint, itemRect);   // ← gunakan drawShapeRect
 
+            // Border
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
             paint.setStrokeWidth(strokeWidth * 0.75f);
-            canvas.drawRoundRect(bb.left, top, bb.right, bottom, itemR, itemR, paint);
+            drawShapeRect(canvas, paint, itemRect);   // ← gunakan drawShapeRect
 
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
@@ -975,27 +988,36 @@ public class ControlElement {
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
             if (slotIcon > 0) {
                 float iconAreaW = itemH * 0.78f;
-                float iconSize = iconAreaW * 0.80f;
-                float iconCx = bb.left + iconAreaW * 0.5f + strokeWidth;
+                float iconSize  = iconAreaW * 0.80f;
+                float iconCx    = bb.left + iconAreaW * 0.5f + strokeWidth;
                 drawIconExact(canvas, iconCx, itemCy, iconSize, iconSize, slotIcon);
-                float textLeft = bb.left + iconAreaW + strokeWidth * 2;
+
+                float textLeft  = bb.left + iconAreaW + strokeWidth * 2;
                 float textAvail = bb.right - textLeft - strokeWidth;
                 if (textAvail > 0) {
                     paint.setTextAlign(Paint.Align.LEFT);
-                    float ts = Math.min(getTextSizeForWidth(paint, itemLabels[i], textAvail), snappingSize * 1.55f * scale);
+                    float ts = Math.min(getTextSizeForWidth(paint, itemLabels[i], textAvail),
+                            snappingSize * 1.55f * scale);
                     paint.setTextSize(ts);
-                    canvas.drawText(itemLabels[i], textLeft, itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                    canvas.drawText(itemLabels[i], textLeft,
+                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
                 }
             } else {
                 String fullLabel = itemFallback[i] + " " + itemLabels[i];
                 paint.setTextAlign(Paint.Align.CENTER);
-                float ts = Math.min(getTextSizeForWidth(paint, fullLabel, w - strokeWidth * 4), snappingSize * 1.6f * scale);
+                float ts = Math.min(getTextSizeForWidth(paint, fullLabel, w - strokeWidth * 4),
+                        snappingSize * 1.6f * scale);
                 paint.setTextSize(ts);
-                canvas.drawText(fullLabel, cx, itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                canvas.drawText(fullLabel, cx,
+                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
             }
+
             canvas.restore();
         }
     }
+
+    // Method drawShape dan drawShapeRect sudah ada dan tidak berubah.
+    // Mereka menangani CIRCLE, RECT, ROUND_RECT, SQUARE dengan benar.
 
     private void drawMultipleButton(Canvas canvas, Rect bb, Paint paint, int primaryColor, int baseColor,
                                     float strokeWidth, int snappingSize) {

@@ -25,6 +25,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.content.Context;
 
+import androidx.core.content.ContextCompat;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.PreferenceManager;
 
@@ -50,6 +52,8 @@ import java.util.Arrays;
 import java.util.List;
 
 public class ControlsEditorActivity extends AppCompatActivity implements View.OnClickListener {
+
+    private int pendingExpandSubButtonIndex = -1; // <-- tambahkan ini
 
     private InputControlsView inputControlsView;
     private ControlsProfile profile;
@@ -82,6 +86,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         container.findViewById(R.id.BTAddElement).setOnClickListener(this);
         container.findViewById(R.id.BTRemoveElement).setOnClickListener(this);
         container.findViewById(R.id.BTElementSettings).setOnClickListener(this);
+        pendingExpandSubButtonIndex = -1;
     }
 
     @Override
@@ -457,84 +462,94 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadMultiButtonUI(View settingsView, ControlElement element) {
-        LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
-        container.removeAllViews();
+    LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
+    container.removeAllViews();
 
-        ImageButton btnAddSub = new ImageButton(this);
-        btnAddSub.setImageResource(R.drawable.icon_add_24dp);
-        btnAddSub.setBackgroundResource(android.R.drawable.btn_default_small);
-        int pad = (int) UnitUtils.dpToPx(8);
-        btnAddSub.setPadding(pad, pad, pad, pad);
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        btnLp.gravity = Gravity.END;
-        btnAddSub.setLayoutParams(btnLp);
-        btnAddSub.setOnClickListener(v -> {
-            element.addSubButton();
-            profile.save();
-            loadMultiButtonUI(settingsView, element);
-            inputControlsView.invalidate();
-        });
-        container.addView(btnAddSub);
+    ImageButton btnAddSub = new ImageButton(this);
+    btnAddSub.setImageResource(R.drawable.icon_add_24dp);
+    btnAddSub.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+    int pad = (int) UnitUtils.dpToPx(8);
+    btnAddSub.setPadding(pad, pad, pad, pad);
+    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+    btnLp.gravity = Gravity.END;
+    btnAddSub.setLayoutParams(btnLp);
+    btnAddSub.setOnClickListener(v -> {
+        element.addSubButton();
+        profile.save();
+        // Tandai sub‑button baru (indeks terakhir) untuk di‑expand
+        pendingExpandSubButtonIndex = element.getSubButtonCount() - 1;
+        loadMultiButtonUI(settingsView, element);
+        inputControlsView.invalidate();
+    });
+    container.addView(btnAddSub);
 
-        List<ControlElement.SubButton> subButtons = element.getSubButtons();
-        for (int i = 0; i < subButtons.size(); i++) {
-            addSubButtonSection(container, element, i);
-            if (i < subButtons.size() - 1) addSeparator(container);
-        }
+    List<ControlElement.SubButton> subButtons = element.getSubButtons();
+    for (int i = 0; i < subButtons.size(); i++) {
+        // Tentukan apakah section ini harus expanded
+        boolean expanded = (i == pendingExpandSubButtonIndex);
+        addSubButtonSection(container, element, i, expanded);
+        if (i < subButtons.size() - 1) addSeparator(container);
     }
+    // Reset pending index setelah semua section dibuat
+    pendingExpandSubButtonIndex = -1;
+}
 
-    private void addSubButtonSection(LinearLayout container, ControlElement element, int index) {
-        ControlElement.SubButton sb = element.getSubButton(index);
+    private void addSubButtonSection(LinearLayout container, ControlElement element, int index, boolean expanded) {
+    ControlElement.SubButton sb = element.getSubButton(index);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-        header.setBackgroundResource(android.R.drawable.list_selector_background);
+    // Header
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.HORIZONTAL);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+    header.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
+    header.setBackgroundResource(android.R.drawable.list_selector_background);
 
-        TextView tvHeader = new TextView(this);
-        tvHeader.setText("Button " + (index + 1));
-        tvHeader.setTypeface(null, Typeface.BOLD);
-        tvHeader.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(tvHeader);
+    TextView tvHeader = new TextView(this);
+    tvHeader.setText("Button " + (index + 1));
+    tvHeader.setTypeface(null, Typeface.BOLD);
+    tvHeader.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+    header.addView(tvHeader);
 
-        ImageButton btnRemove = new ImageButton(this);
-        btnRemove.setImageResource(R.drawable.icon_remove_24dp);
-        btnRemove.setBackgroundResource(android.R.drawable.btn_default_small);
-        btnRemove.setPadding((int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4));
-        btnRemove.setOnClickListener(v -> {
-            element.removeSubButton(index);
-            profile.save();
-            loadMultiButtonUI((View) container.getParent(), element);
-            inputControlsView.invalidate();
-        });
-        header.addView(btnRemove);
+    ImageButton btnRemove = new ImageButton(this);
+    btnRemove.setImageResource(R.drawable.icon_remove_24dp);
+    btnRemove.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+    btnRemove.setPadding((int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4));
+    btnRemove.setOnClickListener(v -> {
+        element.removeSubButton(index);
+        profile.save();
+        // Reset pending expand (tidak perlu expand setelah remove)
+        pendingExpandSubButtonIndex = -1;
+        loadMultiButtonUI((View) container.getParent(), element);
+        inputControlsView.invalidate();
+    });
+    header.addView(btnRemove);
 
-        TextView tvChevron = new TextView(this);
-        tvChevron.setText(index == 0 ? "▼" : "▶");
-        header.addView(tvChevron);
+    TextView tvChevron = new TextView(this);
+    tvChevron.setText(expanded ? "▼" : "▶");
+    header.addView(tvChevron);
 
-        container.addView(header);
+    container.addView(header);
 
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding((int) UnitUtils.dpToPx(8), (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-        body.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
-        container.addView(body);
+    // Body
+    LinearLayout body = new LinearLayout(this);
+    body.setOrientation(LinearLayout.VERTICAL);
+    body.setPadding((int) UnitUtils.dpToPx(8), (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
+    body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+    container.addView(body);
 
-        header.setOnClickListener(v -> {
-            boolean expanded = body.getVisibility() == View.VISIBLE;
-            body.setVisibility(expanded ? View.GONE : View.VISIBLE);
-            tvChevron.setText(expanded ? "▶" : "▼");
-        });
+    header.setOnClickListener(v -> {
+        boolean currentlyExpanded = body.getVisibility() == View.VISIBLE;
+        body.setVisibility(currentlyExpanded ? View.GONE : View.VISIBLE);
+        tvChevron.setText(currentlyExpanded ? "▶" : "▼");
+    });
 
-        addDirectionSpinner(body, element, index, sb);
-        addLabelField(body, element, index, sb);
-        addIconPicker(body, element, index, sb);
-        addBindingSection(body, element, index, sb);
-    }
+    addDirectionSpinner(body, element, index, sb);
+    addLabelField(body, element, index, sb);
+    addIconPicker(body, element, index, sb);
+    addBindingSection(body, element, index, sb);
+}
 
     private void addDirectionSpinner(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
         final String[] DIRECTION_NAMES = {
@@ -707,7 +722,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ImageButton btnAdd = new ImageButton(this);
         btnAdd.setImageResource(R.drawable.icon_add_24dp);
-        btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
+        btnAdd.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
         int pad = (int) UnitUtils.dpToPx(4);
         btnAdd.setPadding(pad, pad, pad, pad);
         btnAdd.setOnClickListener(v -> {
@@ -734,87 +749,102 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void addMultiBtnBindingRow(ControlElement element, LinearLayout bindContainer,
-                                       int subIdx, int bindIdx) {
-        View row = LayoutInflater.from(this).inflate(R.layout.binding_field, bindContainer, false);
+                                   int subIdx, int bindIdx) {
+    View row = LayoutInflater.from(this).inflate(R.layout.binding_field, bindContainer, false);
 
-        Spinner sBindingType = row.findViewById(R.id.SBindingType);
-        Spinner sBinding     = row.findViewById(R.id.SBinding);
-        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
+    Spinner sBindingType = row.findViewById(R.id.SBindingType);
+    Spinner sBinding     = row.findViewById(R.id.SBinding);
+    ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-        Runnable updateBindingSpinner = () -> {
-            String[] entries = null;
-            switch (sBindingType.getSelectedItemPosition()) {
-                case 0: entries = Binding.keyboardBindingLabels(); break;
-                case 1: entries = Binding.mouseBindingLabels();    break;
-                case 2: entries = Binding.gamepadBindingLabels();  break;
-            }
-            if (entries != null) {
-                sBinding.setAdapter(new ArrayAdapter<>(this,
-                        android.R.layout.simple_spinner_dropdown_item, entries));
-                List<Binding> sb = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb.size()) {
-                    AppUtils.setSpinnerSelectionFromValue(sBinding, sb.get(bindIdx).toString());
-                }
-            }
-        };
-
-        sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                updateBindingSpinner.run();
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        List<Binding> sb = element.getMultiButtonBindings(subIdx);
-        Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
-        if      (current.isKeyboard()) sBindingType.setSelection(0, false);
-        else if (current.isMouse())    sBindingType.setSelection(1, false);
-        else if (current.isGamepad())  sBindingType.setSelection(2, false);
-
-        sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                Binding newBinding = Binding.NONE;
-                switch (sBindingType.getSelectedItemPosition()) {
-                    case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
-                    case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
-                    case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
-                }
-                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb2.size()) {
-                    sb2.set(bindIdx, newBinding);
-                    element.setMultiButtonBindings(subIdx, sb2);
-                    profile.save();
-                    inputControlsView.invalidate();
-                }
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        updateBindingSpinner.run();
-
-        if (bindIdx >= 1) {
-            btnRemove.setVisibility(View.VISIBLE);
-            btnRemove.setOnClickListener(v -> {
-                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb2.size()) {
-                    sb2.remove(bindIdx);
-                    element.setMultiButtonBindings(subIdx, sb2);
-                    profile.save();
-                    View parent = (View) bindContainer.getParent();
-                    if (parent instanceof LinearLayout) {
-                        rebuildBindingRows(bindContainer, element, subIdx, element.getSubButton(subIdx));
-                    }
-                    inputControlsView.invalidate();
-                }
-            });
-        } else {
-            btnRemove.setVisibility(View.GONE);
+    Runnable updateBindingSpinner = () -> {
+        String[] entries = null;
+        Binding[] values = null;
+        switch (sBindingType.getSelectedItemPosition()) {
+            case 0:
+                entries = Binding.keyboardBindingLabels();
+                values = Binding.keyboardBindingValues();
+                break;
+            case 1:
+                entries = Binding.mouseBindingLabels();
+                values = Binding.mouseBindingValues();
+                break;
+            case 2:
+                entries = Binding.gamepadBindingLabels();
+                values = Binding.gamepadBindingValues();
+                break;
         }
+        if (entries != null) {
+            sBinding.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, entries));
+            List<Binding> sb = element.getMultiButtonBindings(subIdx);
+            Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
+            int selIndex = 0;
+            for (int i = 0; i < values.length; i++) {
+                if (values[i] == current) {
+                    selIndex = i;
+                    break;
+                }
+            }
+            sBinding.setSelection(selIndex);
+        }
+    };
 
-        bindContainer.addView(row);
+    sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+            updateBindingSpinner.run();
+        }
+        @Override public void onNothingSelected(AdapterView<?> p) {}
+    });
+
+    List<Binding> sb = element.getMultiButtonBindings(subIdx);
+    Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
+    if      (current.isKeyboard()) sBindingType.setSelection(0, false);
+    else if (current.isMouse())    sBindingType.setSelection(1, false);
+    else if (current.isGamepad())  sBindingType.setSelection(2, false);
+
+    sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+            Binding newBinding = Binding.NONE;
+            switch (sBindingType.getSelectedItemPosition()) {
+                case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
+                case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
+                case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
+            }
+            List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
+            if (bindIdx < sb2.size()) {
+                sb2.set(bindIdx, newBinding);
+                element.setMultiButtonBindings(subIdx, sb2);
+                profile.save();
+                inputControlsView.invalidate();
+            }
+        }
+        @Override public void onNothingSelected(AdapterView<?> p) {}
+    });
+
+    updateBindingSpinner.run();
+
+    if (bindIdx >= 1) {
+        btnRemove.setVisibility(View.VISIBLE);
+        btnRemove.setOnClickListener(v -> {
+            List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
+            if (bindIdx < sb2.size()) {
+                sb2.remove(bindIdx);
+                element.setMultiButtonBindings(subIdx, sb2);
+                profile.save();
+                View parent = (View) bindContainer.getParent();
+                if (parent instanceof LinearLayout) {
+                    rebuildBindingRows(bindContainer, element, subIdx, element.getSubButton(subIdx));
+                }
+                inputControlsView.invalidate();
+            }
+        });
+    } else {
+        btnRemove.setVisibility(View.GONE);
     }
+
+    bindContainer.addView(row);
+}
 
     private void addSeparator(LinearLayout parent) {
         View sep = new View(this);
@@ -1001,72 +1031,90 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void addNewBindingRow(final ControlElement element, final LinearLayout container, final int index) {
-        View row = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
+    View row = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
 
-        Spinner sBindingType = row.findViewById(R.id.SBindingType);
-        Spinner sBinding = row.findViewById(R.id.SBinding);
-        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
+    Spinner sBindingType = row.findViewById(R.id.SBindingType);
+    Spinner sBinding = row.findViewById(R.id.SBinding);
+    ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-        Runnable updateBindingSpinner = () -> {
-            String[] bindingEntries = null;
-            switch (sBindingType.getSelectedItemPosition()) {
-                case 0: bindingEntries = Binding.keyboardBindingLabels(); break;
-                case 1: bindingEntries = Binding.mouseBindingLabels(); break;
-                case 2: bindingEntries = Binding.gamepadBindingLabels(); break;
-            }
-            if (bindingEntries != null) {
-                sBinding.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bindingEntries));
-                AppUtils.setSpinnerSelectionFromValue(sBinding, element.getBindingAt(index).toString());
-            }
-        };
-
-        sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                updateBindingSpinner.run();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-        Binding current = element.getBindingAt(index);
-        if (current.isKeyboard()) sBindingType.setSelection(0, false);
-        else if (current.isMouse()) sBindingType.setSelection(1, false);
-        else if (current.isGamepad()) sBindingType.setSelection(2, false);
-
-        sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                Binding newBinding = Binding.NONE;
-                switch (sBindingType.getSelectedItemPosition()) {
-                    case 0: newBinding = Binding.keyboardBindingValues()[position]; break;
-                    case 1: newBinding = Binding.mouseBindingValues()[position]; break;
-                    case 2: newBinding = Binding.gamepadBindingValues()[position]; break;
-                }
-                element.setBindingAt(index, newBinding);
-                profile.save();
-                inputControlsView.invalidate();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-        updateBindingSpinner.run();
-
-        if (element.getType() == ControlElement.Type.BUTTON && index >= 1) {
-            btnRemove.setVisibility(View.VISIBLE);
-            btnRemove.setOnClickListener(v -> {
-                element.removeBinding(index);
-                profile.save();
-                container.removeView(row);
-                inputControlsView.invalidate();
-            });
-        } else {
-            btnRemove.setVisibility(View.GONE);
+    Runnable updateBindingSpinner = () -> {
+        String[] bindingEntries = null;
+        Binding[] bindingValues = null;
+        switch (sBindingType.getSelectedItemPosition()) {
+            case 0:
+                bindingEntries = Binding.keyboardBindingLabels();
+                bindingValues = Binding.keyboardBindingValues();
+                break;
+            case 1:
+                bindingEntries = Binding.mouseBindingLabels();
+                bindingValues = Binding.mouseBindingValues();
+                break;
+            case 2:
+                bindingEntries = Binding.gamepadBindingLabels();
+                bindingValues = Binding.gamepadBindingValues();
+                break;
         }
+        if (bindingEntries != null) {
+            sBinding.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bindingEntries));
+            Binding current = element.getBindingAt(index);
+            int selIndex = 0;
+            for (int i = 0; i < bindingValues.length; i++) {
+                if (bindingValues[i] == current) {
+                    selIndex = i;
+                    break;
+                }
+            }
+            sBinding.setSelection(selIndex);
+        }
+    };
 
-        container.addView(row);
+    sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            updateBindingSpinner.run();
+        }
+        @Override
+        public void onNothingSelected(AdapterView<?> parent) {}
+    });
+
+    Binding current = element.getBindingAt(index);
+    if (current.isKeyboard()) sBindingType.setSelection(0, false);
+    else if (current.isMouse()) sBindingType.setSelection(1, false);
+    else if (current.isGamepad()) sBindingType.setSelection(2, false);
+
+    sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            Binding newBinding = Binding.NONE;
+            switch (sBindingType.getSelectedItemPosition()) {
+                case 0: newBinding = Binding.keyboardBindingValues()[position]; break;
+                case 1: newBinding = Binding.mouseBindingValues()[position]; break;
+                case 2: newBinding = Binding.gamepadBindingValues()[position]; break;
+            }
+            element.setBindingAt(index, newBinding);
+            profile.save();
+            inputControlsView.invalidate();
+        }
+        @Override
+        public void onNothingSelected(AdapterView<?> parent) {}
+    });
+
+    updateBindingSpinner.run();
+
+    if (element.getType() == ControlElement.Type.BUTTON && index >= 1) {
+        btnRemove.setVisibility(View.VISIBLE);
+        btnRemove.setOnClickListener(v -> {
+            element.removeBinding(index);
+            profile.save();
+            container.removeView(row);
+            inputControlsView.invalidate();
+        });
+    } else {
+        btnRemove.setVisibility(View.GONE);
     }
+
+    container.addView(row);
+}
 
     private void loadRangeSpinner(final ControlElement element, Spinner spinner) {
         spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Range.names()));

@@ -468,7 +468,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     ImageButton btnAddSub = new ImageButton(this);
     btnAddSub.setImageResource(R.drawable.icon_add_24dp);
-    btnAddSub.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+    btnAddSub.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
     int pad = (int) UnitUtils.dpToPx(8);
     btnAddSub.setPadding(pad, pad, pad, pad);
     LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
@@ -515,7 +515,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     ImageButton btnRemove = new ImageButton(this);
     btnRemove.setImageResource(R.drawable.icon_remove_24dp);
-    btnRemove.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+    btnRemove.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
     btnRemove.setPadding((int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4));
     btnRemove.setOnClickListener(v -> {
         element.removeSubButton(index);
@@ -723,7 +723,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ImageButton btnAdd = new ImageButton(this);
         btnAdd.setImageResource(R.drawable.icon_add_24dp);
-        btnAdd.setColorFilter(ContextCompat.getColor(getContext(), R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+        btnAdd.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
         int pad = (int) UnitUtils.dpToPx(4);
         btnAdd.setPadding(pad, pad, pad, pad);
         btnAdd.setOnClickListener(v -> {

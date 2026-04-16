@@ -355,6 +355,18 @@ public class ControlElement {
                 break;
             case 2:
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
+                com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
+                uiHandler.post(() -> {
+                    com.winlator.cmod.renderer.GLRenderer renderer = activity.getXServerView() != null 
+                            ? activity.getXServerView().getRenderer() : null;
+                    if (renderer != null) {
+                        new com.winlator.cmod.contentdialog.CursorPositionDialog(activity, renderer, activity.getXServer()).show();
+                    }
+                });
+                }
+                break;
+            case 3:
+                if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                     com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
                     uiHandler.post(() -> {
                         com.winlator.cmod.renderer.GLRenderer renderer = activity.getXServerView() != null ? activity.getXServerView().getRenderer() : null;
@@ -362,7 +374,7 @@ public class ControlElement {
                     });
                 }
                 break;
-            case 3:
+            case 4:
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                     com.winlator.cmod.XServerDisplayActivity activity = (com.winlator.cmod.XServerDisplayActivity) context;
                     uiHandler.post(activity::exitApp);
@@ -927,13 +939,13 @@ public class ControlElement {
 
         if (menuAnimProgress <= 0f) return;
 
-        final String[] itemFallback = {"\u2328", "\u2630", "\u25A3", "\u2715"};
-        final String[] itemLabels   = {"Keyboard", "Task Manager", "Active Windows", "Exit"};
+        final String[] itemFallback = {"\u2328", "\u25CF", "\u2630", "\u25A3", "\u2715"};
+        final String[] itemLabels   = {"Keyboard", "Cursor pos", "Task Manager", "Active Windows", "Exit"};
         float gap = snappingSize * 0.4f * scale;
         float itemH = h;
         int menuAlpha = (int)(menuAnimProgress * 255);
-        final float[] ITEM_START = {0.00f, 0.20f, 0.40f, 0.55f};
-        final float[] ITEM_END   = {0.55f, 0.70f, 0.85f, 1.00f};
+        final float[] ITEM_START = {0.00f, 0.16f, 0.32f, 0.48f, 0.64f};
+        final float[] ITEM_END   = {0.46f, 0.62f, 0.78f, 0.92f, 1.00f};
 
         for (int i = 0; i < itemLabels.length; i++) {
             float top = bb.bottom + gap + i * (itemH + gap);
@@ -1185,7 +1197,7 @@ public class ControlElement {
             Rect bb = getBoundingBox();
             float gap = inputControlsView.getSnappingSize() * 0.4f * scale;
             float itemH = bb.height();
-            float totalH = (itemH + gap) * 4;
+            float totalH = (itemH + gap) * 5;
             float bottom = bb.bottom + gap + totalH;
             if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
         }
@@ -1214,7 +1226,7 @@ public class ControlElement {
             Rect bb = getBoundingBox();
             float gap = inputControlsView.getSnappingSize() * 0.4f * scale;
             float itemH = bb.height();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 float top = bb.bottom + gap + i * (itemH + gap);
                 float bottom = top + itemH;
                 if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {

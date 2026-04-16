@@ -1,4 +1,4 @@
-package com.winlator.core;
+package com.winlator.cmod.core;
 
 import androidx.annotation.NonNull;
 

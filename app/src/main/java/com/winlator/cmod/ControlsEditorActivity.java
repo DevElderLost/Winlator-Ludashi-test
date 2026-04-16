@@ -4,7 +4,9 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.AdapterView;
@@ -12,6 +14,7 @@ import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -56,9 +59,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
 
-        // Baca preferensi dark mode — harus sebelum setContentView
-        // agar AppTheme.Dark menerapkan windowBackground, textViewStyle,
-        // checkboxStyle, popupWindowStyle, dll. secara otomatis ke seluruh layout.
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         isDarkMode = preferences.getBoolean("dark_mode", false);
         setTheme(isDarkMode ? R.style.AppTheme_Dark : R.style.AppTheme);
@@ -115,7 +115,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         final Runnable updateLayout = () -> {
             ControlElement.Type type = element.getType();
 
-            // Reset visibility
             view.findViewById(R.id.LLShape).setVisibility(View.GONE);
             view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
             view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
@@ -150,7 +149,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
                 loadSlotIconsUI(view, element, new String[]{"Outer Circle", "Inner Thumb"}, 2);
 
-                // Tampilkan opsi Cursor Move hanya untuk RIGHT_STICK
                 if (type == ControlElement.Type.RIGHT_STICK) {
                     view.findViewById(R.id.LLCursorMove).setVisibility(View.VISIBLE);
                     view.findViewById(R.id.LLCursorMoveRadius).setVisibility(
@@ -165,12 +163,9 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
             }
             else if (type == ControlElement.Type.MENU_NAVIGATION) {
-                // MENU_NAVIGATION: hanya tampilkan Shape + Custom Text (label tombol utama)
-                // Tidak ada binding — tombol ini memanggil dialog, bukan mengirim input
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                // slot 0=Main Button, 1=Keyboard, 2=Input Controls, 3=Exit
                 loadSlotIconsUI(view, element,
                         new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
             }
@@ -188,7 +183,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         loadShapeSpinner(element, view.findViewById(R.id.SShape));
         loadRangeSpinner(element, view.findViewById(R.id.SRange));
 
-        // Jumlah slot terlihat untuk RANGE_BUTTON — mengontrol lebar/tinggi elemen
         RadioGroup rgOrientation = view.findViewById(R.id.RGOrientation);
         rgOrientation.check(element.getOrientation() == 1 ? R.id.RBVertical : R.id.RBHorizontal);
         rgOrientation.setOnCheckedChangeListener((group, checkedId) -> {
@@ -219,10 +213,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                     inputControlsView.invalidate();
                 }
             }
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         sbScale.setProgress((int) (element.getScale() * 100));
 
@@ -233,14 +225,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             profile.save();
         });
 
-        // === CURSOR MOVE MODE (hanya RIGHT_STICK) ===
         CheckBox cbCursorMove = view.findViewById(R.id.CBCursorMove);
         cbCursorMove.setChecked(element.isCursorMove());
 
         final TextView tvCursorRadius = view.findViewById(R.id.TVCursorMoveRadius);
         SeekBar sbCursorRadius = view.findViewById(R.id.SBCursorMoveRadius);
-        // Range radius: 50–500 piksel (ukuran lingkaran pergerakan pointer di layar)
-        // SeekBar max=450, progress offset +50 agar nilai aktual = progress+50
         final int RADIUS_MIN = 50;
         final int RADIUS_MAX = 500;
         sbCursorRadius.setMax(RADIUS_MAX - RADIUS_MIN);
@@ -264,7 +253,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         cbCursorMove.setOnCheckedChangeListener((buttonView, isChecked) -> {
             element.setCursorMove(isChecked);
             profile.save();
-            // Tampilkan / sembunyikan seekbar radius sesuai state checkbox
             view.findViewById(R.id.LLCursorMoveRadius).setVisibility(isChecked ? View.VISIBLE : View.GONE);
         });
 
@@ -290,46 +278,28 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
             element.setText(text);
             element.setIconId(iconId);
-            // slotIconIds sudah di-set realtime di onClick setiap icon,
-            // tidak perlu dibaca ulang dari view di sini.
             profile.save();
             inputControlsView.invalidate();
         });
     }
 
-    /**
-     * Satu baris icon tunggal dengan multi-select berurutan (tidak ada lag).
-     *
-     * Urutan slot sesuai ControlElement:
-     *   D_PAD             → slot 0=Up, 1=Right, 2=Down, 3=Left  (slotCount=4)
-     *   STICK/RIGHT_STICK → slot 0=Outer, 1=Inner               (slotCount=2)
-     *
-     * Tap icon yang belum dipilih → masuk ke slot kosong berikutnya.
-     * Tap icon yang sudah dipilih → hapus dari slot itu, slot sesudahnya maju.
-     * Tap "×"                     → reset semua slot ke 0 (tidak ada icon).
-     *
-     * Badge angka biru di pojok kanan atas menunjukkan urutan slot.
-     */
     private void loadSlotIconsUI(View settingsView, ControlElement element,
                                  String[] slotLabels, int slotCount) {
         LinearLayout llSlotIcons = settingsView.findViewById(R.id.LLSlotIcons);
         llSlotIcons.removeAllViews();
 
-        // Muat daftar icon dari assets + folder import pengguna
         byte[] availableIconIds = loadAllIconIds();
 
-        // State slot lokal — diperbarui setiap tap dan disinkronkan ke element
         final byte[] selectedSlots = new byte[slotCount];
         for (int s = 0; s < slotCount; s++) {
             selectedSlots[s] = element.getSlotIconId(s);
         }
 
-        int iconSize    = (int) com.winlator.cmod.core.UnitUtils.dpToPx(40);
-        int iconMargin  = (int) com.winlator.cmod.core.UnitUtils.dpToPx(2);
-        int iconPadding = (int) com.winlator.cmod.core.UnitUtils.dpToPx(4);
-        int badgeSize   = (int) com.winlator.cmod.core.UnitUtils.dpToPx(14);
+        int iconSize    = (int) UnitUtils.dpToPx(40);
+        int iconMargin  = (int) UnitUtils.dpToPx(2);
+        int iconPadding = (int) UnitUtils.dpToPx(4);
+        int badgeSize   = (int) UnitUtils.dpToPx(14);
 
-        // Baris keterangan urutan slot (mis. "1=Up  2=Right  3=Down  4=Left")
         TextView tvHint = new TextView(this);
         StringBuilder hint = new StringBuilder("Slot: ");
         for (int s = 0; s < slotCount; s++) {
@@ -338,11 +308,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
         tvHint.setText(hint.toString());
         tvHint.setTextSize(11);
-        tvHint.setPadding(0, 0, 0, (int) com.winlator.cmod.core.UnitUtils.dpToPx(4));
+        tvHint.setPadding(0, 0, 0, (int) UnitUtils.dpToPx(4));
         llSlotIcons.addView(tvHint);
 
-        // HorizontalScrollView — hanya SATU baris icon
-        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        HorizontalScrollView hsv = new HorizontalScrollView(this);
         hsv.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -350,12 +319,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         LinearLayout iconRow = new LinearLayout(this);
         iconRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        // Referensi semua FrameLayout untuk refresh badge tanpa rebuild view
-        final java.util.List<android.widget.FrameLayout> iconFrames = new java.util.ArrayList<>();
+        final List<FrameLayout> iconFrames = new ArrayList<>();
 
-        // Runnable: perbarui badge angka semua icon sesuai selectedSlots
         final Runnable refreshBadges = () -> {
-            for (android.widget.FrameLayout frame : iconFrames) {
+            for (FrameLayout frame : iconFrames) {
                 Object tagObj = frame.getTag();
                 if (tagObj == null) continue;
                 byte fId = (byte) tagObj;
@@ -379,30 +346,29 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
         };
 
-        // Tombol "×" — reset semua slot
-        android.widget.FrameLayout noneFrame = new android.widget.FrameLayout(this);
+        FrameLayout noneFrame = new FrameLayout(this);
         LinearLayout.LayoutParams nfp = new LinearLayout.LayoutParams(iconSize, iconSize);
         nfp.setMargins(iconMargin, 0, iconMargin, 0);
         noneFrame.setLayoutParams(nfp);
 
         ImageView noneIv = new ImageView(this);
-        noneIv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        noneIv.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
         noneIv.setBackgroundResource(R.drawable.icon_background);
         noneFrame.addView(noneIv);
 
         TextView noneLabel = new TextView(this);
-        noneLabel.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        noneLabel.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
         noneLabel.setText("×");
         noneLabel.setTextSize(20);
-        noneLabel.setGravity(android.view.Gravity.CENTER);
+        noneLabel.setGravity(Gravity.CENTER);
         noneFrame.addView(noneLabel);
 
         noneFrame.setOnClickListener(v -> {
-            java.util.Arrays.fill(selectedSlots, (byte) 0);
+            Arrays.fill(selectedSlots, (byte) 0);
             for (int s = 0; s < slotCount; s++) element.setSlotIconId(s, (byte) 0);
             profile.save();
             inputControlsView.invalidate();
@@ -410,19 +376,17 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         });
         iconRow.addView(noneFrame);
 
-        // Satu daftar icon (tidak berulang per slot)
         for (final byte id : availableIconIds) {
-            android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+            FrameLayout frame = new FrameLayout(this);
             frame.setTag(id);
             LinearLayout.LayoutParams frameParams = new LinearLayout.LayoutParams(iconSize, iconSize);
             frameParams.setMargins(iconMargin, 0, iconMargin, 0);
             frame.setLayoutParams(frameParams);
 
-            // ImageView icon dengan applyIconBackground
             ImageView iv = new ImageView(this);
-            iv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+            iv.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
             iv.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
             try (InputStream is = openIconStream(id)) {
                 if (is != null) {
@@ -437,14 +401,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
             frame.addView(iv);
 
-            // Badge angka urutan slot (pojok kanan atas)
             TextView badge = new TextView(this);
-            android.widget.FrameLayout.LayoutParams badgeParams =
-                    new android.widget.FrameLayout.LayoutParams(badgeSize, badgeSize);
-            badgeParams.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+            FrameLayout.LayoutParams badgeParams =
+                    new FrameLayout.LayoutParams(badgeSize, badgeSize);
+            badgeParams.gravity = Gravity.TOP | Gravity.END;
             badge.setLayoutParams(badgeParams);
             badge.setTextSize(8);
-            badge.setGravity(android.view.Gravity.CENTER);
+            badge.setGravity(Gravity.CENTER);
             badge.setTextColor(Color.WHITE);
             badge.setBackgroundColor(Color.argb(200, 0, 100, 220));
             badge.setVisibility(View.GONE);
@@ -453,20 +416,17 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             iconFrames.add(frame);
 
             frame.setOnClickListener(v -> {
-                // Cari apakah icon ini sudah ada di slot manapun
                 int existingSlot = -1;
                 for (int s = 0; s < slotCount; s++) {
                     if (selectedSlots[s] == id) { existingSlot = s; break; }
                 }
 
                 if (existingSlot >= 0) {
-                    // Sudah dipilih → hapus, geser slot sesudahnya maju
                     for (int s = existingSlot; s < slotCount - 1; s++) {
                         selectedSlots[s] = selectedSlots[s + 1];
                     }
                     selectedSlots[slotCount - 1] = 0;
                 } else {
-                    // Belum dipilih → masuk ke slot kosong pertama
                     boolean placed = false;
                     for (int s = 0; s < slotCount; s++) {
                         if (selectedSlots[s] == 0) {
@@ -476,13 +436,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                         }
                     }
                     if (!placed) {
-                        // Semua slot penuh → geser kiri, tempatkan di slot terakhir
                         System.arraycopy(selectedSlots, 1, selectedSlots, 0, slotCount - 1);
                         selectedSlots[slotCount - 1] = id;
                     }
                 }
 
-                // Sinkronisasi ke ControlElement
                 for (int s = 0; s < slotCount; s++) element.setSlotIconId(s, selectedSlots[s]);
                 profile.save();
                 inputControlsView.invalidate();
@@ -492,29 +450,387 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             iconRow.addView(frame);
         }
 
-        // Inisialisasi badge sesuai state awal
         refreshBadges.run();
 
         hsv.addView(iconRow);
         llSlotIcons.addView(hsv);
     }
 
-    /**
-     * Analisis dominasi warna bitmap icon.
-     * Icon dominan putih → background hitam (agar terlihat), dengan LayerDrawable
-     * agar stroke indikator selected dari icon_background selector tetap tampil di atas.
-     * Lainnya → background default drawable saja.
-     *
-     * Pada dark mode: deteksi warna dilewati sepenuhnya.
-     * icon_background_black diganti icon_background karena background tema sudah gelap,
-     * sehingga icon putih tetap terlihat tanpa lapisan hitam tambahan.
-     */
+    private void loadMultiButtonUI(View settingsView, ControlElement element) {
+        LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
+        container.removeAllViews();
+
+        ImageButton btnAddSub = new ImageButton(this);
+        btnAddSub.setImageResource(R.drawable.icon_add_24dp);
+        btnAddSub.setBackgroundResource(android.R.drawable.btn_default_small);
+        int pad = (int) UnitUtils.dpToPx(8);
+        btnAddSub.setPadding(pad, pad, pad, pad);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        btnLp.gravity = Gravity.END;
+        btnAddSub.setLayoutParams(btnLp);
+        btnAddSub.setOnClickListener(v -> {
+            element.addSubButton();
+            profile.save();
+            loadMultiButtonUI(settingsView, element);
+            inputControlsView.invalidate();
+        });
+        container.addView(btnAddSub);
+
+        List<ControlElement.SubButton> subButtons = element.getSubButtons();
+        for (int i = 0; i < subButtons.size(); i++) {
+            addSubButtonSection(container, element, i);
+            if (i < subButtons.size() - 1) addSeparator(container);
+        }
+    }
+
+    private void addSubButtonSection(LinearLayout container, ControlElement element, int index) {
+        ControlElement.SubButton sb = element.getSubButton(index);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
+        header.setBackgroundResource(android.R.drawable.list_selector_background);
+
+        TextView tvHeader = new TextView(this);
+        tvHeader.setText("Button " + (index + 1));
+        tvHeader.setTypeface(null, Typeface.BOLD);
+        tvHeader.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        header.addView(tvHeader);
+
+        ImageButton btnRemove = new ImageButton(this);
+        btnRemove.setImageResource(R.drawable.icon_remove_24dp);
+        btnRemove.setBackgroundResource(android.R.drawable.btn_default_small);
+        btnRemove.setPadding((int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4), (int) UnitUtils.dpToPx(4));
+        btnRemove.setOnClickListener(v -> {
+            element.removeSubButton(index);
+            profile.save();
+            loadMultiButtonUI((View) container.getParent(), element);
+            inputControlsView.invalidate();
+        });
+        header.addView(btnRemove);
+
+        TextView tvChevron = new TextView(this);
+        tvChevron.setText(index == 0 ? "▼" : "▶");
+        header.addView(tvChevron);
+
+        container.addView(header);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding((int) UnitUtils.dpToPx(8), (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
+        body.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
+        container.addView(body);
+
+        header.setOnClickListener(v -> {
+            boolean expanded = body.getVisibility() == View.VISIBLE;
+            body.setVisibility(expanded ? View.GONE : View.VISIBLE);
+            tvChevron.setText(expanded ? "▶" : "▼");
+        });
+
+        addDirectionSpinner(body, element, index, sb);
+        addLabelField(body, element, index, sb);
+        addIconPicker(body, element, index, sb);
+        addBindingSection(body, element, index, sb);
+    }
+
+    private void addDirectionSpinner(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
+        final String[] DIRECTION_NAMES = {
+                "NONE (hidden)", "↑ Up", "↗ Up-Right", "→ Right",
+                "↘ Down-Right", "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"
+        };
+
+        TextView lblDir = new TextView(this);
+        lblDir.setText("Direction:");
+        lblDir.setPadding(0, (int) UnitUtils.dpToPx(4), 0, 0);
+        body.addView(lblDir);
+
+        Spinner spDir = new Spinner(this);
+        spDir.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, DIRECTION_NAMES));
+
+        byte curDir = sb.direction;
+        int dirSelection = (curDir == (byte) 0xFF || curDir < 0) ? 0 : (curDir & 0xFF) + 1;
+        if (dirSelection > 8) dirSelection = 0;
+        spDir.setSelection(dirSelection, false);
+        spDir.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        body.addView(spDir);
+
+        spDir.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                byte dirVal = (pos == 0) ? (byte) 0xFF : (byte) (pos - 1);
+                element.setMultiButtonDirection(index, dirVal);
+                profile.save();
+                inputControlsView.invalidate();
+            }
+            @Override public void onNothingSelected(AdapterView<?> p) {}
+        });
+    }
+
+    private void addLabelField(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
+        TextView lblText = new TextView(this);
+        lblText.setText("Label (optional):");
+        lblText.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
+        body.addView(lblText);
+
+        EditText etLabel = new EditText(this);
+        etLabel.setText(sb.text);
+        etLabel.setHint("leave empty = show key name");
+        etLabel.setSingleLine(true);
+        etLabel.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        body.addView(etLabel);
+
+        etLabel.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                element.setMultiButtonText(index, s.toString());
+                profile.save();
+                inputControlsView.invalidate();
+            }
+        });
+    }
+
+    private void addIconPicker(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
+        TextView lblIcon = new TextView(this);
+        lblIcon.setText("Icon (optional):");
+        lblIcon.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
+        body.addView(lblIcon);
+
+        byte[] iconIds = loadAllIconIds();
+        int iconSize = (int) UnitUtils.dpToPx(40);
+        int margin = (int) UnitUtils.dpToPx(2);
+        int padding = (int) UnitUtils.dpToPx(4);
+
+        HorizontalScrollView hsv = new HorizontalScrollView(this);
+        LinearLayout iconRow = new LinearLayout(this);
+        iconRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        final byte[] selectedHolder = { sb.iconId };
+
+        FrameLayout noneFrame = new FrameLayout(this);
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        nlp.setMargins(margin, 0, margin, 0);
+        noneFrame.setLayoutParams(nlp);
+        ImageView noneIv = new ImageView(this);
+        noneIv.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        noneIv.setBackgroundResource(R.drawable.icon_background);
+        noneFrame.addView(noneIv);
+        TextView noneLabel = new TextView(this);
+        noneLabel.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        noneLabel.setText("×");
+        noneLabel.setTextSize(20);
+        noneLabel.setGravity(Gravity.CENTER);
+        noneFrame.addView(noneLabel);
+        noneFrame.setOnClickListener(v -> {
+            selectedHolder[0] = 0;
+            element.setMultiButtonIconId(index, (byte) 0);
+            profile.save();
+            inputControlsView.invalidate();
+            refreshIconSelection(iconRow, (byte) 0);
+        });
+        iconRow.addView(noneFrame);
+
+        for (final byte id : iconIds) {
+            FrameLayout frame = new FrameLayout(this);
+            LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(iconSize, iconSize);
+            flp.setMargins(margin, 0, margin, 0);
+            frame.setLayoutParams(flp);
+
+            ImageView iv = new ImageView(this);
+            iv.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            iv.setPadding(padding, padding, padding, padding);
+            iv.setTag(id);
+            iv.setSelected(id == selectedHolder[0]);
+
+            try (InputStream is = openIconStream(id)) {
+                if (is != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
+                    iv.setImageBitmap(bmp);
+                    applyIconBackground(iv, bmp);
+                }
+            } catch (IOException e) {
+                iv.setBackgroundResource(R.drawable.icon_background);
+            }
+
+            iv.setOnClickListener(v -> {
+                selectedHolder[0] = id;
+                element.setMultiButtonIconId(index, id);
+                profile.save();
+                inputControlsView.invalidate();
+                refreshIconSelection(iconRow, id);
+            });
+
+            frame.addView(iv);
+            iconRow.addView(frame);
+        }
+
+        hsv.addView(iconRow);
+        body.addView(hsv);
+    }
+
+    private void refreshIconSelection(LinearLayout iconRow, byte selectedId) {
+        for (int i = 0; i < iconRow.getChildCount(); i++) {
+            View child = iconRow.getChildAt(i);
+            if (child instanceof FrameLayout) {
+                ImageView iv = (ImageView) ((FrameLayout) child).getChildAt(0);
+                Object tag = iv.getTag();
+                if (tag instanceof Byte) {
+                    iv.setSelected((byte) tag == selectedId);
+                } else {
+                    iv.setSelected(false);
+                }
+            }
+        }
+    }
+
+    private void addBindingSection(LinearLayout body, ControlElement element, int index, ControlElement.SubButton sb) {
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        titleRow.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
+
+        TextView lblBindings = new TextView(this);
+        lblBindings.setText("Key Bindings:");
+        lblBindings.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        titleRow.addView(lblBindings);
+
+        ImageButton btnAdd = new ImageButton(this);
+        btnAdd.setImageResource(R.drawable.icon_add_24dp);
+        btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
+        int pad = (int) UnitUtils.dpToPx(4);
+        btnAdd.setPadding(pad, pad, pad, pad);
+        btnAdd.setOnClickListener(v -> {
+            sb.bindings.add(Binding.NONE);
+            element.setMultiButtonBindings(index, sb.bindings);
+            profile.save();
+            rebuildBindingRows(body, element, index, sb);
+            inputControlsView.invalidate();
+        });
+        titleRow.addView(btnAdd);
+        body.addView(titleRow);
+
+        LinearLayout bindContainer = new LinearLayout(this);
+        bindContainer.setOrientation(LinearLayout.VERTICAL);
+        body.addView(bindContainer);
+        rebuildBindingRows(bindContainer, element, index, sb);
+    }
+
+    private void rebuildBindingRows(LinearLayout bindContainer, ControlElement element, int index, ControlElement.SubButton sb) {
+        bindContainer.removeAllViews();
+        for (int i = 0; i < sb.bindings.size(); i++) {
+            addMultiBtnBindingRow(element, bindContainer, index, i);
+        }
+    }
+
+    private void addMultiBtnBindingRow(ControlElement element, LinearLayout bindContainer,
+                                       int subIdx, int bindIdx) {
+        View row = LayoutInflater.from(this).inflate(R.layout.binding_field, bindContainer, false);
+
+        Spinner sBindingType = row.findViewById(R.id.SBindingType);
+        Spinner sBinding     = row.findViewById(R.id.SBinding);
+        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
+
+        Runnable updateBindingSpinner = () -> {
+            String[] entries = null;
+            switch (sBindingType.getSelectedItemPosition()) {
+                case 0: entries = Binding.keyboardBindingLabels(); break;
+                case 1: entries = Binding.mouseBindingLabels();    break;
+                case 2: entries = Binding.gamepadBindingLabels();  break;
+            }
+            if (entries != null) {
+                sBinding.setAdapter(new ArrayAdapter<>(this,
+                        android.R.layout.simple_spinner_dropdown_item, entries));
+                List<Binding> sb = element.getMultiButtonBindings(subIdx);
+                if (bindIdx < sb.size()) {
+                    AppUtils.setSpinnerSelectionFromValue(sBinding, sb.get(bindIdx).toString());
+                }
+            }
+        };
+
+        sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                updateBindingSpinner.run();
+            }
+            @Override public void onNothingSelected(AdapterView<?> p) {}
+        });
+
+        List<Binding> sb = element.getMultiButtonBindings(subIdx);
+        Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
+        if      (current.isKeyboard()) sBindingType.setSelection(0, false);
+        else if (current.isMouse())    sBindingType.setSelection(1, false);
+        else if (current.isGamepad())  sBindingType.setSelection(2, false);
+
+        sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Binding newBinding = Binding.NONE;
+                switch (sBindingType.getSelectedItemPosition()) {
+                    case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
+                    case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
+                    case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
+                }
+                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
+                if (bindIdx < sb2.size()) {
+                    sb2.set(bindIdx, newBinding);
+                    element.setMultiButtonBindings(subIdx, sb2);
+                    profile.save();
+                    inputControlsView.invalidate();
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> p) {}
+        });
+
+        updateBindingSpinner.run();
+
+        if (bindIdx >= 1) {
+            btnRemove.setVisibility(View.VISIBLE);
+            btnRemove.setOnClickListener(v -> {
+                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
+                if (bindIdx < sb2.size()) {
+                    sb2.remove(bindIdx);
+                    element.setMultiButtonBindings(subIdx, sb2);
+                    profile.save();
+                    View parent = (View) bindContainer.getParent();
+                    if (parent instanceof LinearLayout) {
+                        rebuildBindingRows(bindContainer, element, subIdx, element.getSubButton(subIdx));
+                    }
+                    inputControlsView.invalidate();
+                }
+            });
+        } else {
+            btnRemove.setVisibility(View.GONE);
+        }
+
+        bindContainer.addView(row);
+    }
+
+    private void addSeparator(LinearLayout parent) {
+        View sep = new View(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        int margin = (int) UnitUtils.dpToPx(6);
+        lp.topMargin = margin;
+        lp.bottomMargin = margin;
+        sep.setLayoutParams(lp);
+        sep.setBackgroundColor(0x33FFFFFF);
+        parent.addView(sep);
+    }
+
     private void applyIconBackground(ImageView imageView, Bitmap bitmap) {
         imageView.setBackgroundResource(R.drawable.icon_background);
         if (bitmap == null) return;
-
-        // Dark mode: background tema sudah gelap — tidak perlu deteksi warna,
-        // cukup pakai icon_background standar untuk semua icon.
         if (isDarkMode) return;
 
         int width = bitmap.getWidth();
@@ -534,8 +850,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
 
         if (totalVisible > 0 && (whitishPixels * 100 / totalVisible) >= 60) {
-            // Dominan putih → susun LayerDrawable: lapisan bawah hitam solid,
-            // lapisan atas icon_background selector (membawa stroke biru saat selected).
             android.graphics.drawable.Drawable blackLayer =
                     androidx.core.content.ContextCompat.getDrawable(this, R.drawable.icon_background_black);
             android.graphics.drawable.Drawable selectorLayer =
@@ -545,7 +859,59 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                             new android.graphics.drawable.Drawable[]{blackLayer, selectorLayer});
             imageView.setBackground(layered);
         }
-        // else: icon_background sudah di-set di awal, tidak perlu tindakan lagi
+    }
+
+    private byte[] loadAllIconIds() {
+        List<Byte> ids = new ArrayList<>();
+        try {
+            String[] filenames = getAssets().list("inputcontrols/icons/");
+            if (filenames != null) {
+                for (String fn : filenames) {
+                    try {
+                        byte id = Byte.parseByte(FileUtils.getBasename(fn));
+                        if (!ids.contains(id)) ids.add(id);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        } catch (IOException ignored) {}
+
+        File iconsDir = InputControlsManager.getIconsDir(this);
+        File[] files = iconsDir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                String base = FileUtils.getBasename(f.getName());
+                try {
+                    int idInt = Integer.parseInt(base);
+                    if (idInt >= Byte.MIN_VALUE && idInt <= Byte.MAX_VALUE) {
+                        byte id = (byte) idInt;
+                        if (!ids.contains(id)) ids.add(id);
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        ids.sort((a, b) -> Byte.toUnsignedInt(a) - Byte.toUnsignedInt(b));
+        byte[] result = new byte[ids.size()];
+        for (int i = 0; i < ids.size(); i++) result[i] = ids.get(i);
+        return result;
+    }
+
+    private InputStream openIconStream(byte id) {
+        try {
+            return getAssets().open("inputcontrols/icons/" + id + ".png");
+        } catch (IOException ignored) {}
+
+        File iconsDir = InputControlsManager.getIconsDir(this);
+        String[] extensions = {".png", ".jpg", ".jpeg", ".webp"};
+        for (String ext : extensions) {
+            File f = new File(iconsDir, id + ext);
+            if (f.isFile()) {
+                try {
+                    return new FileInputStream(f);
+                } catch (IOException ignored) {}
+            }
+        }
+        return null;
     }
 
     private void loadTypeSpinner(final ControlElement element, Spinner spinner, Runnable callback) {
@@ -585,8 +951,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         ControlElement.Type type = element.getType();
 
-        // MULTIPLE_BUTTON dan MENU_NAVIGATION punya binding system sendiri,
-        // LLBindings tidak ditampilkan untuk tipe ini — langsung return
         if (type == ControlElement.Type.MULTIPLE_BUTTON ||
             type == ControlElement.Type.MENU_NAVIGATION) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
@@ -594,14 +958,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             return;
         }
 
-        // Hanya BUTTON yang boleh pakai tombol Add dan multiple binding
         if (type == ControlElement.Type.BUTTON) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.VISIBLE);
 
             if (element.getBindingCount() == 0) {
-                element.addBinding(Binding.NONE);   // tambahkan binding default
-                profile.save();                     // simpan agar tidak hilang
+                element.addBinding(Binding.NONE);
+                profile.save();
             }
             
             btnAddBinding.setOnClickListener(v -> {
@@ -615,7 +978,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 inputControlsView.invalidate();
             });
 
-            // Tampilkan semua binding yang sudah ada (minimal 1)
             for (int i = 0; i < element.getBindingCount(); i++) {
                 addNewBindingRow(element, container, i);
             }
@@ -624,21 +986,17 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                  type == ControlElement.Type.STICK || 
                  type == ControlElement.Type.TRACKPAD ||
                  type == ControlElement.Type.RIGHT_STICK) {
-            // Sembunyikan tombol Add
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.GONE);
 
-            // 4 arah tetap ditampilkan
-            addNewBindingRow(element, container, 0); // Up
-            addNewBindingRow(element, container, 1); // Right
-            addNewBindingRow(element, container, 2); // Down
-            addNewBindingRow(element, container, 3); // Left
+            addNewBindingRow(element, container, 0);
+            addNewBindingRow(element, container, 1);
+            addNewBindingRow(element, container, 2);
+            addNewBindingRow(element, container, 3);
         } 
         else {
-            // Untuk TOUCHSCREEN_TOGGLE dan tipe lain yang tidak butuh binding
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.GONE);
-            // container sudah di-removeAllViews() di atas, jadi kosong
         }
     }
 
@@ -649,7 +1007,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         Spinner sBinding = row.findViewById(R.id.SBinding);
         ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
-        // Setup spinner binding
         Runnable updateBindingSpinner = () -> {
             String[] bindingEntries = null;
             switch (sBindingType.getSelectedItemPosition()) {
@@ -696,7 +1053,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
         updateBindingSpinner.run();
 
-        // Logika Remove: hanya untuk BUTTON dan index >= 1
         if (element.getType() == ControlElement.Type.BUTTON && index >= 1) {
             btnRemove.setVisibility(View.VISIBLE);
             btnRemove.setOnClickListener(v -> {
@@ -765,509 +1121,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
     }
 
-    /**
-     * Mengumpulkan semua ID icon yang tersedia dari dua sumber:
-     *  1. Assets bawaan   : assets/inputcontrols/icons/
-     *  2. Import pengguna : filesDir/inputcontrols/icons/
-     * Hasilnya digabung, deduplikasi, lalu diurutkan numerik secara ascending.
-     */
-    private byte[] loadAllIconIds() {
-        List<Byte> ids = new ArrayList<>();
-
-        // 1. Asset bawaan
-        try {
-            String[] filenames = getAssets().list("inputcontrols/icons/");
-            if (filenames != null) {
-                for (String fn : filenames) {
-                    try {
-                        byte id = Byte.parseByte(FileUtils.getBasename(fn));
-                        if (!ids.contains(id)) ids.add(id);
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-        } catch (IOException ignored) {}
-
-        // 2. Folder import pengguna (filesDir/inputcontrols/icons/)
-        File iconsDir = InputControlsManager.getIconsDir(this);
-        File[] files = iconsDir.listFiles();
-        if (files != null) {
-            for (File f : files) {
-                String base = FileUtils.getBasename(f.getName());
-                try {
-                    // ID dari folder import bisa > 127, tapi byte di sini; gunakan int dulu lalu cast
-                    int idInt = Integer.parseInt(base);
-                    if (idInt >= Byte.MIN_VALUE && idInt <= Byte.MAX_VALUE) {
-                        byte id = (byte) idInt;
-                        if (!ids.contains(id)) ids.add(id);
-                    }
-                } catch (NumberFormatException ignored) {}
-            }
-        }
-
-        // Urutkan (byte unsigned sort agar 1,2,...,30,31 tetap urut)
-        ids.sort((a, b) -> Byte.toUnsignedInt(a) - Byte.toUnsignedInt(b));
-
-        byte[] result = new byte[ids.size()];
-        for (int i = 0; i < ids.size(); i++) result[i] = ids.get(i);
-        return result;
-    }
-
-    /**
-     * Membuka InputStream untuk icon dengan ID tertentu.
-     * Urutan prioritas:
-     *  1. Asset bawaan   : assets/inputcontrols/icons/<id>.png
-     *  2. Import pengguna: filesDir/inputcontrols/icons/<id>.(png|jpg|jpeg|webp)
-     * Mengembalikan null jika tidak ditemukan di kedua sumber.
-     */
-    private InputStream openIconStream(byte id) {
-        // 1. Asset bawaan
-        try {
-            return getAssets().open("inputcontrols/icons/" + id + ".png");
-        } catch (IOException ignored) {}
-
-        // 2. Folder import pengguna
-        File iconsDir = InputControlsManager.getIconsDir(this);
-        String[] extensions = {".png", ".jpg", ".jpeg", ".webp"};
-        for (String ext : extensions) {
-            File f = new File(iconsDir, id + ext);
-            if (f.isFile()) {
-                try {
-                    return new FileInputStream(f);
-                } catch (IOException ignored) {}
-            }
-        }
-
-        return null;
-    }
-
     @Override
     public void onBackPressed() {
         super.onBackPressed();
         overridePendingTransition(R.anim.slide_in_down, R.anim.slide_out_up);
     }
 
-    /**
-     * MULTIPLE_BUTTON editor UI.
-     *
-     * Pola ini mengikuti persis pola loadBindingSpinners() + addNewBindingRow():
-     *  - inflate menggunakan LayoutInflater.from(this) bukan new View(ctx)
-     *  - binding rows reuse addNewBindingRow() dengan adapter khusus untuk sub-button
-     *  - UI dirender ke dalam LLMultiButtonOptions yang sudah ada di XML
-     *
-     * Struktur per sub-button:
-     *   [Section header: "Button N  ▼"]
-     *   [Direction spinner: 8 arah — NONE/OFF juga tersedia agar button bisa disembunyikan]
-     *   [Label text: EditText — kosong = tampilkan binding key sebagai label]
-     *   [Icon picker (horizontal scroll) — opsional]
-     *   [Binding rows: inflate binding_field, reuse pattern addNewBindingRow()]
-     *   [+ Add binding button — ImageButton dengan icon_add_24dp]
-     *
-     * Jumlah sub-button: Spinner 1–8 di atas semua section.
-     * Setiap arah independen per-button, termasuk HIDDEN agar bisa disembunyikan.
-     */
-    private void loadMultiButtonUI(View settingsView, ControlElement element) {
-        LinearLayout container = settingsView.findViewById(R.id.LLMultiButtonOptions);
-        container.removeAllViews();
-
-        // ── Row: jumlah sub-button ─────────────────────────────────────
-        // Inflate row sederhana menggunakan pola horizontal + spinner
-        LinearLayout rowCount = new LinearLayout(this);
-        rowCount.setOrientation(LinearLayout.HORIZONTAL);
-        rowCount.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        rowCount.setPadding(0, 0, 0, (int) UnitUtils.dpToPx(8));
-
-        TextView lblCount = new TextView(this);
-        lblCount.setText("Number of buttons: ");
-        lblCount.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        rowCount.addView(lblCount);
-
-        Spinner spCount = new Spinner(this);  // this = Activity context, bukan generic ctx
-        String[] countOpts = {"1", "2", "3", "4", "5", "6", "7", "8"};
-        spCount.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_dropdown_item, countOpts));
-        spCount.setSelection(element.getMultiButtonCount() - 1, false);
-        spCount.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        rowCount.addView(spCount);
-        container.addView(rowCount);
-
-        // Rebuild seluruh section saat count berubah
-        spCount.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                int newCount = pos + 1;
-                if (newCount != element.getMultiButtonCount()) {
-                    element.setMultiButtonCount(newCount);
-                    profile.save();
-                    inputControlsView.invalidate();
-                    loadMultiButtonUI(settingsView, element);
-                }
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        // Separator
-        addMultiBtnSeparator(container);
-
-        // ── Section per sub-button ─────────────────────────────────────
-        int count = element.getMultiButtonCount();
-        for (int i = 0; i < count; i++) {
-            addMultiBtnSection(container, settingsView, element, i);
-            if (i < count - 1) addMultiBtnSeparator(container);
-        }
-    }
-
-    /**
-     * Satu section sub-button (collapsible header + body).
-     * Body berisi: Direction spinner, Label EditText, Mini icon picker,
-     * binding rows (pakai addMultiBtnBindingRow), dan tombol [+ Add Binding].
-     */
-    private void addMultiBtnSection(LinearLayout container, View settingsView,
-                                    ControlElement element, int idx) {
-        // ── Header (collapsible) ───────────────────────────────────────
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        header.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-        header.setBackgroundResource(android.R.drawable.list_selector_background);
-
-        TextView tvHeader = new TextView(this);
-        tvHeader.setText("Button " + (idx + 1));
-        tvHeader.setTypeface(null, android.graphics.Typeface.BOLD);
-        tvHeader.setLayoutParams(new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(tvHeader);
-
-        TextView tvChevron = new TextView(this);
-        // Section pertama expanded, sisanya collapsed
-        tvChevron.setText(idx == 0 ? "▼" : "▶");
-        header.addView(tvChevron);
-
-        container.addView(header);
-
-        // ── Body ───────────────────────────────────────────────────────
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding((int) UnitUtils.dpToPx(8), (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(4));
-        body.setVisibility(idx == 0 ? View.VISIBLE : View.GONE);
-        container.addView(body);
-
-        // Toggle collapse/expand
-        header.setOnClickListener(v -> {
-            boolean expanded = body.getVisibility() == View.VISIBLE;
-            body.setVisibility(expanded ? View.GONE : View.VISIBLE);
-            tvChevron.setText(expanded ? "▶" : "▼");
-        });
-
-        // ── Direction spinner ──────────────────────────────────────────
-        // NONE = button disembunyikan / tidak aktif
-        final String[] DIRECTION_NAMES = {
-                "NONE (hidden)", "↑ Up", "↗ Up-Right", "→ Right",
-                "↘ Down-Right", "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"
-        };
-        // Internal: index 0 = NONE (-1), index 1..8 = direction 0..7
-        // Simpan sebagai byte: 0xFF = NONE, 0..7 = direction
-        // Kita encode NONE sebagai nilai -1 (byte 0xFF via cast)
-
-        TextView lblDir = new TextView(this);
-        lblDir.setText("Direction:");
-        lblDir.setPadding(0, (int) UnitUtils.dpToPx(4), 0, 0);
-        body.addView(lblDir);
-
-        Spinner spDir = new Spinner(this);
-        spDir.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_dropdown_item, DIRECTION_NAMES));
-
-        // Decode: byte 0xFF = NONE → pilih index 0; 0..7 → index 1..8
-        byte curDir = element.getMultiButtonDirection(idx);
-        int dirSelection = (curDir == (byte) 0xFF || curDir < 0) ? 0 : (curDir & 0xFF) + 1;
-        if (dirSelection > 8) dirSelection = 0;
-        spDir.setSelection(dirSelection, false);
-        spDir.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        body.addView(spDir);
-
-        spDir.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                // pos 0 = NONE (0xFF), pos 1..8 = dir 0..7
-                byte dirVal = (pos == 0) ? (byte) 0xFF : (byte) (pos - 1);
-                element.setMultiButtonDirection(idx, dirVal);
-                profile.save();
-                inputControlsView.invalidate();
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        // ── Label text ─────────────────────────────────────────────────
-        TextView lblText = new TextView(this);
-        lblText.setText("Label (optional):");
-        lblText.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
-        body.addView(lblText);
-
-        android.widget.EditText etLabel = new android.widget.EditText(this);
-        etLabel.setText(element.getMultiButtonText(idx));
-        etLabel.setHint("leave empty = show key name");
-        etLabel.setSingleLine(true);
-        etLabel.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        body.addView(etLabel);
-
-        etLabel.addTextChangedListener(new android.text.TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
-            @Override public void afterTextChanged(android.text.Editable s) {
-                element.setMultiButtonText(idx, s.toString());
-                profile.save();
-                inputControlsView.invalidate();
-            }
-        });
-
-        // ── Icon picker untuk sub-button ───────────────────────────────────
-        TextView lblIcon = new TextView(this);
-        lblIcon.setText("Icon (optional):");
-        lblIcon.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
-        body.addView(lblIcon);
-
-        final byte[] selectedIcon = { element.getMultiButtonIconId(idx) };
-        android.widget.HorizontalScrollView iconPicker = createMiniIconPicker(selectedIcon, () -> {
-            element.setMultiButtonIconId(idx, selectedIcon[0]);
-            profile.save();
-            inputControlsView.invalidate();
-        });
-        body.addView(iconPicker);
-
-        // ── Binding rows ───────────────────────────────────────────────
-        TextView lblBindings = new TextView(this);
-        lblBindings.setText("Key Bindings:");
-        lblBindings.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
-        body.addView(lblBindings);
-
-        // Container khusus binding rows sub-button ini (reuse pola LLBindings)
-        LinearLayout bindContainer = new LinearLayout(this);
-        bindContainer.setOrientation(LinearLayout.VERTICAL);
-        body.addView(bindContainer);
-
-        // Tombol + Add Binding — gunakan resource dan background yang sama dengan btnAddBinding di XML
-        ImageButton btnAdd = new ImageButton(this);
-        btnAdd.setImageResource(R.drawable.icon_add_24dp);
-        btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
-        int btnPad = (int) UnitUtils.dpToPx(8);
-        btnAdd.setPadding(btnPad, btnPad, btnPad, btnPad);
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        btnLp.gravity = android.view.Gravity.END;
-        btnAdd.setLayoutParams(btnLp);
-        body.addView(btnAdd);
-
-        // Pastikan minimal 1 binding
-        if (element.getMultiButtonBindings(idx).isEmpty()) {
-            element.getMultiButtonBindings(idx).add(Binding.NONE);
-            profile.save();
-        }
-
-        // Render semua binding row yang sudah ada
-        List<Binding> subBindings = element.getMultiButtonBindings(idx);
-        for (int k = 0; k < subBindings.size(); k++) {
-            addMultiBtnBindingRow(element, bindContainer, idx, k);
-        }
-
-        // Tombol + Add: tambah satu binding baru
-        btnAdd.setOnClickListener(v -> {
-            List<Binding> sb = element.getMultiButtonBindings(idx);
-            if (sb.size() >= 8) {
-                AppUtils.showToast(this, "Maksimal 8 binding per button");
-                return;
-            }
-            sb.add(Binding.NONE);
-            element.setMultiButtonBindings(idx, sb);
-            profile.save();
-            addMultiBtnBindingRow(element, bindContainer, idx, sb.size() - 1);
-            inputControlsView.invalidate();
-        });
-    }
-
-    /**
-     * Membuat HorizontalScrollView yang berisi daftar icon kecil.
-     * Klik icon akan mengatur selectedId[] dan memanggil onIconSelected.
-     */
-    private android.widget.HorizontalScrollView createMiniIconPicker(final byte[] selectedIdHolder,
-                                                                     final Runnable onIconSelected) {
-        byte[] iconIds = loadAllIconIds();
-        int iconSize = (int) UnitUtils.dpToPx(36);
-        int padding = (int) UnitUtils.dpToPx(2);
-        int margin = (int) UnitUtils.dpToPx(2);
-
-        LinearLayout iconRow = new LinearLayout(this);
-        iconRow.setOrientation(LinearLayout.HORIZONTAL);
-
-        for (final byte id : iconIds) {
-            FrameLayout frame = new FrameLayout(this);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(iconSize, iconSize);
-            lp.setMargins(margin, 0, margin, 0);
-            frame.setLayoutParams(lp);
-
-            ImageView iv = new ImageView(this);
-            iv.setLayoutParams(new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT));
-            iv.setPadding(padding, padding, padding, padding);
-            iv.setTag(id);
-            iv.setSelected(id == selectedIdHolder[0]);
-
-            try (InputStream is = openIconStream(id)) {
-                if (is != null) {
-                    Bitmap bmp = BitmapFactory.decodeStream(is);
-                    iv.setImageBitmap(bmp);
-                    applyIconBackground(iv, bmp);
-                }
-            } catch (IOException e) {
-                iv.setBackgroundResource(R.drawable.icon_background);
-            }
-
-            iv.setOnClickListener(v -> {
-                selectedIdHolder[0] = id;
-                // Update selection visual
-                for (int i = 0; i < iconRow.getChildCount(); i++) {
-                    View child = iconRow.getChildAt(i);
-                    if (child instanceof FrameLayout) {
-                        ImageView img = (ImageView) ((FrameLayout) child).getChildAt(0);
-                        img.setSelected(id == (byte) img.getTag());
-                    }
-                }
-                if (onIconSelected != null) onIconSelected.run();
-            });
-
-            frame.addView(iv);
-            iconRow.addView(frame);
-        }
-
-        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
-        hsv.addView(iconRow);
-        return hsv;
-    }
-
-    /**
-     * Satu binding row untuk sub-button MULTIPLE_BUTTON.
-     *
-     * Mengikuti persis pola addNewBindingRow():
-     *  - inflate R.layout.binding_field
-     *  - SBindingType (Keyboard/Mouse/Gamepad) + SBinding (nilai spesifik)
-     *  - btnRemoveBinding: tampil jika index >= 1 (boleh hapus combo ke-2+)
-     *
-     * Perbedaan satu-satunya: baca/tulis ke element.getMultiButtonBindings(subIdx)
-     * bukan ke element.getBindingAt(index).
-     */
-    private void addMultiBtnBindingRow(ControlElement element, LinearLayout bindContainer,
-                                       int subIdx, int bindIdx) {
-        View row = LayoutInflater.from(this).inflate(R.layout.binding_field, bindContainer, false);
-
-        Spinner sBindingType = row.findViewById(R.id.SBindingType);
-        Spinner sBinding     = row.findViewById(R.id.SBinding);
-        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
-
-        // Setup sBinding sesuai pilihan sBindingType — persis sama dengan addNewBindingRow()
-        Runnable updateBindingSpinner = () -> {
-            String[] entries = null;
-            switch (sBindingType.getSelectedItemPosition()) {
-                case 0: entries = Binding.keyboardBindingLabels(); break;
-                case 1: entries = Binding.mouseBindingLabels();    break;
-                case 2: entries = Binding.gamepadBindingLabels();  break;
-            }
-            if (entries != null) {
-                sBinding.setAdapter(new ArrayAdapter<>(this,
-                        android.R.layout.simple_spinner_dropdown_item, entries));
-                // Set selection ke binding saat ini
-                List<Binding> sb = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb.size()) {
-                    AppUtils.setSpinnerSelectionFromValue(sBinding, sb.get(bindIdx).toString());
-                }
-            }
-        };
-
-        sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                updateBindingSpinner.run();
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        // Set tipe awal sesuai binding saat ini
-        List<Binding> sb = element.getMultiButtonBindings(subIdx);
-        Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
-        if      (current.isKeyboard()) sBindingType.setSelection(0, false);
-        else if (current.isMouse())    sBindingType.setSelection(1, false);
-        else if (current.isGamepad())  sBindingType.setSelection(2, false);
-
-        sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                Binding newBinding = Binding.NONE;
-                switch (sBindingType.getSelectedItemPosition()) {
-                    case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
-                    case 1: newBinding = Binding.mouseBindingValues()[pos];    break;
-                    case 2: newBinding = Binding.gamepadBindingValues()[pos];  break;
-                }
-                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb2.size()) {
-                    sb2.set(bindIdx, newBinding);
-                    element.setMultiButtonBindings(subIdx, sb2);
-                    profile.save();
-                    inputControlsView.invalidate();
-                }
-            }
-            @Override public void onNothingSelected(AdapterView<?> p) {}
-        });
-
-        updateBindingSpinner.run();
-
-        // Remove: hanya tampil untuk combo index >= 1 (persis pola BUTTON)
-        if (bindIdx >= 1) {
-            btnRemove.setVisibility(View.VISIBLE);
-            btnRemove.setOnClickListener(v -> {
-                List<Binding> sb2 = element.getMultiButtonBindings(subIdx);
-                if (bindIdx < sb2.size()) {
-                    sb2.remove(bindIdx);
-                    element.setMultiButtonBindings(subIdx, sb2);
-                    profile.save();
-                    // Rebuild seluruh binding container sub-button ini
-                    bindContainer.removeAllViews();
-                    List<Binding> sb3 = element.getMultiButtonBindings(subIdx);
-                    for (int k = 0; k < sb3.size(); k++) {
-                        addMultiBtnBindingRow(element, bindContainer, subIdx, k);
-                    }
-                    inputControlsView.invalidate();
-                }
-            });
-        } else {
-            btnRemove.setVisibility(View.GONE);
-        }
-
-        bindContainer.addView(row);
-    }
-
-    /** Divider tipis antar section sub-button. */
-    private void addMultiBtnSeparator(LinearLayout parent) {
-        View sep = new View(this);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1);
-        int margin = (int) UnitUtils.dpToPx(6);
-        lp.topMargin = margin;
-        lp.bottomMargin = margin;
-        sep.setLayoutParams(lp);
-        sep.setBackgroundColor(0x33FFFFFF);
-        parent.addView(sep);
-    }
-
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
-
 }

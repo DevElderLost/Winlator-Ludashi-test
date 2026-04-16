@@ -13,6 +13,11 @@ public class Bitmask implements Iterable<Integer> {
         this.bits = bits;
     }
 
+    // Konstruktor tambahan dari versi lengkap (Bitmask 1.java)
+    public Bitmask(int[] flags) {
+        for (int flag : flags) set(flag);
+    }
+
     public boolean isSet(int flag) {
         return (flag & this.bits) != 0;
     }
@@ -28,8 +33,9 @@ public class Bitmask implements Iterable<Integer> {
     public void set(int flag, boolean value) {
         if (value) {
             set(flag);
+        } else {
+            unset(flag);
         }
-        else unset(flag);
     }
 
     public void unset(int flag) {
@@ -70,5 +76,12 @@ public class Bitmask implements Iterable<Integer> {
     @Override
     public int hashCode() {
         return bits;
+    }
+
+    // Metode toString() dari versi lengkap untuk kemudahan debugging
+    @NonNull
+    @Override
+    public String toString() {
+        return String.valueOf(bits);
     }
 }

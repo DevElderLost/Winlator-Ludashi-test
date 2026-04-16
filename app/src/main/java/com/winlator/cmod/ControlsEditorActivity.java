@@ -173,7 +173,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
                 loadSlotIconsUI(view, element,
-                        new String[]{"Main Button", "Keyboard", "Cursor Pos", "Input Controls", "Exit"}, 6);
+                        new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
             }
             else if (type == ControlElement.Type.MULTIPLE_BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
@@ -764,6 +764,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     Spinner sBinding     = row.findViewById(R.id.SBinding);
     ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
 
+    // Flag untuk memblokir callback onItemSelected yang dipicu secara otomatis
+    // oleh setAdapter()/setSelection() selama proses inisialisasi.
+    final boolean[] isInitializing = { true };
+
     Runnable updateBindingSpinner = () -> {
         String[] entries = null;
         Binding[] values = null;
@@ -796,25 +800,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
     };
 
-    sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-        @Override
-        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-            updateBindingSpinner.run();
-        }
-        @Override public void onNothingSelected(AdapterView<?> p) {}
-    });
-
-    List<Binding> sb = element.getMultiButtonBindings(subIdx);
-    Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
-    if      (current.isKeyboard()) sBindingType.setSelection(0, false);
-    else if (current.isMouse())    sBindingType.setSelection(1, false);
-    else if (current.isGamepad())  sBindingType.setSelection(2, false);
-
-    updateBindingSpinner.run();
-
+    // Pasang listener sBinding SEBELUM updateBindingSpinner.run() agar urutan
+    // setup tidak memicu write-back ke binding. Flag isInitializing akan
+    // memblokir semua callback spurious yang diposting oleh setAdapter/setSelection.
     sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
         @Override
         public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+            if (isInitializing[0]) return; // abaikan callback selama setup
             Binding newBinding = Binding.NONE;
             switch (sBindingType.getSelectedItemPosition()) {
                 case 0: newBinding = Binding.keyboardBindingValues()[pos]; break;
@@ -831,6 +823,26 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
         @Override public void onNothingSelected(AdapterView<?> p) {}
     });
+
+    sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+            updateBindingSpinner.run();
+        }
+        @Override public void onNothingSelected(AdapterView<?> p) {}
+    });
+
+    List<Binding> sb = element.getMultiButtonBindings(subIdx);
+    Binding current = (bindIdx < sb.size()) ? sb.get(bindIdx) : Binding.NONE;
+    if      (current.isKeyboard()) sBindingType.setSelection(0, false);
+    else if (current.isMouse())    sBindingType.setSelection(1, false);
+    else if (current.isGamepad())  sBindingType.setSelection(2, false);
+
+    updateBindingSpinner.run();
+
+    // Aktifkan flag setelah semua pending callback dari setAdapter/setSelection
+    // sudah dieksekusi dan diabaikan oleh guard di atas.
+    sBinding.post(() -> isInitializing[0] = false);
 
 
     if (bindIdx >= 1) {

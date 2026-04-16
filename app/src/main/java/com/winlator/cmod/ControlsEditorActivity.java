@@ -858,6 +858,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
      *   [Section header: "Button N  ▼"]
      *   [Direction spinner: 8 arah — NONE/OFF juga tersedia agar button bisa disembunyikan]
      *   [Label text: EditText — kosong = tampilkan binding key sebagai label]
+     *   [Icon picker (horizontal scroll) — opsional]
      *   [Binding rows: inflate binding_field, reuse pattern addNewBindingRow()]
      *   [+ Add binding button — ImageButton dengan icon_add_24dp]
      *
@@ -921,8 +922,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
 
     /**
      * Satu section sub-button (collapsible header + body).
-     * Body berisi: Direction spinner, Label EditText, binding rows (pakai addMultiBtnBindingRow),
-     * dan tombol [+ Add Binding].
+     * Body berisi: Direction spinner, Label EditText, Mini icon picker,
+     * binding rows (pakai addMultiBtnBindingRow), dan tombol [+ Add Binding].
      */
     private void addMultiBtnSection(LinearLayout container, View settingsView,
                                     ControlElement element, int idx) {
@@ -1027,6 +1028,20 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
         });
 
+        // ── Icon picker untuk sub-button ───────────────────────────────────
+        TextView lblIcon = new TextView(this);
+        lblIcon.setText("Icon (optional):");
+        lblIcon.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
+        body.addView(lblIcon);
+
+        final byte[] selectedIcon = { element.getMultiButtonIconId(idx) };
+        android.widget.HorizontalScrollView iconPicker = createMiniIconPicker(selectedIcon, () -> {
+            element.setMultiButtonIconId(idx, selectedIcon[0]);
+            profile.save();
+            inputControlsView.invalidate();
+        });
+        body.addView(iconPicker);
+
         // ── Binding rows ───────────────────────────────────────────────
         TextView lblBindings = new TextView(this);
         lblBindings.setText("Key Bindings:");
@@ -1076,6 +1091,66 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             addMultiBtnBindingRow(element, bindContainer, idx, sb.size() - 1);
             inputControlsView.invalidate();
         });
+    }
+
+    /**
+     * Membuat HorizontalScrollView yang berisi daftar icon kecil.
+     * Klik icon akan mengatur selectedId[] dan memanggil onIconSelected.
+     */
+    private android.widget.HorizontalScrollView createMiniIconPicker(final byte[] selectedIdHolder,
+                                                                     final Runnable onIconSelected) {
+        byte[] iconIds = loadAllIconIds();
+        int iconSize = (int) UnitUtils.dpToPx(36);
+        int padding = (int) UnitUtils.dpToPx(2);
+        int margin = (int) UnitUtils.dpToPx(2);
+
+        LinearLayout iconRow = new LinearLayout(this);
+        iconRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        for (final byte id : iconIds) {
+            FrameLayout frame = new FrameLayout(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(iconSize, iconSize);
+            lp.setMargins(margin, 0, margin, 0);
+            frame.setLayoutParams(lp);
+
+            ImageView iv = new ImageView(this);
+            iv.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+            iv.setPadding(padding, padding, padding, padding);
+            iv.setTag(id);
+            iv.setSelected(id == selectedIdHolder[0]);
+
+            try (InputStream is = openIconStream(id)) {
+                if (is != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
+                    iv.setImageBitmap(bmp);
+                    applyIconBackground(iv, bmp);
+                }
+            } catch (IOException e) {
+                iv.setBackgroundResource(R.drawable.icon_background);
+            }
+
+            iv.setOnClickListener(v -> {
+                selectedIdHolder[0] = id;
+                // Update selection visual
+                for (int i = 0; i < iconRow.getChildCount(); i++) {
+                    View child = iconRow.getChildAt(i);
+                    if (child instanceof FrameLayout) {
+                        ImageView img = (ImageView) ((FrameLayout) child).getChildAt(0);
+                        img.setSelected(id == (byte) img.getTag());
+                    }
+                }
+                if (onIconSelected != null) onIconSelected.run();
+            });
+
+            frame.addView(iv);
+            iconRow.addView(frame);
+        }
+
+        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        hsv.addView(iconRow);
+        return hsv;
     }
 
     /**

@@ -215,7 +215,7 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 element.setText(elementJSONObject.getString("text"));
                 element.setIconId(elementJSONObject.getInt("iconId"));
 
-                // Load slot icons (D_PAD per-arah, STICK/RIGHT_STICK outer+inner)
+                // Load slot icons
                 if (elementJSONObject.has("slotIconIds")) {
                     JSONArray slotIconsArray = elementJSONObject.getJSONArray("slotIconIds");
                     byte[] slotIds = new byte[slotIconsArray.length()];
@@ -227,28 +227,50 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 if (elementJSONObject.has("range")) element.setRange(ControlElement.Range.valueOf(elementJSONObject.getString("range")));
                 if (elementJSONObject.has("orientation")) element.setOrientation((byte)elementJSONObject.getInt("orientation"));
 
-                // Cursor Move Mode — hanya berlaku untuk RIGHT_STICK
+                // Cursor Move Mode (RIGHT_STICK)
                 if (element.getType() == ControlElement.Type.RIGHT_STICK) {
                     element.setCursorMove(elementJSONObject.optBoolean("isCursorMove", false));
                     element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 150));
                 }
 
-                // MULTIPLE_BUTTON: load data sub-button
+                // MULTIPLE_BUTTON: load sub-buttons (format baru "subButtons", fallback ke "multiButtons")
                 if (element.getType() == ControlElement.Type.MULTIPLE_BUTTON) {
-                    element.setMultiButtonCount(elementJSONObject.optInt("multiButtonCount", 4));
-                    if (elementJSONObject.has("multiButtons")) {
+                    if (elementJSONObject.has("subButtons")) {
+                        // Format dinamis baru
+                        JSONArray subArr = elementJSONObject.getJSONArray("subButtons");
+                        for (int j = 0; j < subArr.length(); j++) {
+                            element.addSubButton();
+                            ControlElement.SubButton sb = element.getSubButton(j);
+                            JSONObject sbObj = subArr.getJSONObject(j);
+                            if (sbObj.has("bindings")) {
+                                JSONArray bindArr = sbObj.getJSONArray("bindings");
+                                List<Binding> bindings = new ArrayList<>();
+                                for (int k = 0; k < bindArr.length(); k++) {
+                                    bindings.add(Binding.fromString(bindArr.getString(k)));
+                                }
+                                element.setMultiButtonBindings(j, bindings);
+                            }
+                            int dirInt = sbObj.optInt("direction", -1);
+                            byte dirByte = (dirInt < 0) ? (byte) 0xFF : (byte) (dirInt & 0x07);
+                            element.setMultiButtonDirection(j, dirByte);
+                            element.setMultiButtonText(j, sbObj.optString("text", ""));
+                            element.setMultiButtonIconId(j, (byte) sbObj.optInt("iconId", 0));
+                        }
+                    } else if (elementJSONObject.has("multiButtons")) {
+                        // Format lama (fixed 8)
                         JSONArray mbArr = elementJSONObject.getJSONArray("multiButtons");
-                        for (int j = 0; j < mbArr.length() && j < ControlElement.MULTI_BTN_MAX; j++) {
+                        for (int j = 0; j < mbArr.length(); j++) {
+                            element.addSubButton();
+                            ControlElement.SubButton sb = element.getSubButton(j);
                             JSONObject mbObj = mbArr.getJSONObject(j);
                             if (mbObj.has("bindings")) {
-                                JSONArray mbBindings = mbObj.getJSONArray("bindings");
-                                java.util.List<Binding> sbList = new java.util.ArrayList<>();
-                                for (int k = 0; k < mbBindings.length(); k++) {
-                                    sbList.add(Binding.fromString(mbBindings.getString(k)));
+                                JSONArray bindArr = mbObj.getJSONArray("bindings");
+                                List<Binding> bindings = new ArrayList<>();
+                                for (int k = 0; k < bindArr.length(); k++) {
+                                    bindings.add(Binding.fromString(bindArr.getString(k)));
                                 }
-                                element.setMultiButtonBindings(j, sbList);
+                                element.setMultiButtonBindings(j, bindings);
                             }
-                            // direction: -1 = NONE/hidden (0xFF), 0..7 = valid
                             int dirInt = mbObj.optInt("direction", -1);
                             byte dirByte = (dirInt < 0) ? (byte) 0xFF : (byte) (dirInt & 0x07);
                             element.setMultiButtonDirection(j, dirByte);
@@ -256,17 +278,23 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                             element.setMultiButtonIconId(j, (byte) mbObj.optInt("iconId", 0));
                         }
                     }
+                    // Periksa binding gamepad di sub-button
+                    for (ControlElement.SubButton sb : element.getSubButtons()) {
+                        for (Binding b : sb.bindings) {
+                            if (b.isGamepad()) {
+                                virtualGamepad = true;
+                                break;
+                            }
+                        }
+                    }
                 }
 
-                // MENU_NAVIGATION: listener dipasang dari luar (Activity) lewat
-                // attachMenuNavigationListeners() setelah setProfile() dipanggil.
-                // Tidak ada yang perlu dilakukan di sini.
-
+                // Binding utama (untuk elemen selain MULTIPLE_BUTTON)
                 boolean hasGamepadBinding = true;
                 JSONArray bindingsJSONArray = elementJSONObject.getJSONArray("bindings");
                 for (int j = 0; j < bindingsJSONArray.length(); j++) {
                     Binding binding = Binding.fromString(bindingsJSONArray.getString(j));
-                    element.setBindingAt(j, Binding.fromString(bindingsJSONArray.getString(j)));
+                    element.setBindingAt(j, binding);
                     if (!binding.isGamepad()) hasGamepadBinding = false;
                 }
 

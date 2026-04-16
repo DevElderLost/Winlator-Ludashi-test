@@ -83,6 +83,19 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private int screenshotRenderTargetH = 0;
     private ScreenMaterial screenshotMaterial = null;
 
+// Dalam class GLRenderer
+private int cursorHotspotOffsetX = 0;
+private int cursorHotspotOffsetY = 0;
+
+public void setCursorHotspotOffset(int offsetX, int offsetY) {
+    this.cursorHotspotOffsetX = offsetX;
+    this.cursorHotspotOffsetY = offsetY;
+    xServerView.requestRender();
+}
+
+public int getCursorHotspotOffsetX() { return cursorHotspotOffsetX; }
+public int getCursorHotspotOffsetY() { return cursorHotspotOffsetY; }
+
     /** Satu slot permintaan screenshot. */
     private static final class ScreenshotRequest {
         final Drawable drawable;
@@ -419,25 +432,33 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         }
     }
 
-    private void renderCursor() {
-        cursorMaterial.use();
-        GLES20.glUniform2f(cursorMaterial.getUniformLocation("viewSize"), xServer.screenInfo.width, xServer.screenInfo.height);
-        quadVertices.bind(cursorMaterial.programId);
+    
+// Modifikasi renderCursor() seperti sebelumnya (hanya menggeser visual kursor)
+private void renderCursor() {
+    cursorMaterial.use();
+    GLES20.glUniform2f(cursorMaterial.getUniformLocation("viewSize"),
+        xServer.screenInfo.width, xServer.screenInfo.height);
+    quadVertices.bind(cursorMaterial.programId);
 
-        try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
-            Window pointWindow = xServer.inputDeviceManager.getPointWindow();
-            Cursor cursor = pointWindow != null ? pointWindow.attributes.getCursor() : null;
-            short x = xServer.pointer.getClampedX();
-            short y = xServer.pointer.getClampedY();
+    try (XLock lock = xServer.lock(XServer.Lockable.DRAWABLE_MANAGER)) {
+        Window pointWindow = xServer.inputDeviceManager.getPointWindow();
+        Cursor cursor = pointWindow != null ? pointWindow.attributes.getCursor() : null;
+        short x = xServer.pointer.getClampedX();
+        short y = xServer.pointer.getClampedY();
 
-            if (cursor != null) {
-                if (cursor.isVisible()) renderDrawable(cursor.cursorImage, x - cursor.hotSpotX, y - cursor.hotSpotY, cursorMaterial);
-            }
-            else renderDrawable(rootCursorDrawable, x, y, cursorMaterial);
+        if (cursor != null && cursor.isVisible()) {
+            int renderX = x - cursor.hotSpotX - cursorHotspotOffsetX;
+            int renderY = y - cursor.hotSpotY - cursorHotspotOffsetY;
+            renderDrawable(cursor.cursorImage, renderX, renderY, cursorMaterial);
+        } else {
+            renderDrawable(rootCursorDrawable,
+                x - cursorHotspotOffsetX, y - cursorHotspotOffsetY, cursorMaterial);
         }
-
-        quadVertices.disable();
     }
+
+    quadVertices.disable();
+}
+
 
     public void toggleFullscreen() {
         toggleFullscreen = true;

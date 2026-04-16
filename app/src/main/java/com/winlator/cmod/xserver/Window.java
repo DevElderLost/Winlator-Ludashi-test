@@ -1,8 +1,10 @@
 package com.winlator.cmod.xserver;
 
-import android.util.Log;
+import android.util.ArrayMap;
 import android.util.SparseArray;
 
+import com.winlator.cmod.core.Bitmask;
+import com.winlator.cmod.renderer.FullscreenTransformation;
 import com.winlator.cmod.xserver.events.Event;
 import com.winlator.cmod.xserver.events.PropertyNotify;
 
@@ -12,7 +14,7 @@ import java.util.List;
 import java.util.Stack;
 
 public class Window extends XResource {
-    public static final int FLAG_X = 1;
+    public static final int FLAG_X = 1<<0;
     public static final int FLAG_Y = 1<<1;
     public static final int FLAG_WIDTH = 1<<2;
     public static final int FLAG_HEIGHT = 1<<3;
@@ -22,12 +24,14 @@ public class Window extends XResource {
     public enum StackMode {ABOVE, BELOW, TOP_IF, BOTTOM_IF, OPPOSITE}
     public enum MapState {UNMAPPED, UNVIEWABLE, VIEWABLE}
     public enum WMHints {FLAGS, INPUT, INITIAL_STATE, ICON_PIXMAP, ICON_WINDOW, ICON_X, ICON_Y, ICON_MASK, WINDOW_GROUP}
+    public enum Type {NORMAL, DIALOG}
     private Drawable content;
     private short x;
     private short y;
     private short width;
     private short height;
     private short borderWidth;
+    private ArrayMap<String, Object> tags;
     private Window parent;
     public final XClient originClient;
     public final WindowAttributes attributes = new WindowAttributes(this);
@@ -35,6 +39,7 @@ public class Window extends XResource {
     private final ArrayList<Window> children = new ArrayList<>();
     private final List<Window> immutableChildren = Collections.unmodifiableList(children);
     private final ArrayList<EventListener> eventListeners = new ArrayList<>();
+    private FullscreenTransformation fullscreenTransformation;
 
     public Window(int id, Drawable content, int x, int y, int width, int height, XClient originClient) {
         super(id);
@@ -86,6 +91,30 @@ public class Window extends XResource {
         this.borderWidth = borderWidth;
     }
 
+    public void setTag(Object value) {
+        setTag("tag", value);
+    }
+
+    public Object getTag() {
+        return getTag("tag");
+    }
+
+    public void setTag(String key, Object value) {
+        (tags == null ? (tags = new ArrayMap<>()) : tags).put(key, value);
+    }
+
+    public Object getTag(String key) {
+        return getTag(key, null);
+    }
+
+    public Object getTag(String key, Object fallback) {
+        return (tags == null ? (tags = new ArrayMap<>()) : tags).getOrDefault(key, fallback);
+    }
+
+    public void removeTag(String key) {
+        if (tags != null) tags.remove(key);
+    }
+
     public Drawable getContent() {
         return content;
     }
@@ -98,6 +127,7 @@ public class Window extends XResource {
         return parent;
     }
 
+    // cmod 独有方法
     public void setParent(Window parent) {
         this.parent = parent;
     }
@@ -166,9 +196,45 @@ public class Window extends XResource {
         return property != null ? property.getInt(0) : 0;
     }
 
+    public int getTransientFor() {
+        Property property = getProperty(Atom.getId("WM_TRANSIENT_FOR"));
+        return property != null ? property.getInt(0) : 0;
+    }
+
     public boolean isWoW64() {
         Property property = getProperty(Atom.getId("_NET_WM_WOW64"));
         return property != null && property.data.get(0) == 1;
+    }
+
+    public boolean isSurface() {
+        Property property = getProperty(Atom.getId("_NET_WM_SURFACE"));
+        return property != null && property.data.get(0) == 1;
+    }
+
+    public boolean isDesktopWindow() {
+        return getClassName().equals("explorer.exe");
+    }
+
+    public boolean isDialogBox() {
+        return getType() == Type.DIALOG && getTransientFor() > 0 && hasDecoration(Decoration.TITLE) && !(hasDecoration(Decoration.MINIMIZE) && hasDecoration(Decoration.MAXIMIZE));
+    }
+
+    public Bitmask getDecorations() {
+        Property property = getProperty(Atom.getId("_MOTIF_WM_HINTS"));
+        return new Bitmask(property != null ? property.getInt(2) : 0);
+    }
+
+    public boolean hasNoDecorations() {
+        return getDecorations().isEmpty();
+    }
+
+    public boolean hasDecoration(Decoration decoration) {
+        return getDecorations().isSet(decoration.flag());
+    }
+
+    public Type getType() {
+        Property property = getProperty(Atom.getId("_NET_WM_WINDOW_TYPE"));
+        return property != null && property.toString().equals("_NET_WM_WINDOW_TYPE_DIALOG") ? Type.DIALOG : Type.NORMAL;
     }
 
     public long getHandle() {
@@ -178,16 +244,26 @@ public class Window extends XResource {
 
     public boolean isApplicationWindow() {
         int windowGroup = getWMHintsValue(WMHints.WINDOW_GROUP);
+        // cmod 版本多加了一个 isMapped() 条件
         return attributes.isMapped() && windowGroup == id && width > 1 && height > 1;
     }
 
+    public boolean isRenderable() {
+        return attributes.isMapped() && width > 1 && height > 1;
+    }
+
+    public boolean isIconic() {
+        final int iconicState = 3;
+        return getWMHintsValue(WMHints.INITIAL_STATE) == iconicState || height <= 32;
+    }
+
+    public boolean isLayered() {
+        final int WindowLayeredHint = 1<<16;
+        return (getWMHintsValue(WMHints.FLAGS) & WindowLayeredHint) != 0;
+    }
+
     /**
-     * Returns true jika window dalam state maximized atau fullscreen
-     * berdasarkan property _NET_WM_STATE yang di-set oleh Wine/WM via
-     * ClientMessage atau ChangeProperty.
-     *
-     * _NET_WM_STATE disimpan sebagai INT_ARRAY (4 byte per atom, little-endian).
-     * Harus iterasi semua atom — bukan hanya index 0.
+     * cmod 独有方法：检测是否最大化或全屏
      */
     public boolean isMaximized() {
         Property property = getProperty(Atom.getId("_NET_WM_STATE"));
@@ -224,25 +300,29 @@ public class Window extends XResource {
     public Window previousSibling() {
         if (parent == null) return null;
         int index = parent.children.indexOf(this);
-        return index > 0 ? parent.children.get(index - 1) : null;
+        return index > 0 ? parent.children.get(index-1) : null;
+    }
+
+    public Window nextSibling() {
+        if (parent == null) return null;
+        int index = parent.children.indexOf(this);
+        return index >= 0 && (index+1) < parent.children.size() ? parent.children.get(index+1) : null;
     }
 
     public void moveChildAbove(Window child, Window sibling) {
         children.remove(child);
         if (sibling != null && children.contains(sibling)) {
             children.add(children.indexOf(sibling) + 1, child);
-            return;
         }
-        children.add(child);
+        else children.add(child);
     }
 
     public void moveChildBelow(Window child, Window sibling) {
         children.remove(child);
         if (sibling != null && children.contains(sibling)) {
             children.add(children.indexOf(sibling), child);
-            return;
         }
-        children.add(0, child);
+        else children.add(0, child);
     }
 
     public List<Window> getChildren() {
@@ -312,45 +392,67 @@ public class Window extends XResource {
     }
 
     public boolean containsPoint(short rootX, short rootY) {
-        short[] localPoint = rootPointToLocal(rootX, rootY);
-        return localPoint[0] >= 0 && localPoint[1] >= 0 && localPoint[0] < width && localPoint[1] < height;
+        return containsPoint(rootX, rootY, false);
+    }
+
+    public boolean containsPoint(short rootX, short rootY, boolean useFullscreenTransformation) {
+        short[] localPoint = rootPointToLocal(rootX, rootY, useFullscreenTransformation);
+        short width = fullscreenTransformation != null && useFullscreenTransformation ? fullscreenTransformation.width : this.width;
+        short height = fullscreenTransformation != null && useFullscreenTransformation ? fullscreenTransformation.height : this.height;
+        return localPoint[0] >= 0 && localPoint[1] >= 0 && localPoint[0] <= width && localPoint[1] <= height;
     }
 
     public short[] rootPointToLocal(short x, short y) {
+        return rootPointToLocal(x, y, false);
+    }
+
+    public short[] rootPointToLocal(short x, short y, boolean useFullscreenTransformation) {
         Window window = this;
         while (window != null) {
-            x -= window.x;
-            y -= window.y;
+            x -= window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.x : window.x;
+            y -= window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.y : window.y;
             window = window.parent;
         }
         return new short[]{x, y};
     }
 
     public short[] localPointToRoot(short x, short y) {
+        return localPointToRoot(x, y, false);
+    }
+
+    public short[] localPointToRoot(short x, short y, boolean useFullscreenTransformation) {
         Window window = this;
         while (window != null) {
-            x += window.x;
-            y += window.y;
+            x += window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.x : window.x;
+            y += window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.y : window.y;
             window = window.parent;
         }
         return new short[]{x, y};
     }
 
     public short getRootX() {
-        short rootX = x;
+        return getRootX(false);
+    }
+
+    public short getRootX(boolean useFullscreenTransformation) {
+        short rootX = fullscreenTransformation != null && useFullscreenTransformation ? fullscreenTransformation.x : x;
         Window window = parent;
         while (window != null) {
-            rootX += window.x;
+            rootX += window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.x : window.x;
             window = window.parent;
         }
         return rootX;
     }
 
     public short getRootY() {
-        short rootY = y;
+        return getRootY(false);
+    }
+
+    public short getRootY(boolean useFullscreenTransformation) {
+        short rootY = fullscreenTransformation != null && useFullscreenTransformation ? fullscreenTransformation.y : y;
         Window window = parent;
         while (window != null) {
-            rootY += window.y;
+            rootY += window.fullscreenTransformation != null && useFullscreenTransformation ? window.fullscreenTransformation.y : window.y;
             window = window.parent;
         }
         return rootY;
@@ -390,9 +492,13 @@ public class Window extends XResource {
     }
 
     public Window getChildByCoords(short x, short y) {
+        return getChildByCoords(x, y, false);
+    }
+
+    public Window getChildByCoords(short x, short y, boolean useFullscreenTransformation) {
         for (int i = children.size()-1; i >= 0; i--) {
             Window child = children.get(i);
-            if (child.attributes.isMapped() && child.containsPoint(x, y)) return child;
+            if (child.attributes.isMapped() && child.containsPoint(x, y, useFullscreenTransformation)) return child;
         }
         return null;
     }
@@ -431,6 +537,15 @@ public class Window extends XResource {
         }
     }
 
+    public FullscreenTransformation getFullscreenTransformation() {
+        return fullscreenTransformation;
+    }
+
+    public void setFullscreenTransformation(FullscreenTransformation fullscreenTransformation) {
+        this.fullscreenTransformation = fullscreenTransformation;
+    }
+
+    // cmod 独有方法，保留名称
     public String serializeProperties() {
         String result = "";
         for (int i = 0; i < properties.size(); i++) {

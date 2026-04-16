@@ -17,6 +17,7 @@ public class Drawable extends XResource {
     private Texture texture = new Texture();
     private ByteBuffer data;
     private Runnable onDrawListener;
+    private boolean offscreenStorage = false;
     private Callback<Drawable> onDestroyListener;
     public final Object renderLock = new Object();
 
@@ -34,6 +35,16 @@ public class Drawable extends XResource {
             throw new IllegalStateException("Drawable.data initialized as null!");
         }
     }
+
+    public boolean isOffscreenStorage() {
+    return offscreenStorage;
+}
+
+public void setOffscreenStorage(boolean offscreenStorage) {
+    this.offscreenStorage = offscreenStorage;
+}
+
+    
 
     public static Drawable fromBitmap(Bitmap bitmap) {
         Drawable drawable = new Drawable(0, bitmap.getWidth(), bitmap.getHeight(), null);
@@ -181,6 +192,13 @@ public class Drawable extends XResource {
 
         texture.setNeedsUpdate(true);
         if (onDrawListener != null) onDrawListener.run();
+    }
+
+    public void forceUpdate() {
+    if (!offscreenStorage) {
+        texture.setNeedsUpdate(true);
+        if (onDrawListener != null) onDrawListener.run();
+    }
     }
 
     private static native void drawBitmap(short width, short height, ByteBuffer srcData, ByteBuffer dstData);

@@ -3,7 +3,7 @@ package com.winlator.cmod.xserver;
 import android.util.ArrayMap;
 import android.util.SparseArray;
 
-import com.winlator.cmod.core.Bitmask;
+import com.winlator.xserver.Bitmask;
 import com.winlator.cmod.renderer.FullscreenTransformation;
 import com.winlator.cmod.xserver.events.Event;
 import com.winlator.cmod.xserver.events.PropertyNotify;

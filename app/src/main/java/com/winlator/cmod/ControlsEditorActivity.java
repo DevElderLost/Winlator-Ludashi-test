@@ -810,6 +810,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     else if (current.isMouse())    sBindingType.setSelection(1, false);
     else if (current.isGamepad())  sBindingType.setSelection(2, false);
 
+    updateBindingSpinner.run();
+
     sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
         @Override
         public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
@@ -830,7 +832,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         @Override public void onNothingSelected(AdapterView<?> p) {}
     });
 
-    updateBindingSpinner.run();
 
     if (bindIdx >= 1) {
         btnRemove.setVisibility(View.VISIBLE);
@@ -1090,6 +1091,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     else if (current.isMouse()) sBindingType.setSelection(1, false);
     else if (current.isGamepad()) sBindingType.setSelection(2, false);
 
+    updateBindingSpinner.run();
+
     sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
         @Override
         public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -1106,8 +1109,6 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         @Override
         public void onNothingSelected(AdapterView<?> parent) {}
     });
-
-    updateBindingSpinner.run();
 
     if (element.getType() == ControlElement.Type.BUTTON && index >= 1) {
         btnRemove.setVisibility(View.VISIBLE);

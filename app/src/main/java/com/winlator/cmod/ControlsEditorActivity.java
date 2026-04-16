@@ -726,19 +726,23 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         btnAdd.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
         int pad = (int) UnitUtils.dpToPx(4);
         btnAdd.setPadding(pad, pad, pad, pad);
-        btnAdd.setOnClickListener(v -> {
-            sb.bindings.add(Binding.NONE);
-            element.setMultiButtonBindings(index, sb.bindings);
-            profile.save();
-            rebuildBindingRows(body, element, index, sb);
-            inputControlsView.invalidate();
-        });
         titleRow.addView(btnAdd);
         body.addView(titleRow);
 
         LinearLayout bindContainer = new LinearLayout(this);
         bindContainer.setOrientation(LinearLayout.VERTICAL);
         body.addView(bindContainer);
+
+        // FIX: btnAdd harus mereferensikan bindContainer (bukan body).
+        // bindContainer dideklarasi setelah closure, sehingga digunakan array wrapper agar bisa diakses dari lambda.
+        btnAdd.setOnClickListener(v -> {
+            sb.bindings.add(Binding.NONE);
+            element.setMultiButtonBindings(index, sb.bindings);
+            profile.save();
+            rebuildBindingRows(bindContainer, element, index, sb);
+            inputControlsView.invalidate();
+        });
+
         rebuildBindingRows(bindContainer, element, index, sb);
     }
 

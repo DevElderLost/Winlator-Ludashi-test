@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
@@ -98,31 +99,14 @@ public class ControlElement {
     private RangeScroller scroller;
 
     // === CURSOR MOVE MODE (RIGHT_STICK only) ===
-    // Center = tengah layar X server, PERMANEN, tidak pernah berubah.
-    // Konsep: pointer bergerak melingkar di sekitar center.
-    //
-    // Saat jari BERGERAK:
-    //   pointerPos = center + clamp(lastOffset + (currentDelta - startDelta), -1..1) * radius
-    //
-    // "lastOffset" menyimpan posisi ternormalisasi pointer saat jari terakhir dilepas,
-    // sehingga sentuhan berikutnya MELANJUTKAN dari posisi terakhir (bukan kembali ke center).
-    // "startDelta" adalah posisi jari saat pertama menyentuh — dipakai sebagai titik referensi
-    // agar gerakan jari baru dihitung relatif terhadap posisi awal sentuhan itu.
     private boolean isCursorMove = false;
-    // Radius lingkaran pergerakan pointer dalam piksel X server (default 150px).
     private int cursorMoveRadius = 150;
-    // Center layar — dihitung sekali, tidak pernah berubah selama mode aktif.
     private float cursorMoveCenterX = -1f;
     private float cursorMoveCenterY = -1f;
-    // Offset ternormalisasi (-1..1) pointer saat jari terakhir dilepas.
-    // Dipakai sebagai titik awal pergerakan pada sentuhan berikutnya.
     private float cursorMoveLastOffsetX = 0f;
     private float cursorMoveLastOffsetY = 0f;
-    // Posisi jari ternormalisasi saat pertama menyentuh dalam sesi ini.
-    // Delta aktual = currentDelta - startDelta, ditambahkan ke lastOffset.
     private float cursorMoveStartDeltaX = 0f;
     private float cursorMoveStartDeltaY = 0f;
-    // Apakah startDelta sudah direkam untuk sesi sentuhan saat ini.
     private boolean cursorMoveStartRecorded = false;
 
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner],
@@ -139,42 +123,22 @@ public class ControlElement {
     private boolean isPressed = false;
 
     // === MENU NAVIGATION ===
-    // true = sub-menu sedang tampil (expanded), false = tersembunyi (collapsed)
     private boolean menuExpanded = false;
-    // Animasi expand/collapse sub-menu (0.0 = collapsed, 1.0 = expanded)
     private float menuAnimProgress = 0f;
-    // Animator untuk animasi slide sub-menu
     private ValueAnimator menuAnimator;
 
     // === MULTIPLE BUTTON ===
-    // Maksimal 8 sub-button, masing-masing punya:
-    //   - bindings sendiri (combo, seperti BUTTON)
-    //   - arah animasi keluar (8 arah): 0=UP, 1=UP_RIGHT, 2=RIGHT, 3=DOWN_RIGHT,
-    //                                   4=DOWN, 5=DOWN_LEFT, 6=LEFT, 7=UP_LEFT
-    //   - text/icon sendiri
-    //
-    // Tap tombol utama → toggle expanded/collapsed
-    // Tap sub-button   → tekan semua binding sub-button itu (lepas saat jari diangkat)
-    //
-    // Data per sub-button disimpan dalam array paralel berindeks 0..multiButtonCount-1
     public static final int MULTI_BTN_MAX = 8;
-    // Jumlah sub-button aktif
     private int multiButtonCount = 4;
-    // Bindings per sub-button: List<List<Binding>>, diinisialisasi di reset()
     private List<List<Binding>> multiButtonBindings = new ArrayList<>();
-    // Arah per sub-button (nilai 0..7)
     private byte[] multiButtonDirections = new byte[MULTI_BTN_MAX];
-    // Text per sub-button
     private String[] multiButtonTexts = new String[MULTI_BTN_MAX];
-    // Icon ID per sub-button (0 = tidak ada icon)
     private byte[] multiButtonIconIds = new byte[MULTI_BTN_MAX];
-    // State expand/collapse (sama dengan MENU_NAVIGATION)
     private boolean multiBtnExpanded = false;
     private float multiBtnAnimProgress = 0f;
     private ValueAnimator multiBtnAnimator;
-    // Index sub-button yang sedang ditekan (-1 = tidak ada)
     private int multiBtnPressedIndex = -1;
-    // Inisialisasi awal list — diisi lengkap saat reset() dipanggil
+
     {
         for (int _i = 0; _i < MULTI_BTN_MAX; _i++) {
             List<Binding> sl = new ArrayList<>();
@@ -219,21 +183,18 @@ public class ControlElement {
             bindings.add(Binding.NONE);
             states = new boolean[1];
         } else {
-            // BUTTON, MENU_NAVIGATION, dan tipe lain default 1 binding
             bindings.add(Binding.NONE);
             states = new boolean[1];
         }
 
-        // MULTIPLE_BUTTON: inisialisasi sub-button data
         if (type == Type.MULTIPLE_BUTTON) {
             multiButtonBindings.clear();
-            // Default: 4 sub-button, semua arah NONE (user mengatur sendiri)
             multiButtonCount = 4;
             for (int i = 0; i < MULTI_BTN_MAX; i++) {
                 List<Binding> sl = new ArrayList<>();
                 sl.add(Binding.NONE);
                 multiButtonBindings.add(sl);
-                multiButtonDirections[i] = (byte) 0xFF; // NONE/hidden by default
+                multiButtonDirections[i] = (byte) 0xFF;
                 multiButtonTexts[i] = "";
                 multiButtonIconIds[i] = 0;
             }
@@ -288,8 +249,6 @@ public class ControlElement {
         this.range = range;
     }
 
-
-
     public byte getOrientation() {
         return orientation;
     }
@@ -307,7 +266,6 @@ public class ControlElement {
         this.toggleSwitch = toggleSwitch;
     }
 
-    // === CURSOR MOVE MODE ===
     public boolean isCursorMove() {
         return isCursorMove;
     }
@@ -330,16 +288,13 @@ public class ControlElement {
     }
 
     public void setCursorMoveRadius(int radius) {
-        // Range 50–500 piksel layar X server
         this.cursorMoveRadius = Math.max(50, Math.min(500, radius));
     }
 
-    // === MENU NAVIGATION ===
     public boolean isMenuExpanded() {
         return menuExpanded;
     }
 
-    // === MULTIPLE BUTTON ===
     public boolean isMultiBtnExpanded() { return multiBtnExpanded; }
 
     public int getMultiButtonCount() { return multiButtonCount; }
@@ -356,7 +311,6 @@ public class ControlElement {
     }
 
     public List<Binding> getMultiButtonBindings(int index) {
-        // Pastikan list sudah diinisialisasi (guard untuk elemen yang di-load dari JSON lama)
         if (multiButtonBindings == null) multiButtonBindings = new ArrayList<>();
         while (multiButtonBindings.size() <= index) {
             List<Binding> sl = new ArrayList<>();
@@ -381,15 +335,12 @@ public class ControlElement {
         multiButtonBindings.set(index, b != null ? b : new ArrayList<>());
     }
 
-    /** Arah: 0=UP,1=UP_RIGHT,2=RIGHT,3=DOWN_RIGHT,4=DOWN,5=DOWN_LEFT,6=LEFT,7=UP_LEFT
-     *  0xFF (atau nilai negatif saat cast) = NONE/hidden — button tidak ditampilkan */
     public byte getMultiButtonDirection(int index) {
         return (index >= 0 && index < MULTI_BTN_MAX) ? multiButtonDirections[index] : 0;
     }
 
     public void setMultiButtonDirection(int index, byte dir) {
         if (index >= 0 && index < MULTI_BTN_MAX) {
-            // 0xFF = NONE/hidden, 0..7 = valid arah
             if (dir == (byte) 0xFF) {
                 multiButtonDirections[index] = (byte) 0xFF;
             } else {
@@ -437,35 +388,25 @@ public class ControlElement {
         animateMultiBtn(multiBtnExpanded);
     }
 
-    /**
-     * Hitung posisi pusat sub-button ke-i berdasarkan arahnya.
-     * angleDeg: 0=UP searah jarum jam tiap 45°.
-     * Dalam koordinat Android: Y bertambah ke bawah, jadi UP = -dy.
-     */
-    private float[] getMultiBtnSubPos(int index, float cx, float cy, float radius, float progress) {
-        byte dir = multiButtonDirections[index];
-        if (dir == (byte) 0xFF) return new float[]{cx, cy}; // tidak dipakai karena hidden
-        double angleDeg = (dir & 0xFF) * 45.0;
-        // 0=UP → sudut -90° dalam polar (cos/sin standar)
-        double angleRad = Math.toRadians(angleDeg - 90.0);
-        float dx = (float)(Math.cos(angleRad) * radius * progress);
-        float dy = (float)(Math.sin(angleRad) * radius * progress);
-        return new float[]{cx + dx, cy + dy};
-    }
-
-    /** Radius hit-test sub-button (sama dengan radius tombol utama). */
     private boolean isMultiBtnSubHit(int index, float px, float py) {
-        if (multiBtnAnimProgress < 0.3f) return false;
-        // Jangan hit-test jika direction = NONE/hidden
-        if (multiButtonDirections[index] == (byte) 0xFF) return false;
-        Rect bb = getBoundingBox();
-        float cx = bb.centerX();
-        float cy = bb.centerY();
-        float btnR = bb.width() * 0.5f;
-        float radius = btnR * 2.4f;
-        float[] pos = getMultiBtnSubPos(index, cx, cy, radius, multiBtnAnimProgress);
-        float dist = (float)Math.sqrt((px - pos[0])*(px - pos[0]) + (py - pos[1])*(py - pos[1]));
-        return dist <= btnR;
+        if (multiBtnAnimProgress < 0.5f) return false;
+        byte dirByte = multiButtonDirections[index];
+        if (dirByte == (byte) 0xFF) return false;
+
+        Rect bb  = getBoundingBox();
+        float w  = bb.width();
+        float h  = bb.height();
+        int   dir = dirByte & 0x07;
+        float gap = inputControlsView.getSnappingSize() * 0.4f * scale;
+
+        int laneIdx = 0;
+        for (int j = 0; j < index; j++) {
+            byte d = multiButtonDirections[j];
+            if (d != (byte) 0xFF && (d & 0x07) == dir) laneIdx++;
+        }
+
+        RectF rect = computeMultiBtnSubRect(bb, dir, laneIdx, w, h, gap);
+        return rect.contains(px, py);
     }
 
     private void animateMenu(boolean expand) {
@@ -473,7 +414,6 @@ public class ControlElement {
         float from = menuAnimProgress;
         float to   = expand ? 1f : 0f;
         menuAnimator = ValueAnimator.ofFloat(from, to);
-        // 380ms: cukup untuk 4 item cascade terasa berurutan tanpa terasa lambat
         menuAnimator.setDuration(380);
         menuAnimator.setInterpolator(new DecelerateInterpolator());
         menuAnimator.addUpdateListener(anim -> {
@@ -483,30 +423,17 @@ public class ControlElement {
         menuAnimator.start();
     }
 
-    /** Dipanggil saat tombol utama MENU_NAVIGATION ditekan — toggle expand/collapse. */
     private void toggleMenu() {
         menuExpanded = !menuExpanded;
         animateMenu(menuExpanded);
     }
 
-    /**
-     * Eksekusi aksi item sub-menu langsung dari ControlElement tanpa listener.
-     * Context diambil dari inputControlsView — saat runtime di XServerDisplayActivity
-     * ini adalah instance Activity itu sendiri.
-     *
-     * Keyboard      : toggle soft keyboard via InputMethodManager
-     * Task Manager  : buka TaskManagerDialog
-     * Active Windows: buka ActiveWindowsDialog
-     * Exit          : cast ke XServerDisplayActivity, panggil exitApp()
-     *
-     * @param itemIndex 0=Keyboard, 1=Task Manager, 2=Active Windows, 3=Exit
-     */
     private void executeMenuAction(int itemIndex) {
         Context context = inputControlsView.getContext();
         android.os.Handler uiHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
         switch (itemIndex) {
-            case 0: { // Keyboard — toggle soft keyboard
+            case 0: { // Keyboard
                 uiHandler.post(() -> {
                     InputMethodManager imm = (InputMethodManager)
                             context.getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -516,7 +443,7 @@ public class ControlElement {
                 });
                 break;
             }
-            case 1: { // Task Manager dialog
+            case 1: { // Task Manager
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                     com.winlator.cmod.XServerDisplayActivity activity =
                             (com.winlator.cmod.XServerDisplayActivity) context;
@@ -525,7 +452,7 @@ public class ControlElement {
                 }
                 break;
             }
-            case 2: { // Active Windows dialog
+            case 2: { // Active Windows
                 if (context instanceof com.winlator.cmod.XServerDisplayActivity) {
                     com.winlator.cmod.XServerDisplayActivity activity =
                             (com.winlator.cmod.XServerDisplayActivity) context;
@@ -550,7 +477,6 @@ public class ControlElement {
             }
         }
     }
-
 
     public Binding getBindingAt(int index) {
         return (index >= 0 && index < bindings.size()) ? bindings.get(index) : Binding.NONE;
@@ -594,10 +520,6 @@ public class ControlElement {
     }
 
     public void setBinding(Binding binding) {
-        // Hanya fill semua elemen — JANGAN ubah size list.
-        // RangeScroller memanggil setBinding(NONE) saat touch-down untuk reset state,
-        // tanpa bermaksud mengubah jumlah slot. Mengubah size akan merusak
-        // computeBoundingBox() yang bergantung pada getBindingCount() == bindings.size().
         Binding b = binding != null ? binding : Binding.NONE;
         for (int i = 0; i < bindings.size(); i++) bindings.set(i, b);
     }
@@ -718,9 +640,6 @@ public class ControlElement {
                 break;
             }
             case RANGE_BUTTON: {
-                // Gunakan getBindingCount() (= bindings.size()) sebagai jumlah slot visible.
-                // NPColumns di editor mengatur nilai ini via setBindingCount().
-                // setBinding(NONE) di RangeScroller tidak mengubah size, jadi stabil.
                 halfWidth = snappingSize * ((getBindingCount() * 4) / 2);
                 halfHeight = snappingSize * 2;
 
@@ -801,7 +720,6 @@ public class ControlElement {
 
                 boolean shouldFill = (type == Type.TOUCHSCREEN_TOGGLE) ? selected : isPressed;
 
-                // Sembunyikan stroke/fill shape jika ada icon
                 if (iconId == 0) {
                     if (shouldFill) {
                         paint.setStyle(Paint.Style.FILL_AND_STROKE);
@@ -833,8 +751,6 @@ public class ControlElement {
                 paint.setColor(primaryColor);
 
                 if (iconId > 0) {
-                    // Saat normal: icon 80% dari bounding box
-                    // Saat pressed: icon membesar ke 100% (tetap dalam batas, tidak keluar)
                     float pressScale = isPressed ? 1.0f : 0.8f;
                     float iconW = boundingBox.width() * pressScale;
                     float iconH = boundingBox.height() * pressScale;
@@ -869,19 +785,14 @@ public class ControlElement {
                 boolean downPressed  = states.length > 2 && states[2] && isPressed;
                 boolean leftPressed  = states.length > 3 && states[3] && isPressed;
 
-                // Ukuran icon global — dipakai oleh global icon dan arm icon (konsisten)
                 float globalIconW = boundingBox.width() * 0.8f;
                 float globalIconH = boundingBox.height() * 0.8f;
 
-                // Jika ada iconId global: sembunyikan semua arm stroke,
-                // gambar iconId sebagai tampilan utama D_PAD — ukuran TETAP tidak membesar saat pressed
                 if (iconId > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
                     drawIconExact(canvas, cx, cy, globalIconW, globalIconH, iconId);
 
-                    // Slot icon arah digambar di CENTER boundingBox dengan ukuran SAMA seperti global icon
-                    // sehingga menimpa global icon saat ditekan
                     if (upPressed && slotIconIds[0] > 0) {
                         drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[0]);
                     } else if (rightPressed && slotIconIds[1] > 0) {
@@ -894,7 +805,6 @@ public class ControlElement {
                     break;
                 }
 
-                // Tidak ada iconId global: gambar arm stroke biasa
                 float armUpDownW   = offsetX * 2 * 0.8f;
                 float armUpDownH   = offsetY * 0.8f;
                 float armLRW       = offsetY * 0.8f;
@@ -912,7 +822,6 @@ public class ControlElement {
                     if (upPressed) { paint.setStyle(Paint.Style.FILL); canvas.drawPath(path, paint); }
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(upPressed ? ColorUtils.setAlphaComponent(baseColor, 180) : primaryColor);
-                    // Icon arm digambar di center boundingBox, ukuran = globalIconW/H
                     drawIconExact(canvas, cx, cy, globalIconW, globalIconH, slotIconIds[0]);
                 } else {
                     paint.setStyle(upPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
@@ -1073,12 +982,10 @@ public class ControlElement {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(strokeWidth);
 
-                // Outer circle stroke — sembunyikan jika ada icon outer
                 if (slotIconIds[0] == 0) {
                     canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
                 }
 
-                // Slot 0: icon outer — pas dengan diameter outer circle
                 if (slotIconIds[0] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
@@ -1091,7 +998,6 @@ public class ControlElement {
                 short thumbRadius = (short) (snappingSize * 3.5f * scale);
                 float innerDiameter = thumbRadius * 2;
 
-                // Inner fill + stroke — sembunyikan jika ada icon inner
                 if (slotIconIds[1] == 0) {
                     if (isPressed) {
                         paint.setStyle(Paint.Style.FILL);
@@ -1108,7 +1014,6 @@ public class ControlElement {
                     canvas.drawCircle(thumbstickX, thumbstickY, thumbRadius + strokeWidth * 0.5f, paint);
                 }
 
-                // Slot 1: icon inner — ukuran pas dengan diameter inner thumbstick
                 if (slotIconIds[1] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(isPressed ? baseColor : primaryColor);
@@ -1130,12 +1035,10 @@ public class ControlElement {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(strokeWidth);
 
-                // Outer circle stroke — sembunyikan jika ada icon outer
                 if (slotIconIds[0] == 0) {
                     canvas.drawCircle(cx, cy, boundingBox.height() * 0.5f, paint);
                 }
 
-                // Slot 0: icon outer — pas dengan diameter outer circle
                 if (slotIconIds[0] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
@@ -1154,7 +1057,6 @@ public class ControlElement {
                 short thumbRadius = (short) (snappingSize * 3.5f * scale);
                 float innerDiameter = thumbRadius * 2;
 
-                // Inner fill + stroke — sembunyikan jika ada icon inner
                 if (slotIconIds[1] == 0) {
                     if (isPressed) {
                         paint.setStyle(Paint.Style.FILL);
@@ -1171,7 +1073,6 @@ public class ControlElement {
                     canvas.drawCircle(thumbstickX, thumbstickY, thumbRadius + strokeWidth * 0.5f, paint);
                 }
 
-                // Label "R" hanya jika tidak ada slot/global icon sama sekali
                 if (slotIconIds[0] == 0 && slotIconIds[1] == 0 && iconId == 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
@@ -1182,7 +1083,6 @@ public class ControlElement {
                     canvas.drawText("R", cx + labelOffset, cy - labelOffset + labelSize * 0.4f, paint);
                 }
 
-                // Slot 1: icon inner — ukuran pas dengan diameter inner thumbstick
                 if (slotIconIds[1] > 0) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(isPressed ? baseColor : primaryColor);
@@ -1209,7 +1109,6 @@ public class ControlElement {
                     paint.setStrokeWidth(innerStrokeWidth);
                     canvas.drawRoundRect(boundingBox.left + offset, boundingBox.top + offset, boundingBox.right - offset, boundingBox.bottom - offset, innerRadius, innerRadius, paint);
                 } else {
-                    // Icon mengisi area inner trackpad secara eksak
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(primaryColor);
                     float innerW = boundingBox.width() - offset * 2;
@@ -1231,25 +1130,6 @@ public class ControlElement {
         }
     }
 
-    /**
-     * Menggambar tombol utama MENU_NAVIGATION beserta sub-menu yang muncul ke bawah.
-     *
-     * Tampilan tombol utama identik dengan BUTTON (shape ROUND_RECT, custom text).
-     * Sub-menu terdiri dari 3 item: Keyboard, Input Controls, Exit — muncul dengan
-     * animasi slide-down (menuAnimProgress 0→1) dan menghilang dengan slide-up (1→0).
-     *
-     * Setiap item sub-menu berbentuk ROUND_RECT, lebar sama dengan tombol utama,
-     * tinggi = tinggi tombol utama, digeser ke bawah dengan offset berbasis animasi.
-     *
-     * Slot icon MENU_NAVIGATION:
-     *   slot 0 = icon tombol utama (menggantikan text/unicode)
-     *   slot 1 = icon item Keyboard
-     *   slot 2 = icon item Input Controls
-     *   slot 3 = icon item Exit
-     *
-     * Jika slot icon tersedia → icon di kiri + text label di kanan.
-     * Jika tidak → unicode fallback + label di tengah.
-     */
     private void drawMenuNavigation(Canvas canvas, Rect boundingBox, Paint paint,
                                     int primaryColor, float strokeWidth, int snappingSize) {
         float cx = boundingBox.centerX();
@@ -1257,13 +1137,11 @@ public class ControlElement {
         float w  = boundingBox.width();
         float h  = boundingBox.height();
         float r  = h * 0.5f;
-        float itemR = r * 0.6f; // radius sudut — sama dengan item sub-menu
+        float itemR = r * 0.6f;
 
-        // ── Tombol utama ──────────────────────────────────────────────────
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
         if (slotIconIds[0] > 0 || iconId > 0) {
-            // Ada icon → tampilan penuh (stroke saja, seperti BUTTON biasa)
             paint.setColor(primaryColor);
             paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
             canvas.drawRoundRect(
@@ -1276,10 +1154,6 @@ public class ControlElement {
             drawIconExact(canvas, cx, cy, iconSize, iconSize,
                     slotIconIds[0] > 0 ? slotIconIds[0] : iconId);
         } else {
-            // Tidak ada icon → tampilan identik dengan item sub-menu:
-            // background semi-transparan + border + label teks di tengah
-
-            // Background semi-transparan (fill lebih kuat saat pressed)
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, isPressed ? 80 : 40));
             canvas.drawRoundRect(
@@ -1287,7 +1161,6 @@ public class ControlElement {
                     boundingBox.right, boundingBox.bottom,
                     itemR, itemR, paint);
 
-            // Border
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(primaryColor);
             canvas.drawRoundRect(
@@ -1295,7 +1168,6 @@ public class ControlElement {
                     boundingBox.right, boundingBox.bottom,
                     itemR, itemR, paint);
 
-            // Label teks — custom text atau default "≡"
             paint.setStyle(Paint.Style.FILL);
             paint.setTextAlign(Paint.Align.CENTER);
             String label = (text != null && !text.isEmpty()) ? text : "\u2261";
@@ -1306,60 +1178,41 @@ public class ControlElement {
             canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
         }
 
-        // ── Sub-menu items (animasi pop-out scale) ────────────────────────
-        // menuAnimProgress: 0.0 = collapsed (tidak tampil), 1.0 = fully expanded
-        // Animasi: setiap item muncul dengan efek pop/membesar dari skala 0 → 1
-        // saat expand, dan mengecil dari 1 → 0 saat collapse.
         if (menuAnimProgress <= 0f) return;
 
-        // slot 1=Keyboard, 2=Task Manager, 3=Active Windows, 4=Exit
         final String[] itemFallback = {"\u2328", "\u2630", "\u25A3", "\u2715"};
         final String[] itemLabels   = {"Keyboard", "Task Manager", "Active Windows", "Exit"};
 
         float gap    = snappingSize * 0.4f * scale;
         float itemH  = h;
 
-        // Alpha keseluruhan sub-menu mengikuti progress (fade-in/out bersama scale)
         int menuAlpha = (int) (menuAnimProgress * 255);
 
-        // Setiap item diberi window animasi sendiri di dalam total progress 0..1.
-        // 4 item dibagi rata: item-0 di 0.00–0.55, item-1 di 0.20–0.70,
-        // item-2 di 0.40–0.85, item-3 di 0.55–1.00 — cukup berurutan tapi
-        // total animasi tetap terasa cepat dan tidak ada item yang "terlambat".
         final float[] ITEM_START = {0.00f, 0.20f, 0.40f, 0.55f};
         final float[] ITEM_END   = {0.55f, 0.70f, 0.85f, 1.00f};
 
         for (int i = 0; i < itemLabels.length; i++) {
-            // Posisi final item (saat progress = 1.0)
             float top    = boundingBox.bottom + gap + i * (itemH + gap);
             float bottom = top + itemH;
             float itemCy = (top + bottom) * 0.5f;
 
-            // Progress lokal item-i: 0→1 dalam window [ITEM_START[i]..ITEM_END[i]]
             float window = ITEM_END[i] - ITEM_START[i];
             float itemProgress = Math.min(1f, Math.max(0f,
                     (menuAnimProgress - ITEM_START[i]) / window));
 
-            // Ease-out: decelerating scale — terasa "pop" tanpa overshoot
             float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
 
             if (scaleVal <= 0f) continue;
 
-            // Gambar item dengan transform scale dari pusat item
             canvas.save();
             canvas.scale(scaleVal, scaleVal, cx, itemCy);
 
-            // Alpha item mengikuti menuAlpha (progress global) × scaleVal lokal
-            // → fade-in mengikuti item itu sendiri, bukan semua sekaligus
             int itemAlpha = (int) (scaleVal * menuAlpha);
 
-            // Background fill semi-transparan
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
-            // Border — warna SAMA dengan tombol utama (primaryColor penuh × itemAlpha)
-            // agar stroke item konsisten dengan stroke menu utama
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
             paint.setStrokeWidth(strokeWidth * 0.75f);
@@ -1368,11 +1221,9 @@ public class ControlElement {
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
 
-            // slot 1–4 untuk empat item sub-menu
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
 
             if (slotIcon > 0) {
-                // Ada slot icon → icon di kiri, text label di kanan
                 float iconAreaW = itemH * 0.78f;
                 float iconSize  = iconAreaW * 0.80f;
                 float iconCx    = boundingBox.left + iconAreaW * 0.5f + strokeWidth;
@@ -1390,7 +1241,6 @@ public class ControlElement {
                             itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
                 }
             } else {
-                // Tidak ada slot icon → unicode + label di tengah
                 String fullLabel = itemFallback[i] + " " + itemLabels[i];
                 paint.setTextAlign(Paint.Align.CENTER);
                 float ts = Math.min(
@@ -1405,74 +1255,37 @@ public class ControlElement {
         }
     }
 
-    /**
-     * Menggambar MULTIPLE_BUTTON:
-     *
-     * Tombol utama: identik dengan BUTTON (shape ROUND_RECT/CIRCLE/dll, text/icon).
-     * Saat expanded: hingga 8 sub-button muncul ke 8 arah yang dapat dikonfigurasi,
-     * masing-masing dengan animasi scale pop dari pusat tombol utama.
-     *
-     * Sub-button yang sedang ditekan (multiBtnPressedIndex) ditampilkan FILL.
-     * Setiap sub-button menampilkan text atau icon yang dikonfigurasi per-key.
-     */
     private void drawMultipleButton(Canvas canvas, Rect boundingBox, Paint paint,
                                     int primaryColor, float strokeWidth, int snappingSize) {
         float cx = boundingBox.centerX();
         float cy = boundingBox.centerY();
         float w  = boundingBox.width();
         float h  = boundingBox.height();
-        float r  = h * 0.5f;
+        float r  = (shape == Shape.CIRCLE) ? w * 0.5f : h * 0.5f;
+        float itemR = r * 0.6f;
 
-        // ── Tombol utama ────────────────────────────────────────────────
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
         if (iconId > 0) {
             paint.setColor(primaryColor);
             paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-            switch (shape) {
-                case CIRCLE:
-                    canvas.drawCircle(cx, cy, r, paint);
-                    break;
-                default: {
-                    float rad = r * 0.6f;
-                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
-                            boundingBox.right, boundingBox.bottom, rad, rad, paint);
-                }
-            }
+            drawShapeOutline(canvas, paint, boundingBox, r, itemR);
             paint.setStyle(Paint.Style.FILL);
             float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
             drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
         } else {
-            // Background semi-transparan + border + teks (identik dengan MENU_NAVIGATION tanpa icon)
-            float itemR = r * 0.6f;
-
-            paint.setStyle(Paint.Style.FILL);
-            // Tampil lebih terang saat expanded
             int bgAlpha = multiBtnExpanded ? (isPressed ? 100 : 65) : (isPressed ? 80 : 40);
+            paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, bgAlpha));
-            switch (shape) {
-                case CIRCLE:
-                    canvas.drawCircle(cx, cy, r, paint);
-                    break;
-                default:
-                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
-                            boundingBox.right, boundingBox.bottom, itemR, itemR, paint);
-            }
+            drawShapeOutline(canvas, paint, boundingBox, r, itemR);
 
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(primaryColor);
-            switch (shape) {
-                case CIRCLE:
-                    canvas.drawCircle(cx, cy, r, paint);
-                    break;
-                default:
-                    canvas.drawRoundRect(boundingBox.left, boundingBox.top,
-                            boundingBox.right, boundingBox.bottom, itemR, itemR, paint);
-            }
+            drawShapeOutline(canvas, paint, boundingBox, r, itemR);
 
             paint.setStyle(Paint.Style.FILL);
             paint.setTextAlign(Paint.Align.CENTER);
-            String label = (text != null && !text.isEmpty()) ? text : "\u2395"; // ⎕ fallback
+            String label = (text != null && !text.isEmpty()) ? text : "\u25A4";
             float ts = Math.min(
                     getTextSizeForWidth(paint, label, w - strokeWidth * 4),
                     snappingSize * 1.6f * scale);
@@ -1480,99 +1293,147 @@ public class ControlElement {
             canvas.drawText(label, cx, cy - (paint.descent() + paint.ascent()) * 0.5f, paint);
         }
 
-        // ── Sub-buttons (animasi pop radial) ────────────────────────────
         if (multiBtnAnimProgress <= 0f) return;
 
-        float btnR    = w * 0.5f;
-        float radius  = btnR * 2.4f; // jarak center sub-button dari center tombol utama
-        float subSize = btnR * 1.8f; // diameter lingkaran sub-button
-
+        float gap = snappingSize * 0.4f * scale;
         int menuAlpha = (int)(multiBtnAnimProgress * 255);
 
+        int[] laneTotal = new int[8];
+        int visibleTotal = 0;
         for (int i = 0; i < multiButtonCount; i++) {
-            // Skip jika arah = NONE/hidden
-            if (multiButtonDirections[i] == (byte) 0xFF) continue;
+            byte dir = multiButtonDirections[i];
+            if (dir == (byte)0xFF) continue;
+            laneTotal[dir & 0x07]++;
+            visibleTotal++;
+        }
 
-            // Per-item progress: cascade sedikit agar terasa bergelombang
-            float itemProgress = Math.min(1f, multiBtnAnimProgress * 1.2f - i * 0.05f);
-            if (itemProgress <= 0f) continue;
+        int[] laneCount = new int[8];
+        int globalIdx = 0;
 
-            // Ease-out scale
-            float scaleVal = 1f - (1f - itemProgress) * (1f - itemProgress);
-            if (scaleVal <= 0f) continue;
+        for (int i = 0; i < multiButtonCount; i++) {
+            byte dirByte = multiButtonDirections[i];
+            if (dirByte == (byte)0xFF) continue;
 
-            float[] pos = getMultiBtnSubPos(i, cx, cy, radius, multiBtnAnimProgress);
-            float subCx = pos[0];
-            float subCy = pos[1];
+            int dir = dirByte & 0x07;
+            int laneIdx = laneCount[dir]++;
+            RectF itemRect = computeMultiBtnSubRect(boundingBox, dir, laneIdx, w, h, gap);
+            float itemCx = itemRect.centerX();
+            float itemCy = itemRect.centerY();
+
+            float windowSize   = 0.45f;
+            float windowStart  = (visibleTotal > 1) ? globalIdx * (1.0f - windowSize) / (visibleTotal - 1) : 0f;
+            float windowEnd    = Math.min(1.0f, windowStart + windowSize);
+            float window       = windowEnd - windowStart;
+            float itemProgress = Math.min(1f, Math.max(0f, (multiBtnAnimProgress - windowStart) / window));
+            float scaleVal     = 1f - (1f - itemProgress) * (1f - itemProgress);
+
+            if (scaleVal <= 0f) { globalIdx++; continue; }
 
             canvas.save();
-            canvas.scale(scaleVal, scaleVal, subCx, subCy);
+            canvas.scale(scaleVal, scaleVal, itemCx, itemCy);
 
             int itemAlpha = (int)(scaleVal * menuAlpha);
             boolean subPressed = (multiBtnPressedIndex == i);
 
-            // Background
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
-                    subPressed ? (int)(itemAlpha * 0.55f) : (int)(itemAlpha * 0.22f)));
-            canvas.drawCircle(subCx, subCy, subSize * 0.5f, paint);
+                    subPressed ? (int)(80 * scaleVal) : (int)(40 * scaleVal)));
+            drawShapeRectOutline(canvas, paint, itemRect, itemR);
 
-            // Border
             paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(strokeWidth * 0.7f);
+            paint.setStrokeWidth(strokeWidth * 0.75f);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
-            canvas.drawCircle(subCx, subCy, subSize * 0.5f, paint);
+            drawShapeRectOutline(canvas, paint, itemRect, itemR);
 
-            // Icon atau teks sub-button
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+
             byte subIcon = multiButtonIconIds[i];
-            String subText = multiButtonTexts[i];
+            String subText = (multiButtonTexts[i] != null) ? multiButtonTexts[i] : "";
+
             if (subIcon > 0) {
-                drawIconExact(canvas, subCx, subCy, subSize * 0.75f, subSize * 0.75f, subIcon);
-            } else if (subText != null && !subText.isEmpty()) {
+                float iconSize = Math.min(w, h) * 0.78f;
+                drawIconExact(canvas, itemCx, itemCy, iconSize, iconSize, subIcon);
+            } else if (!subText.isEmpty()) {
                 paint.setTextAlign(Paint.Align.CENTER);
                 float subTs = Math.min(
-                        getTextSizeForWidth(paint, subText, subSize - strokeWidth * 3),
-                        snappingSize * 1.4f * scale);
+                        getTextSizeForWidth(paint, subText, w - strokeWidth * 4),
+                        snappingSize * 1.6f * scale);
                 paint.setTextSize(subTs);
-                canvas.drawText(subText, subCx,
-                        subCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                canvas.drawText(subText, itemCx,
+                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
             } else {
-                // Fallback: tampilkan indeks binding pertama
                 List<Binding> sb = getMultiButtonBindings(i);
-                String bindLabel = sb.isEmpty() ? "?" : sb.get(0).toString()
-                        .replace("NUMPAD ", "NP").replace("BUTTON ", "");
-                if (bindLabel.length() > 5) bindLabel = bindLabel.substring(0, 4) + "..";
+                String bindLabel = sb.isEmpty() ? "?" :
+                        sb.get(0).toString().replace("NUMPAD ", "NP")
+                                           .replace("BUTTON_", "")
+                                           .replace("KEY_", "");
+                if (bindLabel.length() > 6) bindLabel = bindLabel.substring(0, 5) + "…";
                 paint.setTextAlign(Paint.Align.CENTER);
                 float subTs = Math.min(
-                        getTextSizeForWidth(paint, bindLabel, subSize - strokeWidth * 3),
-                        snappingSize * 1.2f * scale);
+                        getTextSizeForWidth(paint, bindLabel, w - strokeWidth * 4),
+                        snappingSize * 1.5f * scale);
                 paint.setTextSize(subTs);
-                canvas.drawText(bindLabel, subCx,
-                        subCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                canvas.drawText(bindLabel, itemCx,
+                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
             }
 
             canvas.restore();
+            globalIdx++;
         }
     }
 
+    private void drawShapeOutline(Canvas canvas, Paint paint, Rect bb, float r, float itemR) {
+        switch (shape) {
+            case CIRCLE:
+                canvas.drawCircle(bb.centerX(), bb.centerY(), r, paint);
+                break;
+            default:
+                canvas.drawRoundRect(bb.left, bb.top, bb.right, bb.bottom, itemR, itemR, paint);
+        }
+    }
+
+    private void drawShapeRectOutline(Canvas canvas, Paint paint, RectF rf, float itemR) {
+        switch (shape) {
+            case CIRCLE:
+                canvas.drawCircle(rf.centerX(), rf.centerY(),
+                        Math.min(rf.width(), rf.height()) * 0.5f, paint);
+                break;
+            default:
+                canvas.drawRoundRect(rf, itemR, itemR, paint);
+        }
+    }
+
+    private RectF computeMultiBtnSubRect(Rect bb, int dir, int laneIdx, float w, float h, float gap) {
+        float step = laneIdx + 1;
+
+        float[] dx = { 0,  1,  1,  1,  0, -1, -1, -1};
+        float[] dy = {-1, -1,  0,  1,  1,  1,  0, -1};
+
+        float offsetX = dx[dir] * step * (w + gap);
+        float offsetY = dy[dir] * step * (h + gap);
+
+        float left   = bb.left   + offsetX;
+        float top    = bb.top    + offsetY;
+        float right  = bb.right  + offsetX;
+        float bottom = bb.bottom + offsetY;
+
+        return new RectF(left, top, right, bottom);
+    }
+
     private void drawIcon(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
-        // Pola defensif seperti TouchAreaButton: cek null sebelum akses bitmap
         Bitmap icon = inputControlsView.getIcon((byte) iconId);
         if (icon == null || icon.isRecycled()) return;
 
         Paint paint = inputControlsView.getPaint();
         paint.setColorFilter(inputControlsView.getColorFilter());
 
-        // Hitung ukuran icon dengan margin seperti TouchAreaButton (70% dari area)
         float iconWidth;
         float iconHeight;
         float marginFactor = (shape == Shape.CIRCLE || shape == Shape.SQUARE) ? 0.65f : 0.75f;
         iconWidth = width * marginFactor;
         iconHeight = height * marginFactor;
 
-        // Pertahankan aspek rasio bitmap (pola dari TouchAreaButton)
         float bitmapW = icon.getWidth();
         float bitmapH = icon.getHeight();
         if (bitmapW > 0 && bitmapH > 0) {
@@ -1587,15 +1448,12 @@ public class ControlElement {
         int halfW = (int) (iconWidth * 0.5f);
         int halfH = (int) (iconHeight * 0.5f);
 
-        // Reuse cached Rect — tidak ada alokasi per frame (anti-lag)
         iconSrcRect.set(0, 0, (int) bitmapW, (int) bitmapH);
         iconDstRect.set((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
         canvas.drawBitmap(icon, iconSrcRect, iconDstRect, paint);
         paint.setColorFilter(null);
     }
 
-    // Seperti drawIcon tapi ukuran width/height adalah ukuran FINAL (tidak dikalikan marginFactor)
-    // Dipakai untuk outer icon STICK/RIGHT_STICK agar pas dengan diameter stroke lingkaran
     private void drawIconExact(Canvas canvas, float cx, float cy, float width, float height, int iconId) {
         Bitmap icon = inputControlsView.getIcon((byte) iconId);
         if (icon == null || icon.isRecycled()) return;
@@ -1620,7 +1478,6 @@ public class ControlElement {
         int halfW = (int) (iconWidth * 0.5f);
         int halfH = (int) (iconHeight * 0.5f);
 
-        // Reuse cached Rect — tidak ada alokasi per frame (anti-lag)
         iconSrcRect.set(0, 0, (int) bitmapW, (int) bitmapH);
         iconDstRect.set((int) cx - halfW, (int) cy - halfH, (int) cx + halfW, (int) cy + halfH);
         canvas.drawBitmap(icon, iconSrcRect, iconDstRect, paint);
@@ -1646,7 +1503,6 @@ public class ControlElement {
             elementJSONObject.put("text", text);
             elementJSONObject.put("iconId", iconId);
 
-            // Simpan slot icons (D_PAD arah, STICK/RIGHT_STICK outer+inner)
             JSONArray slotIconsArray = new JSONArray();
             for (byte sid : slotIconIds) slotIconsArray.put(sid);
             elementJSONObject.put("slotIconIds", slotIconsArray);
@@ -1667,20 +1523,15 @@ public class ControlElement {
                 }
             }
 
-            // MENU_NAVIGATION tidak menyimpan state expanded (selalu mulai collapsed)
-
-            // MULTIPLE_BUTTON: simpan semua data sub-button
             if (type == Type.MULTIPLE_BUTTON) {
                 elementJSONObject.put("multiButtonCount", multiButtonCount);
                 JSONArray mbArr = new JSONArray();
                 for (int i = 0; i < MULTI_BTN_MAX; i++) {
                     JSONObject mbObj = new JSONObject();
-                    // bindings sub-button ke-i
                     JSONArray mbBindings = new JSONArray();
                     List<Binding> sbList = getMultiButtonBindings(i);
                     for (Binding b : sbList) mbBindings.put(b.name());
                     mbObj.put("bindings", mbBindings);
-                    // Simpan direction: 0xFF (hidden) → -1, lainnya normal
                     int dirInt = (multiButtonDirections[i] == (byte) 0xFF) ? -1 : (multiButtonDirections[i] & 0xFF);
                     mbObj.put("direction", dirInt);
                     mbObj.put("text", multiButtonTexts[i] != null ? multiButtonTexts[i] : "");
@@ -1698,7 +1549,6 @@ public class ControlElement {
 
     public boolean containsPoint(float x, float y) {
         if (getBoundingBox().contains((int) (x + 0.5f), (int) (y + 0.5f))) return true;
-        // MENU_NAVIGATION: area hit-test diperluas ke bawah saat sub-menu sedang expanded
         if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {
             Rect bb = getBoundingBox();
             int snappingSize = inputControlsView.getSnappingSize();
@@ -1708,10 +1558,19 @@ public class ControlElement {
             float bottom = bb.bottom + gap + totalH;
             if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
         }
-        // MULTIPLE_BUTTON: hit-test meluas ke sub-buttons saat expanded
         if (type == Type.MULTIPLE_BUTTON && multiBtnExpanded && multiBtnAnimProgress > 0.1f) {
+            Rect bb  = getBoundingBox();
+            float w  = bb.width();
+            float h  = bb.height();
+            float gap = inputControlsView.getSnappingSize() * 0.4f * scale;
+            int[] laneCount = new int[8];
             for (int i = 0; i < multiButtonCount; i++) {
-                if (isMultiBtnSubHit(i, x, y)) return true;
+                byte d = multiButtonDirections[i];
+                if (d == (byte) 0xFF) continue;
+                int dir = d & 0x07;
+                RectF r = computeMultiBtnSubRect(bb, dir, laneCount[dir], w, h, gap);
+                if (r.contains(x, y)) return true;
+                laneCount[dir]++;
             }
         }
         return false;
@@ -1723,8 +1582,8 @@ public class ControlElement {
     }
 
     public boolean handleTouchDown(int pointerId, float x, float y) {
-        // MENU_NAVIGATION: cek apakah sentuhan mengenai item sub-menu terlebih dahulu
-        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {            Rect bb = getBoundingBox();
+        if (type == Type.MENU_NAVIGATION && menuExpanded && menuAnimProgress > 0.5f) {
+            Rect bb = getBoundingBox();
             int snappingSize = inputControlsView.getSnappingSize();
             float h    = bb.height();
             float gap  = snappingSize * 0.4f * scale;
@@ -1734,15 +1593,12 @@ public class ControlElement {
                 float top    = bb.bottom + gap + i * (itemH + gap);
                 float bottom = top + itemH;
                 if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {
-                    // Item sub-menu tersentuh — eksekusi aksi langsung
-                    // Menu TIDAK ditutup; hanya tombol utama yang toggle expand/collapse
                     executeMenuAction(i);
                     return true;
                 }
             }
         }
 
-        // MULTIPLE_BUTTON: cek sub-button hit sebelum tombol utama
         if (type == Type.MULTIPLE_BUTTON && multiBtnExpanded && multiBtnAnimProgress > 0.3f) {
             for (int i = 0; i < multiButtonCount; i++) {
                 if (isMultiBtnSubHit(i, x, y)) {
@@ -1763,15 +1619,12 @@ public class ControlElement {
             inputControlsView.invalidate();
 
             if (type == Type.MENU_NAVIGATION) {
-                // Sentuhan pada tombol utama → toggle expand/collapse sub-menu
                 return true;
             } else if (type == Type.MULTIPLE_BUTTON) {
-                // Sentuhan pada tombol utama → toggle expand/collapse sub-buttons
                 return true;
             } else if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
 
-                // Tekan SEMUA binding
                 for (int i = 0; i < bindings.size(); i++) {
                     Binding b = bindings.get(i);
                     if (b != Binding.NONE) {
@@ -1799,7 +1652,6 @@ public class ControlElement {
             float deltaX, deltaY;
             Rect boundingBox = getBoundingBox();
             float radius = boundingBox.width() * 0.5f;
-            // Hindari radius nol — dapat terjadi saat layout belum selesai
             if (radius <= 0) return false;
             TouchpadView touchpadView = inputControlsView.getTouchpadView();
 
@@ -1810,14 +1662,12 @@ public class ControlElement {
                 deltaY = deltaPoint[1];
                 currentPosition.set(x, y);
             } else if (type == Type.RIGHT_STICK) {
-                // Delta ternormalisasi -1..1 dari posisi jari dalam bounding box (seperti STICK)
                 float localX = x - boundingBox.left;
                 float localY = y - boundingBox.top;
                 float offsetX = localX - radius;
                 float offsetY = localY - radius;
                 float distance = Mathf.lengthSq(offsetX, offsetY);
                 if (distance > radius * radius) {
-                    // Normalisasi vektor langsung — lebih cepat dari atan2/cos/sin
                     float len = (float) Math.sqrt(distance);
                     offsetX = offsetX / len * radius;
                     offsetY = offsetY / len * radius;
@@ -1825,7 +1675,6 @@ public class ControlElement {
                 deltaX = Mathf.clamp(offsetX / radius, -1, 1);
                 deltaY = Mathf.clamp(offsetY / radius, -1, 1);
 
-                // Update posisi visual thumbstick (dibatasi dalam outer circle)
                 if (visualThumbPosition == null) visualThumbPosition = new PointF();
                 visualThumbPosition.x = boundingBox.left + offsetX + radius;
                 visualThumbPosition.y = boundingBox.top + offsetY + radius;
@@ -1835,9 +1684,6 @@ public class ControlElement {
                 float offsetX = localX - radius;
                 float offsetY = localY - radius;
 
-                // Gunakan formula yang sama dengan RIGHT_STICK (lengthSq + normalisasi vektor)
-                // untuk konsistensi dan menghindari hasil berbeda antara atan2 vs normalisasi
-                // saat jari berada persis di batas lingkaran.
                 float distance = Mathf.lengthSq(offsetX, offsetY);
                 if (distance > radius * radius) {
                     float len = (float) Math.sqrt(distance);
@@ -1928,43 +1774,28 @@ public class ControlElement {
                 }
             } else if (type == Type.RIGHT_STICK) {
                 if (isCursorMove) {
-                    // === CURSOR MOVE MODE ===
-                    // Center layar PERMANEN. Pointer melanjutkan dari posisi terakhir
-                    // tanpa kembali ke center saat jari disentuhkan lagi.
-                    //
-                    // Formula:
-                    //   totalOffset = clamp(lastOffset + (currentDelta - startDelta), -1..1)
-                    //   pointerPos  = center + totalOffset * radius
-
                     XServer xServer = inputControlsView.getXServer();
 
-                    // Hitung center sekali — tidak pernah berubah
                     if (cursorMoveCenterX < 0) {
                         cursorMoveCenterX = xServer.screenInfo.width  / 2f;
                         cursorMoveCenterY = xServer.screenInfo.height / 2f;
                     }
 
-                    // Rekam posisi jari saat pertama menyentuh sebagai startDelta
                     if (!cursorMoveStartRecorded) {
                         cursorMoveStartDeltaX   = deltaX;
                         cursorMoveStartDeltaY   = deltaY;
                         cursorMoveStartRecorded = true;
                     }
 
-                    // Hitung total offset: offset terakhir + pergerakan jari sejak sentuhan ini
                     float totalOffsetX = cursorMoveLastOffsetX + (deltaX - cursorMoveStartDeltaX);
                     float totalOffsetY = cursorMoveLastOffsetY + (deltaY - cursorMoveStartDeltaY);
 
-                    // Clamp MELINGKAR — normalkan vektor jika panjangnya > 1
-                    // agar batas pergerakan pointer berbentuk LINGKARAN, bukan kotak.
                     float offsetLen = (float) Math.sqrt(totalOffsetX * totalOffsetX + totalOffsetY * totalOffsetY);
                     if (offsetLen > 1f) {
                         totalOffsetX /= offsetLen;
                         totalOffsetY /= offsetLen;
                     }
 
-                    // Perbarui lastOffset setiap frame — sehingga saat jari dilepas,
-                    // nilai ini sudah mencerminkan posisi pointer terakhir yang dikirim
                     cursorMoveLastOffsetX = totalOffsetX;
                     cursorMoveLastOffsetY = totalOffsetY;
 
@@ -1984,8 +1815,6 @@ public class ControlElement {
                     inputControlsView.invalidate();
                 }
 
-                // Binding gamepad selalu dieksekusi — baik cursor move aktif maupun tidak.
-                // Cursor move hanya mengontrol pergerakan pointer, binding tetap berjalan normal.
                 final boolean[] newStates = {
                         deltaY <= -STICK_DEAD_ZONE,
                         deltaX >= STICK_DEAD_ZONE,
@@ -2042,7 +1871,6 @@ public class ControlElement {
     }
 
     public boolean handleTouchUp(int pointerId) {
-        // MULTIPLE_BUTTON: lepaskan sub-button yang sedang ditekan
         if (type == Type.MULTIPLE_BUTTON && multiBtnPressedIndex >= 0) {
             int idx = multiBtnPressedIndex;
             multiBtnPressedIndex = -1;
@@ -2059,14 +1887,12 @@ public class ControlElement {
             inputControlsView.invalidate();
 
             if (type == Type.MENU_NAVIGATION) {
-                // Toggle sub-menu expand/collapse saat tombol utama dilepas
                 toggleMenu();
                 currentPointerId = -1;
                 return true;
             }
 
             if (type == Type.MULTIPLE_BUTTON) {
-                // Tombol utama dilepas → toggle expand/collapse sub-buttons
                 toggleMultiBtn();
                 currentPointerId = -1;
                 return true;
@@ -2095,7 +1921,6 @@ public class ControlElement {
                     touchTime = null;
                     inputControlsView.invalidate();
                 } else {
-                    // Lepaskan SEMUA binding
                     for (int i = 0; i < bindings.size(); i++) {
                         Binding b = bindings.get(i);
                         if (b != Binding.NONE) {
@@ -2119,22 +1944,10 @@ public class ControlElement {
                 if (type == Type.RANGE_BUTTON) {
                     scroller.handleTouchUp();
                 } else if (type == Type.STICK || type == Type.RIGHT_STICK) {
-                    // Reset posisi visual thumbstick ke center
                     currentPosition = null;
                     visualThumbPosition = null;
 
-                    // Cursor Move Mode: simpan total offset saat ini sebagai lastOffset
-                    // agar sentuhan berikutnya melanjutkan dari posisi pointer terakhir
                     if (type == Type.RIGHT_STICK && isCursorMove && cursorMoveStartRecorded) {
-                        // Hitung ulang totalOffset terakhir dengan deltaX/Y saat ini
-                        // (currentPosition sudah di-null, pakai nilai delta terakhir yang valid)
-                        // Kita tidak punya akses delta di sini, tapi cursorMoveLastOffsetX/Y
-                        // akan diperbarui di handleTouchMove sebelum touch up terjadi,
-                        // jadi kita update lastOffset = lastOffset + (lastDelta - startDelta)
-                        // Namun karena delta tidak tersedia di sini, kita simpan dengan cara
-                        // memanfaatkan bahwa handleTouchMove selalu dipanggil sebelum handleTouchUp:
-                        // lastOffset sudah benar dari update di handleTouchMove terakhir.
-                        // Yang perlu dilakukan hanya reset flag startRecorded untuk sesi berikutnya.
                         cursorMoveStartRecorded = false;
                     }
 
@@ -2147,22 +1960,10 @@ public class ControlElement {
         return false;
     }
 
-    /**
-     * Dipanggil saat Android mengirim ACTION_CANCEL — misalnya saat sistem mengambil alih
-     * gesture (scroll, notification bar), atau saat jari lain turun dan pointer capture
-     * berubah. Tanpa ini, stick stuck di posisi terakhir sampai di-sentuh ulang.
-     *
-     * Perilakunya identik dengan handleTouchUp: semua binding di-release dan state direset,
-     * tapi tanpa logika TOUCHSCREEN_TOGGLE / BUTTON karena cancel selalu berarti "batalkan".
-     *
-     * Jika pointerId == -1, force-cancel tanpa mengecek currentPointerId (dipakai saat
-     * ACTION_CANCEL global dari InputControlsView).
-     */
     public void handleTouchCancel(int pointerId) {
         if (pointerId == -1 || pointerId == currentPointerId) {
             isPressed = false;
 
-            // Release semua binding yang sedang aktif
             for (int i = 0; i < states.length; i++) {
                 if (states[i]) inputControlsView.handleInputEvent(getBindingAt(i), false);
                 states[i] = false;
@@ -2177,18 +1978,15 @@ public class ControlElement {
             } else if (type == Type.RANGE_BUTTON) {
                 scroller.handleTouchUp();
             } else if (type == Type.BUTTON) {
-                // Pastikan semua binding button juga di-release saat cancel
                 for (Binding b : bindings) {
                     if (b != Binding.NONE) inputControlsView.handleInputEvent(b, false);
                 }
             } else if (type == Type.MENU_NAVIGATION) {
-                // Cancel: collapse sub-menu tanpa mengeksekusi aksi
                 if (menuExpanded) {
                     menuExpanded = false;
                     animateMenu(false);
                 }
             } else if (type == Type.MULTIPLE_BUTTON) {
-                // Cancel: lepaskan sub-button yang ditekan jika ada, collapse
                 if (multiBtnPressedIndex >= 0) {
                     int idx = multiBtnPressedIndex;
                     multiBtnPressedIndex = -1;
@@ -2209,9 +2007,6 @@ public class ControlElement {
     }
 
     public PointF getCurrentPosition() {
-        // Jika stick tidak sedang digunakan (tidak ada sentuhan aktif),
-        // kembalikan center boundingBox yang selalu up-to-date.
-        // Berlaku untuk STICK dan RIGHT_STICK.
         if (currentPosition == null || currentPointerId == -1) {
             Rect bb = getBoundingBox();
             if (currentPosition == null) {

@@ -10,6 +10,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.renderer.GLRenderer;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Window;
+import com.winlator.cmod.xserver.XLock;
 import com.winlator.cmod.xserver.XServer;
 
 public class CursorPositionDialog extends ContentDialog {
@@ -28,16 +29,15 @@ public class CursorPositionDialog extends ContentDialog {
     private void init() {
         cursorPositionView = findViewById(R.id.cursorPositionView);
 
-        // Sembunyikan tombol bawaan (Confirm, Cancel, Neutral) jika tidak diperlukan
-        findViewById(R.id.BTConfirm).setVisibility(View.GONE);
-        findViewById(R.id.BTCancel).setVisibility(View.GONE);
+        // Tombol Confirm dan Cancel bawaan ContentDialog tetap dipertahankan (tidak diubah)
+        // sehingga pengguna dapat menutup dialog dengan Confirm atau Cancel.
+
         // Dapatkan ukuran kursor saat ini
         Cursor currentCursor = getCurrentCursor();
         if (currentCursor != null) {
             cursorWidth = currentCursor.cursorImage.width;
             cursorHeight = currentCursor.cursorImage.height;
         } else {
-            // fallback ukuran default root cursor (misal 32x32)
             cursorWidth = 32;
             cursorHeight = 32;
         }
@@ -45,7 +45,6 @@ public class CursorPositionDialog extends ContentDialog {
         // Ambil offset saat ini dari renderer, konversi ke relatif (0..1)
         int offsetX = glRenderer.getCursorHotspotOffsetX();
         int offsetY = glRenderer.getCursorHotspotOffsetY();
-        // Offset dihitung dari pusat gambar; relatif 0.5 = offset 0
         float relX = (offsetX + cursorWidth / 2f) / cursorWidth;
         float relY = (offsetY + cursorHeight / 2f) / cursorHeight;
         relX = Math.max(0f, Math.min(1f, relX));
@@ -54,24 +53,26 @@ public class CursorPositionDialog extends ContentDialog {
         cursorPositionView.post(() -> cursorPositionView.setOffsetRelative(relX, relY));
 
         cursorPositionView.setOnOffsetChangedListener((relX2, relY2) -> {
-            // Konversi ke offset piksel (dari pusat kursor)
             int newOffsetX = (int) (relX2 * cursorWidth - cursorWidth / 2f);
             int newOffsetY = (int) (relY2 * cursorHeight - cursorHeight / 2f);
             glRenderer.setCursorHotspotOffset(newOffsetX, newOffsetY);
         });
 
-        // Tombol reset dengan ImageButton dari layout
+        // Tombol reset menggunakan ImageButton dari layout kustom (ID: BTReset)
         ImageButton resetButton = findViewById(R.id.BTReset);
-        resetButton.setOnClickListener(v -> {
-            glRenderer.setCursorHotspotOffset(0, 0);
-            cursorPositionView.setOffsetRelative(0.5f, 0.5f);
-        });
+        if (resetButton != null) {
+            resetButton.setOnClickListener(v -> {
+                glRenderer.setCursorHotspotOffset(0, 0);
+                cursorPositionView.setOffsetRelative(0.5f, 0.5f);
+            });
+        }
 
         setTitle("Cursor Hotspot Offset");
     }
 
     private Cursor getCurrentCursor() {
-        try (com.winlator.cmod.xserver.XLock lock = xServer.lock(XServer.Lockable.INPUT_DEVICE_MANAGER)) {
+        // Perbaikan: Lockable.INPUT_DEVICE (bukan INPUT_DEVICE_MANAGER)
+        try (XLock lock = xServer.lock(XServer.Lockable.INPUT_DEVICE)) {
             Window pointWindow = xServer.inputDeviceManager.getPointWindow();
             if (pointWindow != null) {
                 return pointWindow.attributes.getCursor();

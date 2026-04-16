@@ -29,9 +29,6 @@ public class CursorPositionDialog extends ContentDialog {
     private void init() {
         cursorPositionView = findViewById(R.id.cursorPositionView);
 
-        // Tombol Confirm dan Cancel bawaan ContentDialog tetap dipertahankan (tidak diubah)
-        // sehingga pengguna dapat menutup dialog dengan Confirm atau Cancel.
-
         // Dapatkan ukuran kursor saat ini
         Cursor currentCursor = getCurrentCursor();
         if (currentCursor != null) {
@@ -50,7 +47,10 @@ public class CursorPositionDialog extends ContentDialog {
         relX = Math.max(0f, Math.min(1f, relX));
         relY = Math.max(0f, Math.min(1f, relY));
 
-        cursorPositionView.post(() -> cursorPositionView.setOffsetRelative(relX, relY));
+        // Simpan ke variabel final agar dapat digunakan dalam lambda
+        final float finalRelX = relX;
+        final float finalRelY = relY;
+        cursorPositionView.post(() -> cursorPositionView.setOffsetRelative(finalRelX, finalRelY));
 
         cursorPositionView.setOnOffsetChangedListener((relX2, relY2) -> {
             int newOffsetX = (int) (relX2 * cursorWidth - cursorWidth / 2f);
@@ -58,7 +58,7 @@ public class CursorPositionDialog extends ContentDialog {
             glRenderer.setCursorHotspotOffset(newOffsetX, newOffsetY);
         });
 
-        // Tombol reset menggunakan ImageButton dari layout kustom (ID: BTReset)
+        // Tombol reset menggunakan ImageButton dari layout kustom
         ImageButton resetButton = findViewById(R.id.BTReset);
         if (resetButton != null) {
             resetButton.setOnClickListener(v -> {
@@ -71,7 +71,6 @@ public class CursorPositionDialog extends ContentDialog {
     }
 
     private Cursor getCurrentCursor() {
-        // Perbaikan: Lockable.INPUT_DEVICE (bukan INPUT_DEVICE_MANAGER)
         try (XLock lock = xServer.lock(XServer.Lockable.INPUT_DEVICE)) {
             Window pointWindow = xServer.inputDeviceManager.getPointWindow();
             if (pointWindow != null) {

@@ -31,9 +31,6 @@ public class CursorPositionDialog extends ContentDialog {
         // Sembunyikan tombol bawaan (Confirm, Cancel, Neutral) jika tidak diperlukan
         findViewById(R.id.BTConfirm).setVisibility(View.GONE);
         findViewById(R.id.BTCancel).setVisibility(View.GONE);
-        View neutral = findViewById(R.id.BTNeutral);
-        if (neutral != null) neutral.setVisibility(View.GONE);
-
         // Dapatkan ukuran kursor saat ini
         Cursor currentCursor = getCurrentCursor();
         if (currentCursor != null) {

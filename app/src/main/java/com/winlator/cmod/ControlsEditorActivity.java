@@ -173,7 +173,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
                 loadSlotIconsUI(view, element,
-                        new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
+                        new String[]{"Main Button", "Keyboard", "Cursor Pos", "Input Controls", "Exit"}, 6);
             }
             else if (type == ControlElement.Type.MULTIPLE_BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);

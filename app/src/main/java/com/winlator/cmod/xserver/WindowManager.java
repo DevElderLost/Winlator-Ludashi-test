@@ -2,7 +2,7 @@ package com.winlator.cmod.xserver;
 
 import android.util.SparseArray;
 
-import com.winlator.cmod.core.Bitmask;
+import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xconnector.XInputStream;
 import com.winlator.cmod.xserver.errors.BadIdChoice;
 import com.winlator.cmod.xserver.errors.BadMatch;

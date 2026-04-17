@@ -77,10 +77,10 @@ public class CursorPositionDialog extends ContentDialog {
         int offsetX = glRenderer.getCursorHotspotOffsetX();
         int offsetY = glRenderer.getCursorHotspotOffsetY();
 
-        float relX = (offsetX + cursorWidth / 2f) / cursorWidth;
-        float relY = (offsetY + cursorHeight / 2f) / cursorHeight;
-        relX = Math.max(0f, Math.min(1f, relX));
-        relY = Math.max(0f, Math.min(1f, relY));
+        float rawRelX = (offsetX + cursorWidth / 2f) / cursorWidth;
+        float rawRelY = (offsetY + cursorHeight / 2f) / cursorHeight;
+        final float relX = Math.max(0f, Math.min(1f, rawRelX));
+        final float relY = Math.max(0f, Math.min(1f, rawRelY));
 
         // Set posisi awal
         cursorPositionView.post(() -> {

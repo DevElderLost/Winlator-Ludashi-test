@@ -21,7 +21,9 @@ import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.content.Context;
+import android.graphics.PorterDuff;
 
+import androidx.core.content.ContextCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.preference.PreferenceManager;
 
@@ -1042,15 +1044,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         lblBindings.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
         body.addView(lblBindings);
 
-        // Container khusus binding rows sub-button ini (reuse pola LLBindings)
-        LinearLayout bindContainer = new LinearLayout(this);
-        bindContainer.setOrientation(LinearLayout.VERTICAL);
-        body.addView(bindContainer);
-
         // Tombol + Add Binding — gunakan resource dan background yang sama dengan btnAddBinding di XML
         ImageButton btnAdd = new ImageButton(this);
         btnAdd.setImageResource(R.drawable.icon_add_24dp);
-        btnAdd.setBackgroundResource(android.R.drawable.btn_default_small);
+        btnAdd.setBackgroundColor(Color.TRANSPARENT);
+        btnAdd.setColorFilter(ContextCompat.getColor(ControlsEditorActivity.this, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
         int btnPad = (int) UnitUtils.dpToPx(8);
         btnAdd.setPadding(btnPad, btnPad, btnPad, btnPad);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
@@ -1059,6 +1057,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         btnLp.gravity = android.view.Gravity.END;
         btnAdd.setLayoutParams(btnLp);
         body.addView(btnAdd);
+
+        // Container khusus binding rows sub-button ini (reuse pola LLBindings)
+        LinearLayout bindContainer = new LinearLayout(this);
+        bindContainer.setOrientation(LinearLayout.VERTICAL);
+        body.addView(bindContainer);
 
         // Pastikan minimal 1 binding
         if (element.getMultiButtonBindings(idx).isEmpty()) {

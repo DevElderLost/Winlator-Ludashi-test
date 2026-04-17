@@ -142,11 +142,16 @@ public class CursorPositionView extends View {
         setOffsetRelative(0.5f, 0.5f);
     }
 
-    // Getter untuk nilai relatif offset saat ini
+    /**
+     * Mengembalikan nilai offset relatif X (0..1)
+     */
     public float getOffsetRelativeX() {
         return offsetRelativeX;
     }
 
+    /**
+     * Mengembalikan nilai offset relatif Y (0..1)
+     */
     public float getOffsetRelativeY() {
         return offsetRelativeY;
     }

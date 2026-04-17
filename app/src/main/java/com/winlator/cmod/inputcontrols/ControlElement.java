@@ -126,7 +126,7 @@ public class ControlElement {
     private boolean cursorMoveStartRecorded = false;
 
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner],
-    // MENU_NAVIGATION=[mainButton, keyboard, cursorPos, taskManager, activeWindows, exit] → slot 0..5
+    // MENU_NAVIGATION=[mainButton, keyboard, inputControls, exit] → slot 0..3
     private byte[] slotIconIds = new byte[7];
     private CubicBezierInterpolator interpolator;
     private Object touchTime;
@@ -1252,10 +1252,8 @@ public class ControlElement {
      * Slot icon MENU_NAVIGATION:
      *   slot 0 = icon tombol utama (menggantikan text/unicode)
      *   slot 1 = icon item Keyboard
-     *   slot 2 = icon item Cursor Pos
-     *   slot 3 = icon item Task Manager
-     *   slot 4 = icon item Active Windows
-     *   slot 5 = icon item Exit
+     *   slot 2 = icon item Input Controls
+     *   slot 3 = icon item Exit
      *
      * Jika slot icon tersedia → icon di kiri + text label di kanan.
      * Jika tidak → unicode fallback + label di tengah.
@@ -1377,23 +1375,9 @@ public class ControlElement {
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
 
             if (slotIcon > 0) {
-                // Ada slot icon → icon di kiri, text label di kanan
-                float iconAreaW = itemH * 0.78f;
-                float iconSize  = iconAreaW * 0.80f;
-                float iconCx    = boundingBox.left + iconAreaW * 0.5f + strokeWidth;
-                drawIconExact(canvas, iconCx, itemCy, iconSize, iconSize, slotIcon);
-
-                float textLeft  = boundingBox.left + iconAreaW + strokeWidth * 2;
-                float textAvail = boundingBox.right - textLeft - strokeWidth;
-                if (textAvail > 0) {
-                    paint.setTextAlign(Paint.Align.LEFT);
-                    float ts = Math.min(
-                            getTextSizeForWidth(paint, itemLabels[i], textAvail),
-                            snappingSize * 1.55f * scale);
-                    paint.setTextSize(ts);
-                    canvas.drawText(itemLabels[i], textLeft,
-                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
-                }
+                // Ada slot icon → icon saja di tengah, tanpa text (identik BUTTON normal)
+                float iconSize = Math.min(w, itemH) * 0.78f;
+                drawIconExact(canvas, cx, itemCy, iconSize, iconSize, slotIcon);
             } else {
                 // Tidak ada slot icon → unicode + label di tengah
                 String fullLabel = itemFallback[i] + " " + itemLabels[i];

@@ -2,13 +2,13 @@ package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.PorterDuff;
-import android.view.View;
+import android.content.res.ColorStateList;
 import android.widget.ImageButton;
 import android.widget.SeekBar;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+import androidx.core.widget.ImageViewCompat;
 import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
@@ -47,18 +47,18 @@ public class CursorPositionDialog extends ContentDialog {
         // Tombol reset di pojok kanan atas (ImageButton) dengan tint colorPrimary
         ImageButton resetButton = findViewById(R.id.BTReset);
         if (resetButton != null) {
-            resetButton.setColorFilter(
-                ContextCompat.getColor(getContext(), R.color.colorPrimary),
-                PorterDuff.Mode.SRC_IN
+            ImageViewCompat.setImageTintList(
+                resetButton,
+                ColorStateList.valueOf(ContextCompat.getColor(getContext(), R.color.colorPrimary))
             );
             resetButton.setOnClickListener(v -> {
                 glRenderer.setCursorHotspotOffset(0, 0);
                 cursorPositionView.resetToCenter();
                 // Reset juga skala ke default 1.0 jika diinginkan
                 // (opsional, bisa dikomentari)
-                // offsetScale = 1.0f;
-                // seekBarOffsetScale.setProgress(10);
-                // applyCurrentOffsetWithScale();
+                offsetScale = 1.0f;
+                seekBarOffsetScale.setProgress(10);
+                applyCurrentOffsetWithScale();
             });
         }
 

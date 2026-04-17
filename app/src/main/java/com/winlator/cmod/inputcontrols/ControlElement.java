@@ -9,7 +9,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
@@ -1272,15 +1271,10 @@ public class ControlElement {
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
         if (slotIconIds[0] > 0 || iconId > 0) {
-            // Ada icon → tampilan penuh (stroke saja, seperti BUTTON biasa)
-            paint.setColor(primaryColor);
-            paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-            canvas.drawRoundRect(
-                    boundingBox.left, boundingBox.top,
-                    boundingBox.right, boundingBox.bottom,
-                    r, r, paint);
-
+            // Ada icon → SEMBUNYIKAN stroke/fill shape, tampilkan icon saja
+            // (identik BUTTON dan MULTIPLE_BUTTON: shape tidak digambar saat ada icon)
             paint.setStyle(Paint.Style.FILL);
+            paint.setColor(primaryColor);
             float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
             drawIconExact(canvas, cx, cy, iconSize, iconSize,
                     slotIconIds[0] > 0 ? slotIconIds[0] : iconId);
@@ -1367,15 +1361,15 @@ public class ControlElement {
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
-            // Border — warna SAMA dengan tombol utama (primaryColor penuh × itemAlpha)
-            // agar stroke item konsisten dengan stroke menu utama
+            // Border
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
             paint.setStrokeWidth(strokeWidth * 0.75f);
             canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
+            // Konten (icon/teks) pakai primaryColor penuh — identik dengan tombol utama
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+            paint.setColor(primaryColor);
 
             // slot 1–4 untuk empat item sub-menu
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
@@ -1454,12 +1448,12 @@ public class ControlElement {
 
         // ── Tombol utama — shape mengikuti property elemen ─────────────────
         if (iconId > 0) {
-            // Ada global icon → stroke + icon (identik BUTTON dengan icon)
-            paint.setColor(primaryColor);
-            paint.setStyle(isPressed ? Paint.Style.FILL_AND_STROKE : Paint.Style.STROKE);
-            drawShapeOutline(canvas, paint, boundingBox, r, itemR);
+            // Ada global icon → SEMBUNYIKAN stroke/fill shape, tampilkan icon saja
+            // (identik dengan BUTTON: shape tidak digambar saat ada icon)
             paint.setStyle(Paint.Style.FILL);
-            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
+            paint.setColor(primaryColor);
+            float pressScale = isPressed ? 1.0f : 0.78f;
+            float iconSize = Math.min(w, h) * pressScale;
             drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
         } else {
             // Tidak ada icon → background semi-transparan + border + teks
@@ -1541,53 +1535,59 @@ public class ControlElement {
             int itemAlpha = (int)(scaleVal * menuAlpha);
             boolean subPressed = (multiBtnPressedIndex == i);
 
-            // Background fill
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
-                    subPressed ? (int)(80 * scaleVal) : (int)(40 * scaleVal)));
-            drawShapeRectOutline(canvas, paint, itemRect, itemR);
-
-            // Border
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(strokeWidth * 0.75f);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
-            drawShapeRectOutline(canvas, paint, itemRect, itemR);
-
-            // Icon / teks sub-button
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
-
             byte subIcon = multiButtonIconIds[i];
             String subText = (multiButtonTexts[i] != null) ? multiButtonTexts[i] : "";
 
             if (subIcon > 0) {
-                // Custom icon sub-button — pakai drawIconExact sama seperti BUTTON/MENU_NAVIGATION
-                float iconSize = Math.min(w, h) * 0.78f;
+                // Ada icon sub-button → SEMBUNYIKAN stroke/fill shape, tampilkan icon saja
+                // Warna icon pakai primaryColor penuh — identik dengan tombol utama
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(primaryColor);
+                float iconSize = Math.min(w, h) * (subPressed ? 1.0f : 0.78f);
                 drawIconExact(canvas, itemCx, itemCy, iconSize, iconSize, subIcon);
-            } else if (!subText.isEmpty()) {
-                // Custom text label
-                paint.setTextAlign(Paint.Align.CENTER);
-                float subTs = Math.min(
-                        getTextSizeForWidth(paint, subText, w - strokeWidth * 4),
-                        snappingSize * 1.6f * scale);
-                paint.setTextSize(subTs);
-                canvas.drawText(subText, itemCx,
-                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
             } else {
-                // Fallback: nama binding pertama (disingkat)
-                List<Binding> sb = getMultiButtonBindings(i);
-                String bindLabel = sb.isEmpty() ? "?" :
-                        sb.get(0).toString().replace("NUMPAD ", "NP")
-                                           .replace("BUTTON_", "")
-                                           .replace("KEY_", "");
-                if (bindLabel.length() > 6) bindLabel = bindLabel.substring(0, 5) + "…";
-                paint.setTextAlign(Paint.Align.CENTER);
-                float subTs = Math.min(
-                        getTextSizeForWidth(paint, bindLabel, w - strokeWidth * 4),
-                        snappingSize * 1.5f * scale);
-                paint.setTextSize(subTs);
-                canvas.drawText(bindLabel, itemCx,
-                        itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                // Tidak ada icon → gambar background + border + teks
+
+                // Background fill
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
+                        subPressed ? (int)(80 * scaleVal) : (int)(40 * scaleVal)));
+                drawShapeRectOutline(canvas, paint, itemRect, itemR);
+
+                // Border
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(strokeWidth * 0.75f);
+                paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+                drawShapeRectOutline(canvas, paint, itemRect, itemR);
+
+                // Teks pakai primaryColor penuh — identik dengan tombol utama
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(primaryColor);
+
+                if (!subText.isEmpty()) {
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    float subTs = Math.min(
+                            getTextSizeForWidth(paint, subText, w - strokeWidth * 4),
+                            snappingSize * 1.6f * scale);
+                    paint.setTextSize(subTs);
+                    canvas.drawText(subText, itemCx,
+                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                } else {
+                    // Fallback: nama binding pertama (disingkat)
+                    List<Binding> sb = getMultiButtonBindings(i);
+                    String bindLabel = sb.isEmpty() ? "?" :
+                            sb.get(0).toString().replace("NUMPAD ", "NP")
+                                               .replace("BUTTON_", "")
+                                               .replace("KEY_", "");
+                    if (bindLabel.length() > 6) bindLabel = bindLabel.substring(0, 5) + "…";
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    float subTs = Math.min(
+                            getTextSizeForWidth(paint, bindLabel, w - strokeWidth * 4),
+                            snappingSize * 1.5f * scale);
+                    paint.setTextSize(subTs);
+                    canvas.drawText(bindLabel, itemCx,
+                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                }
             }
 
             canvas.restore();
@@ -1810,7 +1810,7 @@ public class ControlElement {
             int snappingSize = inputControlsView.getSnappingSize();
             float gap    = snappingSize * 0.4f * scale;
             float itemH  = bb.height();
-            float totalH = (itemH + gap) * 4;
+            float totalH = (itemH + gap) * 5;
             float bottom = bb.bottom + gap + totalH;
             if (x >= bb.left && x <= bb.right && y >= bb.bottom && y <= bottom) return true;
         }
@@ -1846,7 +1846,7 @@ public class ControlElement {
             float gap  = snappingSize * 0.4f * scale;
             float itemH = h;
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 float top    = bb.bottom + gap + i * (itemH + gap);
                 float bottom = top + itemH;
                 if (x >= bb.left && x <= bb.right && y >= top && y <= bottom) {

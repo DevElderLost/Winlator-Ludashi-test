@@ -92,21 +92,9 @@ public class CursorPositionView extends RelativeLayout {
     }
 
     private void createControls(Context context) {
-        // SeekBar
-        sbScale = new SeekBar(context);
-        sbScale.setId(View.generateViewId());
-        sbScale.setMax(100);
-        sbScale.setProgress(33); // default scale 1.0
-        RelativeLayout.LayoutParams seekParams = new RelativeLayout.LayoutParams(
-                0, LayoutParams.WRAP_CONTENT);
-        seekParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        seekParams.addRule(RelativeLayout.ALIGN_PARENT_START);
-        seekParams.addRule(RelativeLayout.START_OF, btReset != null ? btReset.getId() : R.id.btResetInternal);
-        seekParams.setMargins(dpToPx(context, 16), 0, dpToPx(context, 8), dpToPx(context, 16));
-        sbScale.setLayoutParams(seekParams);
-        addView(sbScale);
+        // FIX: Buat btReset DULU sebelum sbScale, agar rule START_OF bisa resolve dengan benar
 
-        // ImageButton Reset
+        // 1. ImageButton Reset
         btReset = new ImageButton(context);
         btReset.setId(R.id.btResetInternal);
         btReset.setImageResource(R.drawable.icon_reset_24dp);
@@ -120,14 +108,24 @@ public class CursorPositionView extends RelativeLayout {
         btnParams.addRule(RelativeLayout.ALIGN_PARENT_END);
         btnParams.setMargins(0, 0, dpToPx(context, 16), dpToPx(context, 16));
         btReset.setLayoutParams(btnParams);
-        addView(btReset);
+        addView(btReset); // ← tambah btReset ke layout DULU
 
-        // Perbaiki aturan SeekBar setelah btReset dibuat
-        if (seekParams.getRules()[RelativeLayout.START_OF] == 0) {
-            seekParams.addRule(RelativeLayout.START_OF, btReset.getId());
-        }
+        // 2. SeekBar — btReset.getId() sekarang sudah valid
+        sbScale = new SeekBar(context);
+        sbScale.setId(View.generateViewId());
+        sbScale.setMax(100);
+        sbScale.setProgress(33); // default scale 1.0
+        RelativeLayout.LayoutParams seekParams = new RelativeLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, // FIX: bukan 0
+                LayoutParams.WRAP_CONTENT);
+        seekParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        seekParams.addRule(RelativeLayout.ALIGN_PARENT_START);
+        seekParams.addRule(RelativeLayout.START_OF, btReset.getId()); // ← sekarang valid
+        seekParams.setMargins(dpToPx(context, 16), 0, dpToPx(context, 8), dpToPx(context, 16));
+        sbScale.setLayoutParams(seekParams);
+        addView(sbScale);
 
-        // Listener default
+        // Listeners
         btReset.setOnClickListener(v -> {
             resetToCenter();
             sbScale.setProgress(33);
@@ -260,7 +258,7 @@ public class CursorPositionView extends RelativeLayout {
 
     private float scaleFromProgress(int progress) {
         float t = progress / 100f;
-        return 0.5f + t * (2.0f - 0.5f); // rentang 0.5 .. 2.0
+        return 0.5f + t * (4.0f - 0.5f); // rentang 0.5 .. 4.0
     }
 
     /**

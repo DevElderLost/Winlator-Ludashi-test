@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.PorterDuff;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.SeekBar;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
@@ -21,7 +22,11 @@ public class CursorPositionDialog extends ContentDialog {
     private final GLRenderer glRenderer;
     private final XServer xServer;
     private CursorPositionView cursorPositionView;
+    private SeekBar seekBarOffsetScale;
     private int cursorWidth, cursorHeight;
+
+    private float offsetScale = 1.0f;
+    private static final String PREF_CURSOR_OFFSET_SCALE = "cursor_offset_scale";
 
     public CursorPositionDialog(@NonNull Context context, GLRenderer renderer, XServer xServer) {
         super(context, R.layout.dialog_cursor_position);
@@ -32,6 +37,7 @@ public class CursorPositionDialog extends ContentDialog {
 
     private void init() {
         cursorPositionView = findViewById(R.id.cursorPositionView);
+        seekBarOffsetScale = findViewById(R.id.seekBarOffsetScale);
 
         // Terapkan tema ke view
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
@@ -48,6 +54,11 @@ public class CursorPositionDialog extends ContentDialog {
             resetButton.setOnClickListener(v -> {
                 glRenderer.setCursorHotspotOffset(0, 0);
                 cursorPositionView.resetToCenter();
+                // Reset juga skala ke default 1.0 jika diinginkan
+                // (opsional, bisa dikomentari)
+                // offsetScale = 1.0f;
+                // seekBarOffsetScale.setProgress(10);
+                // applyCurrentOffsetWithScale();
             });
         }
 
@@ -61,11 +72,20 @@ public class CursorPositionDialog extends ContentDialog {
             cursorHeight = 32;
         }
 
-        // Ambil offset saat ini dari renderer, konversi ke relatif (0..1)
+        // Muat nilai skala yang tersimpan
+        float savedScale = prefs.getFloat(PREF_CURSOR_OFFSET_SCALE, 1.0f);
+        offsetScale = savedScale;
+        seekBarOffsetScale.setProgress((int) (savedScale * 10));
+
+        // Ambil offset saat ini dari renderer
         int offsetX = glRenderer.getCursorHotspotOffsetX();
         int offsetY = glRenderer.getCursorHotspotOffsetY();
-        float relX = (offsetX + cursorWidth / 2f) / cursorWidth;
-        float relY = (offsetY + cursorHeight / 2f) / cursorHeight;
+
+        // Konversi ke relatif dengan memperhitungkan skala
+        float baseOffsetX = offsetX / offsetScale;
+        float baseOffsetY = offsetY / offsetScale;
+        float relX = (baseOffsetX + cursorWidth / 2f) / cursorWidth;
+        float relY = (baseOffsetY + cursorHeight / 2f) / cursorHeight;
         relX = Math.max(0f, Math.min(1f, relX));
         relY = Math.max(0f, Math.min(1f, relY));
 
@@ -73,13 +93,46 @@ public class CursorPositionDialog extends ContentDialog {
         final float finalRelY = relY;
         cursorPositionView.post(() -> cursorPositionView.setOffsetRelative(finalRelX, finalRelY));
 
-        cursorPositionView.setOnOffsetChangedListener((relX2, relY2) -> {
-            int newOffsetX = (int) (relX2 * cursorWidth - cursorWidth / 2f);
-            int newOffsetY = (int) (relY2 * cursorHeight - cursorHeight / 2f);
-            glRenderer.setCursorHotspotOffset(newOffsetX, newOffsetY);
+        // Listener saat posisi lingkaran diubah oleh user
+        cursorPositionView.setOnOffsetChangedListener((relX2, relY2) -> applyCurrentOffsetWithScale());
+
+        // Listener SeekBar untuk skala
+        seekBarOffsetScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                offsetScale = progress / 10.0f;
+                applyCurrentOffsetWithScale();
+                // Simpan nilai skala
+                prefs.edit().putFloat(PREF_CURSOR_OFFSET_SCALE, offsetScale).apply();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         setTitle("Cursor Hotspot Offset");
+    }
+
+    /**
+     * Menghitung offset piksel berdasarkan posisi relatif dan skala,
+     * lalu mengirimkannya ke GLRenderer.
+     */
+    private void applyCurrentOffsetWithScale() {
+        float relX = cursorPositionView.getOffsetRelativeX();
+        float relY = cursorPositionView.getOffsetRelativeY();
+
+        // Hitung offset piksel dasar (tanpa skala)
+        int baseOffsetX = (int) (relX * cursorWidth - cursorWidth / 2f);
+        int baseOffsetY = (int) (relY * cursorHeight - cursorHeight / 2f);
+
+        // Terapkan skala
+        int newOffsetX = (int) (baseOffsetX * offsetScale);
+        int newOffsetY = (int) (baseOffsetY * offsetScale);
+
+        glRenderer.setCursorHotspotOffset(newOffsetX, newOffsetY);
     }
 
     private Cursor getCurrentCursor() {

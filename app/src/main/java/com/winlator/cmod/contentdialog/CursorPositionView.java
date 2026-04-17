@@ -141,4 +141,13 @@ public class CursorPositionView extends View {
     public void resetToCenter() {
         setOffsetRelative(0.5f, 0.5f);
     }
+
+    // Getter untuk nilai relatif offset saat ini
+    public float getOffsetRelativeX() {
+        return offsetRelativeX;
+    }
+
+    public float getOffsetRelativeY() {
+        return offsetRelativeY;
+    }
 }

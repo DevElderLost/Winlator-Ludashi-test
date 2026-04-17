@@ -172,9 +172,10 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
-                // slot 0=Main Button, 1=Keyboard, 2=Input Controls, 3=Exit
+                // slot 0=Main Button, 1=Keyboard, 2=Cursor Pos, 3=Task Manager, 4=Active Windows, 5=Exit
+                // Urutan HARUS sinkron dengan drawMenuNavigation: slot i+1 untuk item sub-menu ke-i
                 loadSlotIconsUI(view, element,
-                        new String[]{"Main Button", "Keyboard", "Input Controls", "Exit"}, 4);
+                        new String[]{"Main Button", "Keyboard", "Cursor Pos", "Task Manager", "Active Windows", "Exit"}, 6);
             }
             else if (type == ControlElement.Type.MULTIPLE_BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
@@ -1029,16 +1030,17 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
         });
 
-        // ── Icon picker per sub-button ─────────────────────────────────
-        // Menggunakan logika persis sama dengan loadIcons() pada BUTTON normal:
-        // HorizontalScrollView berisi satu baris icon, tap untuk pilih/batal pilih,
-        // tap "×" untuk reset ke tidak ada icon.
+        // ── Icon picker per sub-button (shared icon row) ───────────────
+        // Menggunakan loadMultiBtnIconRowShared() — bitmap di-decode sekali
+        // untuk semua sub-button, badge angka menunjukkan sub-button mana yang
+        // memakai icon tersebut. Jauh lebih efisien dari addMultiBtnIconRow lama
+        // yang mendecode ulang setiap icon untuk setiap sub-button.
         TextView lblIcon = new TextView(this);
         lblIcon.setText("Icon (optional):");
         lblIcon.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
         body.addView(lblIcon);
 
-        addMultiBtnIconRow(body, element, idx);
+        loadMultiBtnIconRowShared(body, element, idx);
         TextView lblBindings = new TextView(this);
         lblBindings.setText("Key Bindings:");
         lblBindings.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
@@ -1191,21 +1193,30 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     /**
-     * Baris icon picker untuk satu sub-button MULTIPLE_BUTTON.
-     * Logika identik dengan loadIcons() yang dipakai pada BUTTON normal:
-     *  - HorizontalScrollView → satu baris icon
-     *  - Tap icon  : pilih sebagai icon sub-button ini (highlight biru)
-     *  - Tap lagi  : batal pilih (kembali ke tidak ada icon)
-     *  - Tap "×"   : reset ke tidak ada icon
-     * Perubahan disimpan realtime ke element.setMultiButtonIconId(idx, id).
+     * Icon picker untuk satu sub-button MULTIPLE_BUTTON — versi shared/slot.
+     *
+     * Perbedaan kritis vs addMultiBtnIconRow lama:
+     *   LAMA : setiap sub-button membuat FrameLayout + decode bitmap sendiri-sendiri
+     *          → N sub-button × M icon = N×M decode bitmap → lag saat buka editor
+     *   BARU : icon row ini memakai shared bitmap cache dari loadAllIconIds()
+     *          + badge angka (nomor sub-button) persis pola loadSlotIconsUI().
+     *          Bitmap di-decode sekali per icon, badge diperbarui tanpa rebuild view.
+     *
+     * Tap icon   : set icon sub-button ini, badge menampilkan nomor (idx+1)
+     * Tap lagi   : reset icon sub-button ini ke 0
+     * Tap "×"    : reset icon sub-button ini ke 0
+     *
+     * Badge angka menampilkan (idx+1) hanya pada icon yang sedang dipilih oleh
+     * sub-button ini — konsisten dengan UX loadSlotIconsUI (multi-slot).
      */
-    private void addMultiBtnIconRow(LinearLayout parent, ControlElement element, int idx) {
+    private void loadMultiBtnIconRowShared(LinearLayout parent, ControlElement element, int idx) {
         byte[] availableIconIds = loadAllIconIds();
         if (availableIconIds == null || availableIconIds.length == 0) return;
 
         int iconSize    = (int) UnitUtils.dpToPx(40);
         int iconMargin  = (int) UnitUtils.dpToPx(2);
         int iconPadding = (int) UnitUtils.dpToPx(4);
+        int badgeSize   = (int) UnitUtils.dpToPx(14);
 
         android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
         hsv.setLayoutParams(new LinearLayout.LayoutParams(
@@ -1215,19 +1226,42 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         LinearLayout iconRow = new LinearLayout(this);
         iconRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        final java.util.List<ImageView> allIconViews = new java.util.ArrayList<>();
+        // Referensi frame untuk refresh badge tanpa rebuild
+        final java.util.List<android.widget.FrameLayout> iconFrames = new java.util.ArrayList<>();
 
-        // Tombol "×" — reset icon sub-button ini ke 0 (tidak ada icon)
+        // Runnable: perbarui badge semua icon berdasarkan icon yang sedang dipilih sub-button ini
+        final Runnable refreshBadge = () -> {
+            byte current = element.getMultiButtonIconId(idx);
+            for (android.widget.FrameLayout frame : iconFrames) {
+                Object tagObj = frame.getTag();
+                if (tagObj == null) continue;
+                byte fId      = (byte) tagObj;
+                ImageView fIv    = (ImageView) frame.getChildAt(0);
+                TextView  fBadge = (TextView)  frame.getChildAt(1);
+                if (fId == current && current != 0) {
+                    fIv.setSelected(true);
+                    fBadge.setVisibility(View.VISIBLE);
+                    fBadge.setText(String.valueOf(idx + 1));
+                } else {
+                    fIv.setSelected(false);
+                    fBadge.setVisibility(View.GONE);
+                }
+            }
+        };
+
+        // Tombol "×" — reset icon sub-button ini ke 0
         android.widget.FrameLayout noneFrame = new android.widget.FrameLayout(this);
         LinearLayout.LayoutParams nfp = new LinearLayout.LayoutParams(iconSize, iconSize);
         nfp.setMargins(iconMargin, 0, iconMargin, 0);
         noneFrame.setLayoutParams(nfp);
+
         ImageView noneIv = new ImageView(this);
         noneIv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
         noneIv.setBackgroundResource(R.drawable.icon_background);
         noneFrame.addView(noneIv);
+
         TextView noneLbl = new TextView(this);
         noneLbl.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1236,15 +1270,16 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         noneLbl.setTextSize(20);
         noneLbl.setGravity(android.view.Gravity.CENTER);
         noneFrame.addView(noneLbl);
+
         noneFrame.setOnClickListener(v -> {
             element.setMultiButtonIconId(idx, (byte) 0);
             profile.save();
             inputControlsView.invalidate();
-            for (ImageView iv : allIconViews) iv.setSelected(false);
+            refreshBadge.run();
         });
         iconRow.addView(noneFrame);
 
-        // Daftar icon — satu baris horizontal
+        // Daftar icon — bitmap di-decode sekali, badge diperbarui via refreshBadge
         for (final byte id : availableIconIds) {
             android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
             frame.setTag(id);
@@ -1252,6 +1287,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             fp.setMargins(iconMargin, 0, iconMargin, 0);
             frame.setLayoutParams(fp);
 
+            // Layer 0: ImageView icon
             ImageView iv = new ImageView(this);
             iv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1259,7 +1295,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             iv.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
             try (java.io.InputStream is = openIconStream(id)) {
                 if (is != null) {
-                    android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is);
+                    Bitmap bmp = BitmapFactory.decodeStream(is);
                     iv.setImageBitmap(bmp);
                     applyIconBackground(iv, bmp);
                 } else {
@@ -1268,28 +1304,41 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             } catch (java.io.IOException e) {
                 iv.setBackgroundResource(R.drawable.icon_background);
             }
-            // Tandai selected jika icon ini sudah terpilih
-            iv.setSelected(element.getMultiButtonIconId(idx) == id);
             frame.addView(iv);
-            allIconViews.add(iv);
+
+            // Layer 1: badge nomor sub-button (pojok kanan atas)
+            TextView badge = new TextView(this);
+            android.widget.FrameLayout.LayoutParams badgeParams =
+                    new android.widget.FrameLayout.LayoutParams(badgeSize, badgeSize);
+            badgeParams.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+            badge.setLayoutParams(badgeParams);
+            badge.setTextSize(8);
+            badge.setGravity(android.view.Gravity.CENTER);
+            badge.setTextColor(Color.WHITE);
+            badge.setBackgroundColor(Color.argb(200, 0, 100, 220));
+            badge.setVisibility(View.GONE);
+            frame.addView(badge);
+
+            iconFrames.add(frame);
 
             frame.setOnClickListener(v -> {
-                boolean wasSelected = iv.isSelected();
-                // Batal pilih semua dulu
-                for (ImageView other : allIconViews) other.setSelected(false);
-                if (wasSelected) {
-                    // Tap icon yang sama dua kali → reset
+                byte current = element.getMultiButtonIconId(idx);
+                if (current == id) {
+                    // Tap icon yang sudah dipilih → reset
                     element.setMultiButtonIconId(idx, (byte) 0);
                 } else {
-                    iv.setSelected(true);
                     element.setMultiButtonIconId(idx, id);
                 }
                 profile.save();
                 inputControlsView.invalidate();
+                refreshBadge.run();
             });
 
             iconRow.addView(frame);
         }
+
+        // Set badge awal sesuai icon yang sudah tersimpan
+        refreshBadge.run();
 
         hsv.addView(iconRow);
         parent.addView(hsv);

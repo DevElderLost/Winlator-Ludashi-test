@@ -9,7 +9,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
@@ -127,7 +126,7 @@ public class ControlElement {
     private boolean cursorMoveStartRecorded = false;
 
     // Icon per-slot: D_PAD=[up,right,down,left], STICK/RIGHT_STICK=[outer,inner],
-    // MENU_NAVIGATION=[mainButton, keyboard, inputControls, exit] → slot 0..3
+    // MENU_NAVIGATION=[mainButton, keyboard, cursorPos, taskManager, activeWindows, exit] → slot 0..5
     private byte[] slotIconIds = new byte[7];
     private CubicBezierInterpolator interpolator;
     private Object touchTime;
@@ -1253,8 +1252,10 @@ public class ControlElement {
      * Slot icon MENU_NAVIGATION:
      *   slot 0 = icon tombol utama (menggantikan text/unicode)
      *   slot 1 = icon item Keyboard
-     *   slot 2 = icon item Input Controls
-     *   slot 3 = icon item Exit
+     *   slot 2 = icon item Cursor Pos
+     *   slot 3 = icon item Task Manager
+     *   slot 4 = icon item Active Windows
+     *   slot 5 = icon item Exit
      *
      * Jika slot icon tersedia → icon di kiri + text label di kanan.
      * Jika tidak → unicode fallback + label di tengah.

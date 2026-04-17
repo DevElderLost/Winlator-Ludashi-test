@@ -8,33 +8,4 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Panel kontrol di bagian bawah: SeekBar + tombol Reset -->
-    <LinearLayout
-        android:id="@+id/controlPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_margin="16dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <SeekBar
-            android:id="@+id/SBScale"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:max="100"
-            android:progress="33" /> <!-- progress 33 ≈ scale 1.0 pada rentang 0.5–2.0 -->
-
-        <ImageButton
-            android:id="@+id/BTReset"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Reset Hotspot"
-            android:src="@drawable/icon_reset_24dp" />
-
-    </LinearLayout>
-
 </FrameLayout>

@@ -78,7 +78,9 @@ public abstract class CursorRequests {
         int nameLen = inputStream.readInt();
         byte[] nameBytes = new byte[nameLen];
         inputStream.read(nameBytes);
-        inputStream.readPad(-nameLen & 3); // padding ke 4 byte
+        // Skip padding ke 4 byte (XInputStream tidak punya readPad)
+        int pad = -nameLen & 3;
+        for (int i = 0; i < pad; i++) inputStream.readByte();
         String cursorName = new String(nameBytes, "UTF-8").trim();
 
         try (XLock lock = client.xServer.lock(XServer.Lockable.CURSOR_MANAGER)) {

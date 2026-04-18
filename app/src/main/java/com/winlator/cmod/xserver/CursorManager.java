@@ -43,8 +43,8 @@ public class CursorManager extends XResourceManager {
 
         Drawable drawable = drawableManager.createDrawable(
             0,
-            sourcePixmap.drawable.width,
-            sourcePixmap.drawable.height,
+            sourcePixmap.drawable.width,   // sudah short
+            sourcePixmap.drawable.height,  // sudah short
             sourcePixmap.drawable.visual
         );
         Cursor cursor = new Cursor(id, x, y, drawable,
@@ -73,8 +73,8 @@ public class CursorManager extends XResourceManager {
                                    int width, int height, int[] pixels) {
         if (cursors.indexOfKey(id) >= 0) return null;
 
-        Visual argbVisual = drawableManager.getArgbVisual();
-        Drawable drawable = drawableManager.createDrawable(0, width, height, argbVisual);
+        Visual visual = drawableManager.getVisual();
+        Drawable drawable = drawableManager.createDrawable(0, (short) width, (short) height, visual);
 
         // Salin pixel ARGB langsung ke drawable — tidak perlu recolor
         ByteBuffer buf = drawable.getData();
@@ -112,11 +112,10 @@ public class CursorManager extends XResourceManager {
         List<XcursorLoader.XcursorFrame> bestFrames = selectBestSizeFrames(frames, targetSize);
 
         XcursorLoader.XcursorFrame first = bestFrames.get(0);
-        Visual argbVisual = drawableManager.getArgbVisual();
+        Visual visual = drawableManager.getVisual();
 
         // Buat drawable utama dari frame pertama
-        Drawable drawable = drawableManager.createDrawable(
-            0, first.width, first.height, argbVisual);
+        Drawable drawable = drawableManager.createDrawable(0, (short) first.width, (short) first.height, visual);
         copyPixelsToDrawable(first.pixels, drawable);
 
         Cursor cursor = new Cursor(id, (short) first.hotSpotX, (short) first.hotSpotY,
@@ -127,7 +126,7 @@ public class CursorManager extends XResourceManager {
             AnimatedCursor.Frame[] animFrames = new AnimatedCursor.Frame[bestFrames.size()];
             for (int i = 0; i < bestFrames.size(); i++) {
                 XcursorLoader.XcursorFrame f = bestFrames.get(i);
-                Drawable fd = drawableManager.createDrawable(0, f.width, f.height, argbVisual);
+                Drawable fd = drawableManager.createDrawable(0, (short) f.width, (short) f.height, visual);
                 copyPixelsToDrawable(f.pixels, fd);
                 animFrames[i] = new AnimatedCursor.Frame(
                     fd, f.hotSpotX, f.hotSpotY, f.delayMs > 0 ? f.delayMs : 50);

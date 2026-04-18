@@ -108,14 +108,26 @@ public class CursorPositionView extends RelativeLayout {
     }
 
     // -------------------------------------------------------------------------
-    // Square enforcement — paksa view selalu berbentuk kotak sempurna
+    // Square enforcement
+    // Ukuran square dihitung dari sisi terpendek, lalu di-pass ulang ke children
+    // agar SeekBar (MATCH_PARENT) ikut terbatas pada ukuran square, bukan width asli.
     // -------------------------------------------------------------------------
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        // Ukur dulu dengan spec asli
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        // Ambil sisi terpendek agar width == height (kotak sempurna)
+
+        // Ambil sisi terpendek sebagai ukuran square
         int size = Math.min(getMeasuredWidth(), getMeasuredHeight());
+
+        // Buat MeasureSpec baru yang EXACTLY = size
+        int squareSpec = MeasureSpec.makeMeasureSpec(size, MeasureSpec.EXACTLY);
+
+        // Ukur ulang semua children dengan spec square agar MATCH_PARENT ikut size ini
+        super.onMeasure(squareSpec, squareSpec);
+
+        // Tetapkan dimensi final sebagai square
         setMeasuredDimension(size, size);
     }
 

@@ -964,20 +964,25 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             tvChevron.setText(expanded ? "▶" : "▼");
         });
 
-        // ── Direction spinner ──────────────────────────────────────────
-        // NONE = button disembunyikan / tidak aktif
+        // ── Direction spinner — row horizontal (label kiri + spinner kanan) ──
+        // Pola sama dengan row "Number of buttons" dan loadBindingSpinners:
+        // TextView label di kiri (wrap_content) + Spinner di kanan (weight=1)
         final String[] DIRECTION_NAMES = {
                 "NONE (hidden)", "↑ Up", "↗ Up-Right", "→ Right",
                 "↘ Down-Right", "↓ Down", "↙ Down-Left", "← Left", "↖ Up-Left"
         };
-        // Internal: index 0 = NONE (-1), index 1..8 = direction 0..7
-        // Simpan sebagai byte: 0xFF = NONE, 0..7 = direction
-        // Kita encode NONE sebagai nilai -1 (byte 0xFF via cast)
+
+        LinearLayout rowDir = new LinearLayout(this);
+        rowDir.setOrientation(LinearLayout.HORIZONTAL);
+        rowDir.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        rowDir.setPadding(0, (int) UnitUtils.dpToPx(4), 0, (int) UnitUtils.dpToPx(2));
 
         TextView lblDir = new TextView(this);
-        lblDir.setText("Direction:");
-        lblDir.setPadding(0, (int) UnitUtils.dpToPx(4), 0, 0);
-        body.addView(lblDir);
+        lblDir.setText("Direction: ");
+        lblDir.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        rowDir.addView(lblDir);
 
         Spinner spDir = new Spinner(this);
         spDir.setAdapter(new ArrayAdapter<>(this,
@@ -989,14 +994,13 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         if (dirSelection > 8) dirSelection = 0;
         spDir.setSelection(dirSelection, false);
         spDir.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        body.addView(spDir);
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        rowDir.addView(spDir);
+        body.addView(rowDir);
 
         spDir.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                // pos 0 = NONE (0xFF), pos 1..8 = dir 0..7
                 byte dirVal = (pos == 0) ? (byte) 0xFF : (byte) (pos - 1);
                 element.setMultiButtonDirection(idx, dirVal);
                 profile.save();
@@ -1005,16 +1009,14 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             @Override public void onNothingSelected(AdapterView<?> p) {}
         });
 
-        // ── Label text ─────────────────────────────────────────────────
-        TextView lblText = new TextView(this);
-        lblText.setText("Label (optional):");
-        lblText.setPadding(0, (int) UnitUtils.dpToPx(6), 0, 0);
-        body.addView(lblText);
-
-        android.widget.EditText etLabel = new android.widget.EditText(this);
+        // ── Label text — EditText dengan hint, identik ETCustomText BUTTON Normal ──
+        // ETCustomText di BUTTON Normal tidak punya label TextView di atasnya —
+        // hint di dalam EditText sudah cukup sebagai panduan visual.
+        EditText etLabel = new EditText(this);
         etLabel.setText(element.getMultiButtonText(idx));
-        etLabel.setHint("leave empty = show key name");
+        etLabel.setHint("Custom label (empty = key name)");
         etLabel.setSingleLine(true);
+        etLabel.setPadding(0, (int) UnitUtils.dpToPx(6), 0, (int) UnitUtils.dpToPx(2));
         etLabel.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));

@@ -13,12 +13,8 @@
 
 enum GCFunction {GCF_CLEAR, GCF_AND, GCF_AND_REVERSE, GCF_COPY, GCF_AND_INVERTED, GCF_NO_OP, GCF_XOR, GCF_OR, GCF_NOR, GCF_EQUIV, GCF_INVERT, GCF_OR_REVERSE, GCF_COPY_INVERTED, GCF_OR_INVERTED, GCF_NAND, GCF_SET};
 
-// BUG FIX: r/g/b adalah int8_t (8-bit), operasi "r & 0xff00" selalu 0
-// karena nilai 8-bit tidak punya bit di posisi 0xff00.
-// Akibatnya foreColor dan backColor selalu 0x000000 (hitam).
-// Fix: gunakan uint8_t dan shift yang benar untuk RGB 24-bit.
-static int packColor(uint8_t r, uint8_t g, uint8_t b) {
-    return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
+static int packColor(int8_t r, int8_t g, int8_t b) {
+    return ((r & 0xff00) << 8) | (g & 0xff00) | (b >> 8);
 }
 
 static void unpackColor(int color, uint8_t *rgba) {
@@ -322,62 +318,4 @@ Java_com_winlator_cmod_xserver_Pixmap_toBitmap(JNIEnv *env, jclass obj, jobject 
     }
 
     AndroidBitmap_unlockPixels(env, bitmap);
-}
-
-// =============================================================================
-// BUG FIX: Fungsi baru untuk mendukung cursor ARGB 32-bit penuh dari XCursor
-// (cursor theme DMZ, Breeze, dsb dari /usr/share/icons/).
-//
-// drawAlphaMaskedBitmap() lama hanya bisa output 2 warna (foreColor/backColor)
-// karena dirancang untuk cursor X11 klasik (1-bit source + 1-bit mask).
-// Cursor XCursor modern menyimpan pixel sebagai ARGB 32-bit langsung —
-// warna dan alpha penuh sudah ada di srcData, tidak perlu recolor.
-// =============================================================================
-
-/**
- * Salin pixel ARGB 32-bit dari srcData ke dstData dengan premultiplied alpha.
- * Digunakan untuk cursor XCursor (RENDER extension) yang sudah punya warna penuh.
- *
- * Format srcData: BGRA (urutan memori Android Bitmap = ARGB stored as B,G,R,A)
- * Format dstData: sama, BGRA 32-bit per pixel
- */
-JNIEXPORT void JNICALL
-Java_com_winlator_cmod_xserver_Drawable_copyArgbCursor(JNIEnv *env, jclass obj,
-                                                        jobject srcData,
-                                                        jobject dstData,
-                                                        jint pixelCount) {
-    uint8_t *src = (*env)->GetDirectBufferAddress(env, srcData);
-    uint8_t *dst = (*env)->GetDirectBufferAddress(env, dstData);
-
-    if (!src || !dst) {
-        printf("Error: NULL buffer in copyArgbCursor\n");
-        return;
-    }
-
-    // Salin ARGB langsung — warna sudah benar, tidak perlu recolor
-    memcpy(dst, src, (size_t)pixelCount * 4);
-}
-
-/**
- * Salin satu frame dari animated cursor ARGB ke dstData.
- * frameIndex menentukan offset dalam srcData (setiap frame = pixelCount * 4 byte).
- * Digunakan oleh CursorManager saat cycling animasi cursor watch/loading.
- */
-JNIEXPORT void JNICALL
-Java_com_winlator_cmod_xserver_Drawable_copyArgbCursorFrame(JNIEnv *env, jclass obj,
-                                                              jobject srcData,
-                                                              jobject dstData,
-                                                              jint pixelCount,
-                                                              jint frameIndex) {
-    uint8_t *src = (*env)->GetDirectBufferAddress(env, srcData);
-    uint8_t *dst = (*env)->GetDirectBufferAddress(env, dstData);
-
-    if (!src || !dst) {
-        printf("Error: NULL buffer in copyArgbCursorFrame\n");
-        return;
-    }
-
-    size_t frameSize = (size_t)pixelCount * 4;
-    size_t offset = frameSize * (size_t)frameIndex;
-    memcpy(dst, src + offset, frameSize);
 }

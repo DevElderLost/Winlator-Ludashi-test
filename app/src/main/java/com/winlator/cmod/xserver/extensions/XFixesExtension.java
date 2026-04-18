@@ -4,40 +4,34 @@ import android.util.Log;
 
 import com.winlator.cmod.xconnector.XInputStream;
 import com.winlator.cmod.xconnector.XOutputStream;
+import com.winlator.cmod.xconnector.XStreamLock;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Window;
 import com.winlator.cmod.xserver.XClient;
 import com.winlator.cmod.xserver.XLock;
 import com.winlator.cmod.xserver.XServer;
+import com.winlator.cmod.xserver.errors.XRequestError;
 
 import java.io.IOException;
 
 /**
  * Implementasi extension XFixes untuk Winlator X server.
  *
- * Extension ini menangani request XFixesHideCursor dan XFixesShowCursor
- * yang dikirim oleh game/aplikasi Wine ketika mereka ingin menyembunyikan
- * cursor sistem dan menggantinya dengan cursor bawaan mereka sendiri.
+ * Menangani XFixesHideCursor dan XFixesShowCursor yang dikirim game/Wine
+ * ketika mereka ingin menyembunyikan cursor sistem dan menggantinya dengan
+ * cursor bawaan mereka sendiri (misal FPS game dengan crosshair).
  *
- * Tanpa extension ini, request hide cursor dari game diabaikan diam-diam,
+ * Tanpa extension ini, request hide cursor dari game diabaikan diam-diam
  * sehingga cursor Winlator tetap tampil di atas cursor bawaan game.
- *
- * Referensi protokol: xfixes.h (X.Org), minor opcode 29 = HideCursor, 30 = ShowCursor.
  */
-public class XFixesExtension extends Extension {
+public class XFixesExtension implements Extension {
 
-    // Opcode major XFixes — ditetapkan saat QueryExtension, nilainya negatif
-    // karena di Winlator extension opcode disimpan sebagai byte (signed).
-    // Nilai aktual dinegosiasikan saat runtime; kita daftarkan di slot yang
-    // belum dipakai extension lain. Nilai -4 dipakai karena BigReq=-1,
-    // MITSHM=-2, DRI3=-3, Present sudah ada, Sync sudah ada.
-    // Jika ada konflik, sesuaikan dengan daftar extension yang terdaftar di XServer.
     public static final byte MAJOR_OPCODE = -105;
 
     // Minor opcode XFixes sesuai spesifikasi protokol xfixes
-    private static final int X_XFIXES_QUERY_VERSION  = 0;
-    private static final int X_XFIXES_HIDE_CURSOR    = 29;
-    private static final int X_XFIXES_SHOW_CURSOR    = 30;
+    private static final int X_XFIXES_QUERY_VERSION = 0;
+    private static final int X_XFIXES_HIDE_CURSOR   = 29;
+    private static final int X_XFIXES_SHOW_CURSOR   = 30;
 
     // Versi XFixes yang kita klaim support (5.0 — mencakup HideCursor/ShowCursor)
     private static final int XFIXES_MAJOR_VERSION = 5;
@@ -49,8 +43,22 @@ public class XFixesExtension extends Extension {
     }
 
     @Override
-    public void handleRequest(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException {
-        // Minor opcode ada di requestData yang sudah dibaca sebelum handleRequest dipanggil
+    public byte getMajorOpcode() {
+        return MAJOR_OPCODE;
+    }
+
+    @Override
+    public byte getFirstErrorId() {
+        return 0;
+    }
+
+    @Override
+    public byte getFirstEventId() {
+        return 0;
+    }
+
+    @Override
+    public void handleRequest(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException, XRequestError {
         int minorOpcode = client.getRequestData() & 0xFF;
 
         switch (minorOpcode) {
@@ -64,7 +72,6 @@ public class XFixesExtension extends Extension {
                 handleShowCursor(client, inputStream, outputStream);
                 break;
             default:
-                // Request XFixes lain yang belum diimplementasi — skip saja
                 client.skipRequest();
                 Log.d("XFixesExtension", "Unhandled XFixes minor opcode: " + minorOpcode);
                 break;
@@ -77,30 +84,26 @@ public class XFixesExtension extends Extension {
      * Wajib diimplementasi agar client tidak abort setelah QueryExtension.
      */
     private void handleQueryVersion(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException {
-        // Baca versi yang diminta client (masing-masing 4 byte)
         int clientMajor = inputStream.readInt();
         int clientMinor = inputStream.readInt();
 
         Log.d("XFixesExtension", "QueryVersion: client wants " + clientMajor + "." + clientMinor);
 
-        try (com.winlator.cmod.xconnector.XStreamLock lock = outputStream.lock()) {
-            outputStream.writeByte((byte) 1);           // reply
-            outputStream.writeByte((byte) 0);           // unused
+        try (XStreamLock lock = outputStream.lock()) {
+            outputStream.writeByte((byte) 1);            // reply code
+            outputStream.writeByte((byte) 0);            // unused
             outputStream.writeShort(client.getSequenceNumber());
-            outputStream.writeInt(0);                   // reply length (0 = 32 bytes)
+            outputStream.writeInt(0);                    // reply length
             outputStream.writeInt(XFIXES_MAJOR_VERSION);
             outputStream.writeInt(XFIXES_MINOR_VERSION);
-            outputStream.writePad(16);                  // unused padding
+            outputStream.writePad(16);                   // unused padding
         }
     }
 
     /**
      * XFixesHideCursor — game meminta cursor disembunyikan pada window tertentu.
-     *
-     * Kita ambil cursor yang sedang aktif di window tersebut dan tandai
-     * sebagai forceHidden = true sehingga GLRenderer tidak merendernya.
-     * rootCursorDrawable fallback juga tidak akan dirender karena
-     * pengecekan isForceHidden() ada sebelum pengecekan cursor == null.
+     * Cursor ditandai forceHidden = true sehingga GLRenderer tidak merendernya,
+     * termasuk tidak jatuh ke fallback rootCursorDrawable.
      */
     private void handleHideCursor(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException {
         int windowId = inputStream.readInt();
@@ -112,17 +115,13 @@ public class XFixesExtension extends Extension {
                 if (cursor != null) {
                     cursor.setForceHidden(true);
                 } else {
-                    // Belum ada cursor eksplisit di window ini — tandai di renderer langsung
-                    // agar cursor default (rootCursorDrawable) juga tidak tampil.
-                    // Kita gunakan flag global di renderer sebagai fallback.
+                    // Tidak ada cursor eksplisit di window — sembunyikan cursor default renderer
                     if (client.xServer.getRenderer() != null) {
                         client.xServer.getRenderer().setCursorVisible(false);
                     }
                 }
                 Log.d("XFixesExtension", "HideCursor on window " + windowId);
             }
-
-            // XFixes HideCursor tidak mengirim reply — hanya request satu arah
         }
 
         if (client.xServer.getRenderer() != null) {
@@ -132,7 +131,6 @@ public class XFixesExtension extends Extension {
 
     /**
      * XFixesShowCursor — game meminta cursor dikembalikan ke kondisi visible.
-     * Kebalikan dari HideCursor.
      */
     private void handleShowCursor(XClient client, XInputStream inputStream, XOutputStream outputStream) throws IOException {
         int windowId = inputStream.readInt();
@@ -144,7 +142,6 @@ public class XFixesExtension extends Extension {
                 if (cursor != null) {
                     cursor.setForceHidden(false);
                 } else {
-                    // Kembalikan cursor default renderer
                     if (client.xServer.getRenderer() != null) {
                         client.xServer.getRenderer().setCursorVisible(true);
                     }

@@ -21,6 +21,7 @@ import com.winlator.cmod.widget.FrameRating;
 import com.winlator.cmod.widget.XServerView;
 import com.winlator.cmod.xserver.Atom;
 import com.winlator.cmod.xserver.Bitmask;
+import com.winlator.cmod.xserver.AnimatedCursor;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Drawable;
 import com.winlator.cmod.renderer.FullscreenTransformation;
@@ -446,20 +447,32 @@ private void renderCursor() {
         short y = xServer.pointer.getClampedY();
 
         if (cursor == null) {
-            // Tidak ada cursor yang di-assign ke window → render cursor default Winlator.
+            // Belum ada cursor di-assign ke window → render cursor default Winlator
             renderDrawable(rootCursorDrawable,
                 x - cursorHotspotOffsetX, y - cursorHotspotOffsetY, cursorMaterial);
+
         } else if (cursor.isForceHidden()) {
-            // BUG FIX: Game secara eksplisit menyembunyikan cursor (XFixesHideCursor,
-            // XDefineCursor None, dsb.) → jangan render apa pun, termasuk rootCursorDrawable.
-            // Ini yang menyebabkan cursor Winlator tetap muncul di atas cursor bawaan game.
+            // BUG FIX: Game sengaja hide cursor (XFixesHideCursor) →
+            // jangan render apa pun, termasuk rootCursorDrawable.
+            // Ini penyebab cursor Winlator tetap muncul di atas cursor bawaan game.
+
         } else if (cursor.isVisible()) {
-            // Cursor normal, mask tidak kosong → render cursor X11 milik window.
-            int renderX = x - cursor.hotSpotX - cursorHotspotOffsetX;
-            int renderY = y - cursor.hotSpotY - cursorHotspotOffsetY;
-            renderDrawable(cursor.cursorImage, renderX, renderY, cursorMaterial);
+            if (cursor.isAnimated()) {
+                // Cursor animasi Xcursor (watch, loading, dsb) — ambil frame saat ini
+                AnimatedCursor.Frame frame = cursor.getAnimatedCursor().getCurrentFrame();
+                int renderX = x - frame.hotSpotX - cursorHotspotOffsetX;
+                int renderY = y - frame.hotSpotY - cursorHotspotOffsetY;
+                renderDrawable(frame.drawable, renderX, renderY, cursorMaterial);
+                // Request render terus agar animasi berjalan
+                xServerView.requestRender();
+            } else {
+                // Cursor normal (statis) — X11 klasik atau ARGB satu frame
+                int renderX = x - cursor.hotSpotX - cursorHotspotOffsetX;
+                int renderY = y - cursor.hotSpotY - cursorHotspotOffsetY;
+                renderDrawable(cursor.cursorImage, renderX, renderY, cursorMaterial);
+            }
         }
-        // else: cursor ada tapi mask-nya kosong/transparan (visible == false) → tidak render.
+        // else: cursor ada tapi mask kosong (visible==false) → tidak render apa pun
     }
 
     quadVertices.disable();

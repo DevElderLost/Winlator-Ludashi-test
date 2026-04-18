@@ -2,12 +2,11 @@ package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.PorterDuff;
+import android.view.Gravity;
 import android.view.View;
-import android.widget.ImageButton;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
@@ -24,14 +23,14 @@ public class CursorPositionDialog extends ContentDialog {
     private int cursorWidth, cursorHeight;
     private float offsetScale = 1.0f;
 
-    private static final float SCALE_MIN = 0.5f;
-    private static final float SCALE_MAX = 2.0f;
+    private static final float SCALE_MIN     = 0.5f;
+    private static final float SCALE_MAX     = 4.0f;
     private static final float SCALE_DEFAULT = 1.0f;
 
     public CursorPositionDialog(@NonNull Context context, GLRenderer renderer, XServer xServer) {
         super(context, R.layout.dialog_cursor_position);
         this.glRenderer = renderer;
-        this.xServer = xServer;
+        this.xServer    = xServer;
         init();
     }
 
@@ -43,57 +42,69 @@ public class CursorPositionDialog extends ContentDialog {
         boolean isDarkMode = prefs.getBoolean("dark_mode", false);
         cursorPositionView.updateTheme(isDarkMode);
 
-        // Setup listener offset
-        cursorPositionView.setOnOffsetChangedListener((relX, relY) -> {
-            updateOffsetToRenderer(relX, relY);
-        });
+        // Listener offset (saat lingkaran digeser)
+        cursorPositionView.setOnOffsetChangedListener((relX, relY) ->
+                updateOffsetToRenderer(relX, relY));
 
-        // Setup listener skala
+        // Listener skala (saat seekbar digeser)
         cursorPositionView.setOnScaleChangedListener(scale -> {
             offsetScale = scale;
-            // Update offset dengan skala baru
-            updateOffsetToRenderer(cursorPositionView.getOffsetRelativeX(),
-                                   cursorPositionView.getOffsetRelativeY());
+            updateOffsetToRenderer(
+                    cursorPositionView.getOffsetRelativeX(),
+                    cursorPositionView.getOffsetRelativeY());
         });
 
-        // Setup callback reset
-        cursorPositionView.setOnResetCallback(() -> {
+        // Sembunyikan BTConfirm dan BTCancel — dialog ini tidak butuh keduanya
+        findViewById(R.id.BTConfirm).setVisibility(View.GONE);
+        findViewById(R.id.BTCancel).setVisibility(View.GONE);
+
+        // Tampilkan BTReset dan posisikan di tengah bottom bar
+        View btReset = findViewById(R.id.BTReset);
+        btReset.setVisibility(View.VISIBLE);
+
+        // Karena BTCancel & BTConfirm sudah GONE, ubah gravity BTReset ke center
+        // agar tidak nempel ke kiri (default LinearLayout horizontal)
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) btReset.getLayoutParams();
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
+        btReset.setLayoutParams(lp);
+
+        btReset.setOnClickListener(v -> {
             offsetScale = SCALE_DEFAULT;
+            cursorPositionView.resetToCenter();
             cursorPositionView.setScaleProgress(progressFromScale(SCALE_DEFAULT));
             glRenderer.setCursorHotspotOffset(0, 0);
         });
 
-        // Dapatkan ukuran kursor
+        // Dapatkan ukuran kursor saat ini
         Cursor currentCursor = getCurrentCursor();
         if (currentCursor != null) {
-            cursorWidth = currentCursor.cursorImage.width;
+            cursorWidth  = currentCursor.cursorImage.width;
             cursorHeight = currentCursor.cursorImage.height;
         } else {
-            cursorWidth = 32;
+            cursorWidth  = 32;
             cursorHeight = 32;
         }
 
-        // Ambil offset saat ini dari renderer, konversi ke relatif (0..1)
+        // Ambil offset yang sudah tersimpan di renderer, konversi ke posisi relatif (0..1)
         int offsetX = glRenderer.getCursorHotspotOffsetX();
         int offsetY = glRenderer.getCursorHotspotOffsetY();
 
-        float rawRelX = (offsetX + cursorWidth / 2f) / cursorWidth;
+        float rawRelX = (offsetX + cursorWidth  / 2f) / cursorWidth;
         float rawRelY = (offsetY + cursorHeight / 2f) / cursorHeight;
         final float relX = Math.max(0f, Math.min(1f, rawRelX));
         final float relY = Math.max(0f, Math.min(1f, rawRelY));
 
-        // Set posisi awal
+        // Set posisi awal setelah view selesai di-layout
         cursorPositionView.post(() -> {
             cursorPositionView.setOffsetRelative(relX, relY);
-            // Progress awal sesuai skala default
             cursorPositionView.setScaleProgress(progressFromScale(SCALE_DEFAULT));
         });
 
-        setTitle("Cursor Hotspot Offset");
+        setTitle(R.string.cursor_hotspot_offset);
     }
 
     private void updateOffsetToRenderer(float relX, float relY) {
-        int newOffsetX = (int) ((relX * cursorWidth - cursorWidth / 2f) * offsetScale);
+        int newOffsetX = (int) ((relX * cursorWidth  - cursorWidth  / 2f) * offsetScale);
         int newOffsetY = (int) ((relY * cursorHeight - cursorHeight / 2f) * offsetScale);
         glRenderer.setCursorHotspotOffset(newOffsetX, newOffsetY);
     }

@@ -6,15 +6,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 
-import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
@@ -32,16 +29,14 @@ public class CursorPositionView extends RelativeLayout {
 
     // Controls
     private SeekBar sbScale;
-    private ImageButton btReset;
 
     // Listeners
     private OnOffsetChangedListener offsetListener;
     private OnScaleChangedListener scaleListener;
-    private Runnable onResetCallback;
 
     private int lineColor = Color.BLACK;
 
-    // Tinggi area kontrol (dalam dp, dikonversi ke px saat runtime)
+    // Tinggi area SeekBar di bagian bawah view (dp -> px)
     private int controlPanelHeightPx;
 
     public interface OnOffsetChangedListener {
@@ -58,12 +53,10 @@ public class CursorPositionView extends RelativeLayout {
     }
 
     private void init(Context context) {
-        // Baca tema
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         boolean isDarkMode = prefs.getBoolean("dark_mode", false);
         lineColor = isDarkMode ? Color.WHITE : Color.BLACK;
 
-        // Inisialisasi Paint
         crosshairPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         crosshairPaint.setColor(lineColor);
         crosshairPaint.setStyle(Paint.Style.STROKE);
@@ -76,13 +69,9 @@ public class CursorPositionView extends RelativeLayout {
         circlePaint.setStrokeWidth(4f);
         circlePaint.setPathEffect(new DashPathEffect(new float[]{8, 8}, 0));
 
-        // Konversi tinggi kontrol dari dp ke px (perkiraan: SeekBar + margin)
-        controlPanelHeightPx = dpToPx(context, 56); // 48dp tombol + margin
+        controlPanelHeightPx = dpToPx(context, 48);
 
-        // Membuat dan menambahkan kontrol ke layout
         createControls(context);
-
-        // Agar onDraw() dipanggil
         setWillNotDraw(false);
     }
 
@@ -92,58 +81,47 @@ public class CursorPositionView extends RelativeLayout {
     }
 
     private void createControls(Context context) {
-        // FIX: Buat btReset DULU sebelum sbScale, agar rule START_OF bisa resolve dengan benar
-
-        // 1. ImageButton Reset
-        btReset = new ImageButton(context);
-        btReset.setId(R.id.btResetInternal);
-        btReset.setImageResource(R.drawable.icon_reset_24dp);
-        btReset.setBackgroundColor(Color.TRANSPARENT);
-        btReset.setColorFilter(
-                ContextCompat.getColor(context, R.color.colorPrimary),
-                PorterDuff.Mode.SRC_IN);
-        RelativeLayout.LayoutParams btnParams = new RelativeLayout.LayoutParams(
-                dpToPx(context, 48), dpToPx(context, 48));
-        btnParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        btnParams.addRule(RelativeLayout.ALIGN_PARENT_END);
-        btnParams.setMargins(0, 0, dpToPx(context, 16), dpToPx(context, 16));
-        btReset.setLayoutParams(btnParams);
-        addView(btReset); // ← tambah btReset ke layout DULU
-
-        // 2. SeekBar — btReset.getId() sekarang sudah valid
         sbScale = new SeekBar(context);
         sbScale.setId(View.generateViewId());
         sbScale.setMax(100);
-        sbScale.setProgress(33); // default scale 1.0
+        sbScale.setProgress(33);
+
         RelativeLayout.LayoutParams seekParams = new RelativeLayout.LayoutParams(
-                LayoutParams.MATCH_PARENT, // FIX: bukan 0
+                LayoutParams.MATCH_PARENT,
                 LayoutParams.WRAP_CONTENT);
         seekParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
         seekParams.addRule(RelativeLayout.ALIGN_PARENT_START);
-        seekParams.addRule(RelativeLayout.START_OF, btReset.getId()); // ← sekarang valid
-        seekParams.setMargins(dpToPx(context, 16), 0, dpToPx(context, 8), dpToPx(context, 16));
+        seekParams.setMargins(dpToPx(context, 16), 0, dpToPx(context, 16), dpToPx(context, 8));
         sbScale.setLayoutParams(seekParams);
         addView(sbScale);
-
-        // Listeners
-        btReset.setOnClickListener(v -> {
-            resetToCenter();
-            sbScale.setProgress(33);
-            if (onResetCallback != null) onResetCallback.run();
-        });
 
         sbScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (scaleListener != null && fromUser) {
-                    float scale = scaleFromProgress(progress);
-                    scaleListener.onScaleChanged(scale);
+                    scaleListener.onScaleChanged(scaleFromProgress(progress));
                 }
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
     }
+
+    // -------------------------------------------------------------------------
+    // Square enforcement — paksa view selalu berbentuk kotak sempurna
+    // -------------------------------------------------------------------------
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        // Ambil sisi terpendek agar width == height (kotak sempurna)
+        int size = Math.min(getMeasuredWidth(), getMeasuredHeight());
+        setMeasuredDimension(size, size);
+    }
+
+    // -------------------------------------------------------------------------
+    // Draw & Touch
+    // -------------------------------------------------------------------------
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -155,18 +133,14 @@ public class CursorPositionView extends RelativeLayout {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        // Area yang dapat digambar (di atas kontrol)
         int drawableHeight = getHeight() - controlPanelHeightPx;
         if (drawableHeight <= 0) return;
 
         int centerX = getWidth() / 2;
         int centerY = drawableHeight / 2;
 
-        // Crosshair di tengah area gambar
         canvas.drawLine(centerX, 0, centerX, drawableHeight, crosshairPaint);
         canvas.drawLine(0, centerY, getWidth(), centerY, crosshairPaint);
-
-        // Lingkaran
         canvas.drawCircle(circleX, circleY, circleRadius, circlePaint);
     }
 
@@ -176,22 +150,17 @@ public class CursorPositionView extends RelativeLayout {
         float y = event.getY();
 
         int drawableHeight = getHeight() - controlPanelHeightPx;
-        if (y > drawableHeight) {
-            // Sentuhan di area kontrol, biarkan kontrol menanganinya
-            return super.onTouchEvent(event);
-        }
+        if (y > drawableHeight) return super.onTouchEvent(event);
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_MOVE:
                 x = Math.max(circleRadius, Math.min(getWidth() - circleRadius, x));
                 y = Math.max(circleRadius, Math.min(drawableHeight - circleRadius, y));
-
                 circleX = x;
                 circleY = y;
                 updateOffsetFromPosition(drawableHeight);
                 invalidate();
-
                 if (offsetListener != null) {
                     offsetListener.onOffsetChanged(offsetRelativeX, offsetRelativeY);
                 }
@@ -200,13 +169,15 @@ public class CursorPositionView extends RelativeLayout {
         return super.onTouchEvent(event);
     }
 
+    // -------------------------------------------------------------------------
+    // Offset helpers
+    // -------------------------------------------------------------------------
+
     private void updateOffsetFromPosition(int drawableHeight) {
         float w = getWidth() - 2 * circleRadius;
         float h = drawableHeight - 2 * circleRadius;
-        offsetRelativeX = (circleX - circleRadius) / w;
-        offsetRelativeY = (circleY - circleRadius) / h;
-        offsetRelativeX = Math.max(0f, Math.min(1f, offsetRelativeX));
-        offsetRelativeY = Math.max(0f, Math.min(1f, offsetRelativeY));
+        offsetRelativeX = Math.max(0f, Math.min(1f, (circleX - circleRadius) / w));
+        offsetRelativeY = Math.max(0f, Math.min(1f, (circleY - circleRadius) / h));
     }
 
     private void updateCirclePositionFromOffset() {
@@ -228,13 +199,12 @@ public class CursorPositionView extends RelativeLayout {
         setOffsetRelative(0.5f, 0.5f);
     }
 
-    public float getOffsetRelativeX() {
-        return offsetRelativeX;
-    }
+    public float getOffsetRelativeX() { return offsetRelativeX; }
+    public float getOffsetRelativeY() { return offsetRelativeY; }
 
-    public float getOffsetRelativeY() {
-        return offsetRelativeY;
-    }
+    // -------------------------------------------------------------------------
+    // Listeners & SeekBar API
+    // -------------------------------------------------------------------------
 
     public void setOnOffsetChangedListener(OnOffsetChangedListener listener) {
         this.offsetListener = listener;
@@ -242,10 +212,6 @@ public class CursorPositionView extends RelativeLayout {
 
     public void setOnScaleChangedListener(OnScaleChangedListener listener) {
         this.scaleListener = listener;
-    }
-
-    public void setOnResetCallback(Runnable callback) {
-        this.onResetCallback = callback;
     }
 
     public void setScaleProgress(int progress) {
@@ -261,9 +227,6 @@ public class CursorPositionView extends RelativeLayout {
         return 0.5f + t * (4.0f - 0.5f); // rentang 0.5 .. 4.0
     }
 
-    /**
-     * Memperbarui warna berdasarkan tema
-     */
     public void updateTheme(boolean isDarkMode) {
         lineColor = isDarkMode ? Color.WHITE : Color.BLACK;
         crosshairPaint.setColor(lineColor);

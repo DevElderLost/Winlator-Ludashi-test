@@ -433,7 +433,6 @@ public int getCursorHotspotOffsetY() { return cursorHotspotOffsetY; }
     }
 
     
-// Modifikasi renderCursor() seperti sebelumnya (hanya menggeser visual kursor)
 private void renderCursor() {
     cursorMaterial.use();
     GLES20.glUniform2f(cursorMaterial.getUniformLocation("viewSize"),
@@ -446,14 +445,21 @@ private void renderCursor() {
         short x = xServer.pointer.getClampedX();
         short y = xServer.pointer.getClampedY();
 
-        if (cursor != null && cursor.isVisible()) {
+        if (cursor == null) {
+            // Tidak ada cursor yang di-assign ke window → render cursor default Winlator.
+            renderDrawable(rootCursorDrawable,
+                x - cursorHotspotOffsetX, y - cursorHotspotOffsetY, cursorMaterial);
+        } else if (cursor.isForceHidden()) {
+            // BUG FIX: Game secara eksplisit menyembunyikan cursor (XFixesHideCursor,
+            // XDefineCursor None, dsb.) → jangan render apa pun, termasuk rootCursorDrawable.
+            // Ini yang menyebabkan cursor Winlator tetap muncul di atas cursor bawaan game.
+        } else if (cursor.isVisible()) {
+            // Cursor normal, mask tidak kosong → render cursor X11 milik window.
             int renderX = x - cursor.hotSpotX - cursorHotspotOffsetX;
             int renderY = y - cursor.hotSpotY - cursorHotspotOffsetY;
             renderDrawable(cursor.cursorImage, renderX, renderY, cursorMaterial);
-        } else {
-            renderDrawable(rootCursorDrawable,
-                x - cursorHotspotOffsetX, y - cursorHotspotOffsetY, cursorMaterial);
         }
+        // else: cursor ada tapi mask-nya kosong/transparan (visible == false) → tidak render.
     }
 
     quadVertices.disable();

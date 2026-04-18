@@ -11,6 +11,7 @@ import com.winlator.cmod.xserver.extensions.Extension;
 import com.winlator.cmod.xserver.extensions.MITSHMExtension;
 import com.winlator.cmod.xserver.extensions.PresentExtension;
 import com.winlator.cmod.xserver.extensions.SyncExtension;
+import com.winlator.cmod.xserver.extensions.XFixesExtension;
 
 import java.nio.charset.Charset;
 import java.util.EnumMap;
@@ -196,6 +197,7 @@ public class XServer {
         extensions.put(DRI3Extension.MAJOR_OPCODE, new DRI3Extension());
         extensions.put(PresentExtension.MAJOR_OPCODE, new PresentExtension());
         extensions.put(SyncExtension.MAJOR_OPCODE, new SyncExtension());
+        extensions.put(XFixesExtension.MAJOR_OPCODE, new XFixesExtension()); // FIX: handle XFixesHideCursor/ShowCursor
     }
 
     public <T extends Extension> T getExtension(int opcode) {

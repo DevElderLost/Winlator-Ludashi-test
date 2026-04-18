@@ -194,6 +194,7 @@ public class XClientRequestHandler implements RequestHandler {
                     try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.DRAWABLE_MANAGER, XServer.Lockable.INPUT_DEVICE)) {
                         WindowRequests.destroySubWindows(client, inputStream, outputStream);
                     }
+                    break; // BUG FIX: missing break menyebabkan fall-through ke REPARENT_WINDOW
                 case ClientOpcodes.REPARENT_WINDOW:
                     try (XLock lock = client.xServer.lock(XServer.Lockable.WINDOW_MANAGER)) {
                         WindowRequests.reparentWindow(client, inputStream, outputStream);

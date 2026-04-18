@@ -20,6 +20,17 @@ public class CursorManager extends XResourceManager {
         if (cursors.indexOfKey(id) >= 0) return null;
         Drawable drawable = drawableManager.createDrawable(0, sourcePixmap.drawable.width, sourcePixmap.drawable.height, sourcePixmap.drawable.visual);
         Cursor cursor = new Cursor(id, x, y, drawable, sourcePixmap.drawable, maskPixmap != null ? maskPixmap.drawable : null);
+
+        // BUG FIX: Evaluasi visibilitas segera saat cursor dibuat.
+        // Cursor dengan mask yang seluruhnya transparan/kosong langsung ditandai tidak visible,
+        // sehingga tidak ada jendela waktu di mana cursor yang seharusnya tersembunyi
+        // sempat dirender sebelum recolorCursor pertama kali dipanggil.
+        if (maskPixmap != null && maskPixmap.drawable != null
+                && maskPixmap.drawable.getData() != null
+                && isEmptyMaskImage(maskPixmap.drawable)) {
+            cursor.setVisible(false);
+        }
+
         cursors.put(id, cursor);
         triggerOnCreateResourceListener(cursor);
         return cursor;
@@ -48,5 +59,24 @@ public class CursorManager extends XResourceManager {
             cursor.setVisible(visible);
             if (visible) cursor.cursorImage.drawAlphaMaskedBitmap(foreRed, foreGreen, foreBlue, backRed, backGreen, backBlue, cursor.sourceImage, cursor.maskImage);
         }
+    }
+
+    /**
+     * BUG FIX: Dipanggil oleh handler XFixesHideCursor (atau mekanisme hide cursor lainnya).
+     * Menandai cursor secara eksplisit sebagai "force hidden" sehingga GLRenderer
+     * tidak akan merendernya — termasuk tidak jatuh ke fallback rootCursorDrawable.
+     */
+    public void hideCursor(int id) {
+        Cursor cursor = cursors.get(id);
+        if (cursor != null) cursor.setForceHidden(true);
+    }
+
+    /**
+     * Dipanggil oleh handler XFixesShowCursor.
+     * Mengembalikan cursor ke kondisi visible normal.
+     */
+    public void showCursor(int id) {
+        Cursor cursor = cursors.get(id);
+        if (cursor != null) cursor.setForceHidden(false);
     }
 }

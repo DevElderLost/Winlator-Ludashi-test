@@ -2,9 +2,7 @@ package com.winlator.cmod.contentdialog;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.view.Gravity;
 import android.view.View;
-import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.preference.PreferenceManager;
@@ -54,25 +52,30 @@ public class CursorPositionDialog extends ContentDialog {
                     cursorPositionView.getOffsetRelativeY());
         });
 
-        // Sembunyikan BTConfirm dan BTCancel — dialog ini tidak butuh keduanya
-        findViewById(R.id.BTConfirm).setVisibility(View.GONE);
+        // Sembunyikan BTCancel saja — BTConfirm dipakai untuk menyimpan posisi
         findViewById(R.id.BTCancel).setVisibility(View.GONE);
+
+        // Tampilkan BTConfirm untuk menyimpan offset ke SharedPreferences
+        View btConfirm = findViewById(R.id.BTConfirm);
+        btConfirm.setVisibility(View.VISIBLE);
+        btConfirm.setOnClickListener(v -> {
+            // Simpan offset saat ini ke SharedPreferences agar persisten
+            glRenderer.saveCursorHotspotToPrefs();
+            dismiss();
+        });
 
         // Tampilkan BTReset dan posisikan di tengah bottom bar
         View btReset = findViewById(R.id.BTReset);
         btReset.setVisibility(View.VISIBLE);
 
-        // Karena BTCancel & BTConfirm sudah GONE, ubah gravity BTReset ke center
-        // agar tidak nempel ke kiri (default LinearLayout horizontal)
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) btReset.getLayoutParams();
-        lp.gravity = Gravity.CENTER_HORIZONTAL;
-        btReset.setLayoutParams(lp);
-
         btReset.setOnClickListener(v -> {
             offsetScale = SCALE_DEFAULT;
             cursorPositionView.resetToCenter();
             cursorPositionView.setScaleProgress(progressFromScale(SCALE_DEFAULT));
+            // Reset nilai di renderer
             glRenderer.setCursorHotspotOffset(0, 0);
+            // Langsung tulis nilai reset (0,0) ke SharedPreferences
+            glRenderer.saveCursorHotspotToPrefs();
         });
 
         // Dapatkan ukuran kursor saat ini

@@ -1,6 +1,8 @@
 package com.winlator.cmod.renderer;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import androidx.preference.PreferenceManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
@@ -87,10 +89,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 private int cursorHotspotOffsetX = 0;
 private int cursorHotspotOffsetY = 0;
 
+/** Kunci SharedPreferences untuk menyimpan offset hotspot kursor. */
+public static final String PREF_CURSOR_HOTSPOT_X = "cursor_hotspot_offset_x";
+public static final String PREF_CURSOR_HOTSPOT_Y = "cursor_hotspot_offset_y";
+
 public void setCursorHotspotOffset(int offsetX, int offsetY) {
     this.cursorHotspotOffsetX = offsetX;
     this.cursorHotspotOffsetY = offsetY;
     xServerView.requestRender();
+}
+
+/**
+ * Simpan offset hotspot saat ini ke SharedPreferences.
+ * Dipanggil hanya saat pengguna menekan BTConfirm.
+ */
+public void saveCursorHotspotToPrefs() {
+    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(xServerView.getContext());
+    prefs.edit()
+         .putInt(PREF_CURSOR_HOTSPOT_X, cursorHotspotOffsetX)
+         .putInt(PREF_CURSOR_HOTSPOT_Y, cursorHotspotOffsetY)
+         .apply();
+}
+
+/**
+ * Muat offset hotspot dari SharedPreferences.
+ * Dipanggil saat GLRenderer pertama kali dibuat agar posisi tetap konsisten.
+ */
+public void loadCursorHotspotFromPrefs() {
+    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(xServerView.getContext());
+    cursorHotspotOffsetX = prefs.getInt(PREF_CURSOR_HOTSPOT_X, 0);
+    cursorHotspotOffsetY = prefs.getInt(PREF_CURSOR_HOTSPOT_Y, 0);
 }
 
 public int getCursorHotspotOffsetX() { return cursorHotspotOffsetX; }
@@ -111,6 +139,9 @@ public int getCursorHotspotOffsetY() { return cursorHotspotOffsetY; }
         this.xServer = xServer;
         this.effectComposer = new EffectComposer(this);
         rootCursorDrawable = createRootCursorDrawable();
+
+        // Muat offset hotspot kursor yang terakhir disimpan pengguna
+        loadCursorHotspotFromPrefs();
 
         quadVertices.put(new float[]{
             0.0f, 0.0f,

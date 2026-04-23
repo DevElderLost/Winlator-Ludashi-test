@@ -537,7 +537,7 @@ private void renderCursor() {
             if (viewable) {
                 boolean forceFullscreen = false;
 
-                if (forceFullscreenWMClass != null) {
+                {
                     short width = window.getWidth();
                     short height = window.getHeight();
                     float screenW = xServer.screenInfo.width;
@@ -553,32 +553,57 @@ private void renderCursor() {
 
                     if (isMaximized || isLargeWindow) {
                         Window parent = window.getParent();
-                        boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
-                        boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
 
-                        if (hasWMClass) {
-                            // Path lama: WMClass cocok — aktifkan FullscreenTransformation
-                            // jika parent tidak punya WMClass yang sama dan window adalah daun.
-                            forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
-                        } else if (isMaximized) {
-                            // Path baru: maximize via _NET_WM_STATE, WMClass tidak cocok.
-                            // Sembunyikan parent (title bar/decoration) dan render window ini fullscreen.
-                            forceFullscreen = true;
-                            removeRenderableWindow(parent);
-                        } else {
-                            // Path lama: fallback deteksi frame dekorasi tipis (borderX ≤ 12px).
-                            short borderX = (short) (parent.getWidth() - width);
-                            short borderY = (short) (parent.getHeight() - height);
-                            if (parent.getChildCount() == 1
-                                    && borderX > 0 && borderY > 0 && borderX <= 12) {
+                        if (forceFullscreenWMClass != null) {
+                            // --- Path dengan WMClass filter (logika lama dipertahankan) ---
+                            boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
+                            boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
+
+                            if (hasWMClass) {
+                                // WMClass cocok — aktifkan FullscreenTransformation
+                                // jika parent tidak punya WMClass yang sama dan window adalah daun.
+                                forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
+                            } else if (isMaximized) {
+                                // Maximize via _NET_WM_STATE, WMClass tidak cocok.
+                                // Sembunyikan parent (title bar/decoration) dan render window ini fullscreen.
                                 forceFullscreen = true;
                                 removeRenderableWindow(parent);
+                            } else {
+                                // Fallback deteksi frame dekorasi tipis (borderX ≤ 12px).
+                                short borderX = (short) (parent.getWidth() - width);
+                                short borderY = (short) (parent.getHeight() - height);
+                                if (parent.getChildCount() == 1
+                                        && borderX > 0 && borderY > 0 && borderX <= 12) {
+                                    forceFullscreen = true;
+                                    removeRenderableWindow(parent);
+                                }
+                            }
+                        } else {
+                            // --- Path tanpa WMClass filter (semua app, logika baru) ---
+                            // Window maximize atau besar selalu dapat FullscreenTransformation,
+                            // tanpa perlu WMClass terdaftar. Parent decoration disembunyikan.
+                            if (isMaximized) {
+                                // maximize via _NET_WM_STATE: sembunyikan parent (title bar).
+                                forceFullscreen = true;
+                                removeRenderableWindow(parent);
+                            } else {
+                                // Window besar (≥75% layar): cek dekorasi tipis seperti path lama.
+                                short borderX = (short) (parent.getWidth() - width);
+                                short borderY = (short) (parent.getHeight() - height);
+                                if (parent.getChildCount() == 1
+                                        && borderX > 0 && borderY > 0 && borderX <= 12) {
+                                    forceFullscreen = true;
+                                    removeRenderableWindow(parent);
+                                } else {
+                                    // Tidak ada parent decoration tipis — langsung fullscreen
+                                    // tanpa menghapus parent (parent mungkin tidak relevan).
+                                    forceFullscreen = window.getChildCount() == 0;
+                                }
                             }
                         }
                     }
                 }
-                // forceFullscreenWMClass == null: forceFullscreen tetap false,
-                // semua window dirender normal tanpa FullscreenTransformation.
+                // forceFullscreen sudah dievaluasi — lanjut render.
 
                 renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));
             }

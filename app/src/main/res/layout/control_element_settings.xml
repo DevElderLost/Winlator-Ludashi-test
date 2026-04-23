@@ -272,6 +272,14 @@
             android:text="@string/toggle_switch"
             android:visibility="gone" />
 
+        <!-- Hide Stroke & Fill — gone by default, hanya BUTTON, MENU_NAVIGATION, MULTIPLE_BUTTON -->
+        <CheckBox
+            android:id="@+id/CBHideStrokeFill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hide Stroke &amp; Fill"
+            android:visibility="gone" />
+
         <!-- Custom text + icon picker — gone by default, Java atur visibility -->
         <LinearLayout
             android:id="@+id/LLCustomTextIcon"

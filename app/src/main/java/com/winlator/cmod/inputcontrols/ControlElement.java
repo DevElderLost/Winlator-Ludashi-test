@@ -85,6 +85,7 @@ public class ControlElement {
     private short y;
     private boolean selected = false;
     private boolean toggleSwitch = false;
+    private boolean hideStrokeFill = false;
     private int currentPointerId = -1;
     private final Rect boundingBox = new Rect();
     private boolean[] states = new boolean[0];
@@ -307,6 +308,14 @@ public class ControlElement {
 
     public void setToggleSwitch(boolean toggleSwitch) {
         this.toggleSwitch = toggleSwitch;
+    }
+
+    public boolean isHideStrokeFill() {
+        return hideStrokeFill;
+    }
+
+    public void setHideStrokeFill(boolean hideStrokeFill) {
+        this.hideStrokeFill = hideStrokeFill;
     }
 
     // === CURSOR MOVE MODE ===
@@ -811,8 +820,8 @@ public class ControlElement {
 
                 boolean shouldFill = (type == Type.TOUCHSCREEN_TOGGLE) ? selected : isPressed;
 
-                // Sembunyikan stroke/fill shape jika ada icon
-                if (iconId == 0) {
+                // Sembunyikan stroke/fill shape hanya jika hideStrokeFill aktif
+                if (!hideStrokeFill) {
                     if (shouldFill) {
                         paint.setStyle(Paint.Style.FILL_AND_STROKE);
                     } else {
@@ -843,9 +852,9 @@ public class ControlElement {
                 paint.setColor(primaryColor);
 
                 if (iconId > 0) {
-                    // Saat normal: icon 80% dari bounding box
-                    // Saat pressed: icon membesar ke 100% (tetap dalam batas, tidak keluar)
-                    float pressScale = isPressed ? 1.0f : 0.8f;
+                    // Jika stroke/fill tampil: icon dikecilkan ke 60% agar tidak keluar border
+                    // Jika stroke/fill disembunyikan: icon normal 80% (100% saat pressed)
+                    float pressScale = isPressed ? 1.0f : (hideStrokeFill ? 0.8f : 0.6f);
                     float iconW = boundingBox.width() * pressScale;
                     float iconH = boundingBox.height() * pressScale;
                     drawIconExact(canvas, cx, cy, iconW, iconH, iconId);
@@ -1272,18 +1281,8 @@ public class ControlElement {
         // ── Tombol utama ──────────────────────────────────────────────────
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
-        if (iconId > 0) {
-            // Ada icon → tampilkan icon saja, identik BUTTON Normal.
-            // Main button HANYA pakai iconId (dari LLCustomTextIcon / LLIconList),
-            // bukan slotIconIds[0] — agar tidak bentrok dengan editor slot icons.
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(primaryColor);
-            float iconSize = Math.min(w, h) * (isPressed ? 1.0f : 0.78f);
-            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
-        } else {
-            // Tidak ada icon → tampilan identik dengan item sub-menu:
-            // background semi-transparan + border + label teks di tengah
-
+        // Stroke/fill tombol utama — tampil kecuali hideStrokeFill aktif
+        if (!hideStrokeFill) {
             // Background semi-transparan (fill lebih kuat saat pressed)
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, isPressed ? 80 : 40));
@@ -1299,9 +1298,19 @@ public class ControlElement {
                     boundingBox.left, boundingBox.top,
                     boundingBox.right, boundingBox.bottom,
                     itemR, itemR, paint);
+        }
 
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(primaryColor);
+
+        if (iconId > 0) {
+            // Jika stroke/fill tampil: icon dikecilkan ke 60% agar tidak keluar border
+            // Jika stroke/fill disembunyikan: icon normal 78% (100% saat pressed)
+            float pressScale = isPressed ? 1.0f : (hideStrokeFill ? 0.78f : 0.6f);
+            float iconSize = Math.min(w, h) * pressScale;
+            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
+        } else {
             // Label teks — custom text atau default "≡"
-            paint.setStyle(Paint.Style.FILL);
             paint.setTextAlign(Paint.Align.CENTER);
             String label = (text != null && !text.isEmpty()) ? text : "\u2261";
             float ts = Math.min(
@@ -1358,16 +1367,18 @@ public class ControlElement {
             // → fade-in mengikuti item itu sendiri, bukan semua sekaligus
             int itemAlpha = (int) (scaleVal * menuAlpha);
 
-            // Background fill semi-transparan
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
-            canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
+            // Background fill semi-transparan — tampil kecuali hideStrokeFill aktif
+            if (!hideStrokeFill) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(ColorUtils.setAlphaComponent(primaryColor, (int)(40 * scaleVal)));
+                canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
 
-            // Border
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
-            paint.setStrokeWidth(strokeWidth * 0.75f);
-            canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
+                // Border
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+                paint.setStrokeWidth(strokeWidth * 0.75f);
+                canvas.drawRoundRect(boundingBox.left, top, boundingBox.right, bottom, itemR, itemR, paint);
+            }
 
             // Konten (icon/teks) pakai primaryColor penuh — identik dengan tombol utama
             paint.setStyle(Paint.Style.FILL);
@@ -1377,22 +1388,29 @@ public class ControlElement {
             byte slotIcon = (i + 1 < slotIconIds.length) ? slotIconIds[i + 1] : 0;
 
             if (slotIcon > 0) {
-                // Ada slot icon → icon di kiri, text label di kanan
-                float iconAreaW = itemH * 0.78f;
-                float iconSize  = iconAreaW * 0.80f;
-                float iconCx    = boundingBox.left + iconAreaW * 0.5f + strokeWidth;
-                drawIconExact(canvas, iconCx, itemCy, iconSize, iconSize, slotIcon);
+                // Ada slot icon
+                if (hideStrokeFill) {
+                    // Stroke/fill disembunyikan → icon ukuran normal, tengah
+                    float iconSize = Math.min(itemH, w) * 0.78f;
+                    drawIconExact(canvas, cx, itemCy, iconSize, iconSize, slotIcon);
+                } else {
+                    // Stroke/fill tampil → icon di kiri (dikecilkan), text label di kanan
+                    float iconAreaW = itemH * 0.78f;
+                    float iconSize  = iconAreaW * 0.80f;
+                    float iconCx    = boundingBox.left + iconAreaW * 0.5f + strokeWidth;
+                    drawIconExact(canvas, iconCx, itemCy, iconSize, iconSize, slotIcon);
 
-                float textLeft  = boundingBox.left + iconAreaW + strokeWidth * 2;
-                float textAvail = boundingBox.right - textLeft - strokeWidth;
-                if (textAvail > 0) {
-                    paint.setTextAlign(Paint.Align.LEFT);
-                    float ts = Math.min(
-                            getTextSizeForWidth(paint, itemLabels[i], textAvail),
-                            snappingSize * 1.55f * scale);
-                    paint.setTextSize(ts);
-                    canvas.drawText(itemLabels[i], textLeft,
-                            itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                    float textLeft  = boundingBox.left + iconAreaW + strokeWidth * 2;
+                    float textAvail = boundingBox.right - textLeft - strokeWidth;
+                    if (textAvail > 0) {
+                        paint.setTextAlign(Paint.Align.LEFT);
+                        float ts = Math.min(
+                                getTextSizeForWidth(paint, itemLabels[i], textAvail),
+                                snappingSize * 1.55f * scale);
+                        paint.setTextSize(ts);
+                        canvas.drawText(itemLabels[i], textLeft,
+                                itemCy - (paint.descent() + paint.ascent()) * 0.5f, paint);
+                    }
                 }
             } else {
                 // Tidak ada slot icon → unicode + label di tengah
@@ -1449,16 +1467,8 @@ public class ControlElement {
         paint.setStrokeWidth(strokeWidth * 0.75f);
 
         // ── Tombol utama — shape mengikuti property elemen ─────────────────
-        if (iconId > 0) {
-            // Ada global icon → SEMBUNYIKAN stroke/fill shape, tampilkan icon saja
-            // (identik dengan BUTTON: shape tidak digambar saat ada icon)
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(primaryColor);
-            float pressScale = isPressed ? 1.0f : 0.78f;
-            float iconSize = Math.min(w, h) * pressScale;
-            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
-        } else {
-            // Tidak ada icon → background semi-transparan + border + teks
+        // Stroke/fill tampil kecuali hideStrokeFill aktif
+        if (!hideStrokeFill) {
             int bgAlpha = multiBtnExpanded ? (isPressed ? 100 : 65) : (isPressed ? 80 : 40);
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(ColorUtils.setAlphaComponent(primaryColor, bgAlpha));
@@ -1467,8 +1477,19 @@ public class ControlElement {
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(primaryColor);
             drawShapeOutline(canvas, paint, boundingBox, r, itemR);
+        }
 
-            paint.setStyle(Paint.Style.FILL);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(primaryColor);
+
+        if (iconId > 0) {
+            // Jika stroke/fill tampil: icon dikecilkan ke 60% agar tidak keluar border
+            // Jika stroke/fill disembunyikan: icon normal 78% (100% saat pressed)
+            float pressScale = isPressed ? 1.0f : (hideStrokeFill ? 0.78f : 0.6f);
+            float iconSize = Math.min(w, h) * pressScale;
+            drawIconExact(canvas, cx, cy, iconSize, iconSize, iconId);
+        } else {
+            // Tidak ada icon → teks
             paint.setTextAlign(Paint.Align.CENTER);
             String label = (text != null && !text.isEmpty()) ? text : "\u25A4"; // ▤ fallback
             float ts = Math.min(
@@ -1541,26 +1562,30 @@ public class ControlElement {
             String subText = (multiButtonTexts[i] != null) ? multiButtonTexts[i] : "";
 
             if (subIcon > 0) {
-                // Ada icon sub-button → SEMBUNYIKAN stroke/fill shape, tampilkan icon saja
-                // Warna icon pakai primaryColor penuh — identik dengan tombol utama
+                // Ada icon sub-button
+                // Jika stroke/fill tampil: icon dikecilkan ke 60% agar tidak keluar border
+                // Jika stroke/fill disembunyikan: icon normal 78% (100% saat pressed)
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(primaryColor);
-                float iconSize = Math.min(w, h) * (subPressed ? 1.0f : 0.78f);
+                float iconSize = Math.min(w, h) * (subPressed ? 1.0f : (hideStrokeFill ? 0.78f : 0.6f));
                 drawIconExact(canvas, itemCx, itemCy, iconSize, iconSize, subIcon);
             } else {
                 // Tidak ada icon → gambar background + border + teks
 
-                // Background fill
-                paint.setStyle(Paint.Style.FILL);
-                paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
-                        subPressed ? (int)(80 * scaleVal) : (int)(40 * scaleVal)));
-                drawShapeRectOutline(canvas, paint, itemRect, itemR);
+                // Background fill + Border — tampil kecuali hideStrokeFill aktif
+                if (!hideStrokeFill) {
+                    // Background fill
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(ColorUtils.setAlphaComponent(primaryColor,
+                            subPressed ? (int)(80 * scaleVal) : (int)(40 * scaleVal)));
+                    drawShapeRectOutline(canvas, paint, itemRect, itemR);
 
-                // Border
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(strokeWidth * 0.75f);
-                paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
-                drawShapeRectOutline(canvas, paint, itemRect, itemR);
+                    // Border
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(strokeWidth * 0.75f);
+                    paint.setColor(ColorUtils.setAlphaComponent(primaryColor, itemAlpha));
+                    drawShapeRectOutline(canvas, paint, itemRect, itemR);
+                }
 
                 // Teks pakai primaryColor penuh — identik dengan tombol utama
                 paint.setStyle(Paint.Style.FILL);
@@ -1751,6 +1776,7 @@ public class ControlElement {
             elementJSONObject.put("x", (float) x / inputControlsView.getMaxWidth());
             elementJSONObject.put("y", (float) y / inputControlsView.getMaxHeight());
             elementJSONObject.put("toggleSwitch", toggleSwitch);
+            elementJSONObject.put("hideStrokeFill", hideStrokeFill);
             elementJSONObject.put("text", text);
             elementJSONObject.put("iconId", iconId);
 

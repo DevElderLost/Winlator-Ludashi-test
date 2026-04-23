@@ -122,6 +122,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             view.findViewById(R.id.LLCursorMove).setVisibility(View.GONE);
             view.findViewById(R.id.LLCursorMoveRadius).setVisibility(View.GONE);
             view.findViewById(R.id.CBToggleSwitch).setVisibility(View.GONE);
+            view.findViewById(R.id.CBHideStrokeFill).setVisibility(View.GONE);
             view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.GONE);
             view.findViewById(R.id.LLRangeOptions).setVisibility(View.GONE);
             view.findViewById(R.id.LLBindings).setVisibility(View.GONE);
@@ -131,6 +132,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             if (type == ControlElement.Type.BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.CBToggleSwitch).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.CBHideStrokeFill).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
             }
@@ -170,6 +172,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 // Main button  -> LLCustomTextIcon (iconId, sama dengan BUTTON Normal)
                 // Sub-menu     -> LLSlotIcons slot 1..5 (tidak ada slot 0 di sini)
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.CBHideStrokeFill).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLSlotIcons).setVisibility(View.VISIBLE);
                 // slot 1=Keyboard, 2=Cursor Pos, 3=Task Manager, 4=Active Windows, 5=Exit
@@ -178,6 +181,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
             else if (type == ControlElement.Type.MULTIPLE_BUTTON) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.CBHideStrokeFill).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLMultiButtonOptions).setVisibility(View.VISIBLE);
                 loadMultiButtonUI(view, element);
@@ -233,6 +237,14 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         cbToggleSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             element.setToggleSwitch(isChecked);
             profile.save();
+        });
+
+        CheckBox cbHideStrokeFill = view.findViewById(R.id.CBHideStrokeFill);
+        cbHideStrokeFill.setChecked(element.isHideStrokeFill());
+        cbHideStrokeFill.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            element.setHideStrokeFill(isChecked);
+            profile.save();
+            inputControlsView.invalidate();
         });
 
         // === CURSOR MOVE MODE (hanya RIGHT_STICK) ===

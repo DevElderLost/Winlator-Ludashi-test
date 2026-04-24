@@ -167,17 +167,75 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         }
     }
 
+@Override
+public boolean dispatchGenericMotionEvent(MotionEvent event) {
+    // Existing: gamepad/joystick
+    if (event.getDeviceId() == controller.getDeviceId()
+        && controller.updateStateFromMotionEvent(event)) {
+        if (controller.state.isPressed(ExternalController.IDX_BUTTON_L2))
+            updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
+        if (controller.state.isPressed(ExternalController.IDX_BUTTON_R2))
+            updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
+        processJoystickInput();
+        return true;
+    }
 
-    @Override
-    public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        if (event.getDeviceId() == controller.getDeviceId() && controller.updateStateFromMotionEvent(event)) {
-            if (controller.state.isPressed(ExternalController.IDX_BUTTON_L2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
-            if (controller.state.isPressed(ExternalController.IDX_BUTTON_R2)) updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
-            processJoystickInput();
+    // Tambahan: mouse Bluetooth
+    InputDevice device = event.getInputDevice();
+    if (device != null
+        && event.getDeviceId() == controller.getDeviceId()
+        && ExternalController.isMouseDevice(device)) {
+
+        // Gerakan mouse
+        float dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+        float dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+        // fallback ke AXIS_X/Y jika RELATIVE tidak tersedia
+        if (dx == 0f && dy == 0f) {
+            dx = event.getAxisValue(MotionEvent.AXIS_X);
+            dy = event.getAxisValue(MotionEvent.AXIS_Y);
+        }
+
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 0.5f) {
+            int keyCode = ExternalControllerBinding.getKeyCodeForAxis(
+                MotionEvent.AXIS_X, (byte)(dx > 0 ? 1 : -1));
+            updateControllerBinding(keyCode, Binding.NONE);
+            return true;
+        } else if (Math.abs(dy) > 0.5f) {
+            int keyCode = ExternalControllerBinding.getKeyCodeForAxis(
+                MotionEvent.AXIS_Y, (byte)(dy > 0 ? 1 : -1));
+            updateControllerBinding(keyCode, Binding.NONE);
             return true;
         }
-        return super.dispatchGenericMotionEvent(event);
+
+        // Tombol mouse saat ACTION_BUTTON_PRESS
+        if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) {
+            int btn = event.getActionButton();
+            if ((btn & MotionEvent.BUTTON_PRIMARY) != 0) {
+                updateControllerBinding(KeyEvent.KEYCODE_BUTTON_1, Binding.NONE);
+                return true;
+            }
+            if ((btn & MotionEvent.BUTTON_SECONDARY) != 0) {
+                updateControllerBinding(KeyEvent.KEYCODE_BUTTON_2, Binding.NONE);
+                return true;
+            }
+            if ((btn & MotionEvent.BUTTON_TERTIARY) != 0) {
+                updateControllerBinding(KeyEvent.KEYCODE_BUTTON_3, Binding.NONE);
+                return true;
+            }
+        }
+
+        // Scroll
+        float scroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+        if (Math.abs(scroll) > 0.1f) {
+            int keyCode = ExternalControllerBinding.getKeyCodeForAxis(
+                MotionEvent.AXIS_VSCROLL, (byte)(scroll > 0 ? 1 : -1));
+            updateControllerBinding(keyCode, Binding.NONE);
+            return true;
+        }
     }
+
+    return super.dispatchGenericMotionEvent(event);
+}
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {

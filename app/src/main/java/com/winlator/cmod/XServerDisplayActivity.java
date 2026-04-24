@@ -1639,20 +1639,40 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private static final int RECAPTURE_DELAY_MS = 10000; // 10 seconds
 
     @Override
-    public boolean dispatchKeyEvent(KeyEvent event) {
-
-        // Handle the PlayStation or Xbox Home button to open the drawer
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_MODE || event.getKeyCode() == KeyEvent.KEYCODE_HOME || event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_SELECT) {
-                boolean handled = inputControlsView.onKeyEvent(event) || (winHandler != null && winHandler.onKeyEvent(event)) && (xServer != null && xServer.keyboard.onKeyEvent(event));
-                return true;
-            }
+public boolean dispatchKeyEvent(KeyEvent event) {
+    // Handle PlayStation/Xbox home button
+    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_MODE ||
+            event.getKeyCode() == KeyEvent.KEYCODE_HOME ||
+            event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_SELECT) {
+            inputControlsView.onKeyEvent(event);
+            if (winHandler != null) winHandler.onKeyEvent(event);
+            if (xServer != null) xServer.keyboard.onKeyEvent(event);
+            return true;
         }
-
-        // Fallback to existing input handling
-        return (!inputControlsView.onKeyEvent(event) && !winHandler.onKeyEvent(event) && xServer.keyboard.onKeyEvent(event)) ||
-                (!ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event));
     }
+
+    // Cek apakah event berasal dari keyboard fisik (termasuk Bluetooth keyboard)
+    InputDevice device = event.getDevice();
+    boolean isPhysicalKeyboard = device != null &&
+        (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
+        !ExternalController.isGameController(device);
+
+    // Jika ada profile, beri kesempatan InputControlsView handle dulu (untuk controller bindings)
+    if (inputControlsView.onKeyEvent(event)) return true;
+
+    // WinHandler (untuk shortcut/system keys)
+    if (winHandler != null && winHandler.onKeyEvent(event)) return true;
+
+    // Keyboard fisik/Bluetooth → langsung ke X server, JANGAN ke super (supaya IME tidak muncul)
+    if (isPhysicalKeyboard) {
+        return xServer != null && xServer.keyboard.onKeyEvent(event);
+    }
+
+    // Fallback untuk sumber lain (touch input virtual keyboard, dll)
+    return xServer.keyboard.onKeyEvent(event) ||
+           (!ExternalController.isGameController(device) && super.dispatchKeyEvent(event));
+}
 
     public InputControlsView getInputControlsView() {
         return inputControlsView;

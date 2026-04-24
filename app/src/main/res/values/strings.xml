@@ -650,4 +650,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="mouse_speed">Cursor Sensitivity</string>
     <string name="offset_scale">Offset Scale</string>
     <string name="cursor_hotspot_offset">Cursor Center Position</string>
+    <string name="hide_stroke_fill">Hide Stroke Fill</string>
 </resources>

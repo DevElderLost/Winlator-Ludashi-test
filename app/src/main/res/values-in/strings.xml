@@ -642,4 +642,6 @@ E.g. <b>META</b> untuk <i>tombol META</i>, \n
     <string name="all_files_access_dialog_title">Akses Semua File Diperlukan</string>
     <string name="all_files_access_dialog_message">Untuk memberikan akses ke perangkat penyimpanan tambahan seperti perangkat penyimpanan USB, izin Akses Semua File harus diberikan. Tekan Okay untuk memberikan Akses Semua File di Pengaturan Android Anda.</string>
     <string name="help_import_icons">Kompres ikon Anda dalam arsip ZIP dan impor dengan menekan tombol ini.</string>
+    <string name="cursor_hotspot_offset">Posisi Tengah Cursor</string>
+    <string name="hide_stroke_fill">Sembunyikan Garis</string>
 </resources>

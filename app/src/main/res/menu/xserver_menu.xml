@@ -14,9 +14,9 @@
             android:icon="@drawable/ic_active_windows"
             android:title="Active Windows" />
         <item
-            android:icon="@drawable/mouse_move_relative"
-            android:id="@+id/main_menu_relative_mouse_movement"
-            android:title="Toggle Relative Mouse Movement" />
+            android:id="@+id/main_menu_cursor_position"
+            android:icon="@drawable/icon_cursor_hotspot_offset"
+            android:title="@string/cursor_hotspot_offset" />
         <item
             android:icon="@drawable/icon_screen_effect"
             android:id="@+id/main_menu_screen_effects"

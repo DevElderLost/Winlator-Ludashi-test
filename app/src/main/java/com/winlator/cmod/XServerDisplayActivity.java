@@ -54,6 +54,7 @@ import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.container.Shortcut;
 import com.winlator.cmod.contentdialog.ContentDialog;
+import com.winlator.cmod.contentdialog.CursorPositionDialog;
 import com.winlator.cmod.contentdialog.DXVKConfigDialog;
 import com.winlator.cmod.contentdialog.DebugDialog;
 import com.winlator.cmod.contentdialog.GraphicsDriverConfigDialog;
@@ -278,6 +279,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
 
         cursorLock = preferences.getBoolean("cursor_lock", true);
+        isRelativeMouseMovement = preferences.getBoolean("relative_mouse_movement", false);
 
         // Check for Dark Mode
         isDarkMode = preferences.getBoolean("dark_mode", false);
@@ -517,6 +519,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsManager = new InputControlsManager(this);
         xServer = new XServer(new ScreenInfo(screenSize));
         xServer.setWinHandler(winHandler);
+        xServer.setRelativeMouseMovement(isRelativeMouseMovement);
 
         boolean[] winStarted = {false};
 
@@ -878,14 +881,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 				ActiveWindowsDialog.show(this, xServer, renderer);
 				drawerLayout.closeDrawers();
 				break;
+            case R.id.main_menu_cursor_position:
+                new CursorPositionDialog(this, renderer, xServer).show();
+                drawerLayout.closeDrawers();
+                break;
             case R.id.main_menu_input_controls:
                 showInputControlsDialog();
                 drawerLayout.closeDrawers();
-                break;
-            case R.id.main_menu_relative_mouse_movement:
-                isRelativeMouseMovement = !isRelativeMouseMovement;
-                drawerLayout.closeDrawers();
-                xServer.setRelativeMouseMovement(isRelativeMouseMovement);
                 break;
             case R.id.main_menu_toggle_fullscreen:
                 renderer.toggleFullscreen();

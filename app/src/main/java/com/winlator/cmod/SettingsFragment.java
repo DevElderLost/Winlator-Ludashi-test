@@ -87,6 +87,8 @@ public class SettingsFragment extends Fragment {
 
 	// Disable or enable True Mouse Control
 	private CheckBox cbCursorLock;
+    // Relative Mouse Movement
+    private CheckBox cbRelativeMouseMovement;
     // Disable or enable Xinput Processing
     private CheckBox cbXinputToggle;
 
@@ -150,6 +152,10 @@ public class SettingsFragment extends Fragment {
         // Initialize the cursor lock checkbox
         cbCursorLock = view.findViewById(R.id.CBCursorLock);
         cbCursorLock.setChecked(preferences.getBoolean("cursor_lock", true));
+
+        // Initialize the relative mouse movement checkbox
+        cbRelativeMouseMovement = view.findViewById(R.id.CBRelativeMouseMovement);
+        cbRelativeMouseMovement.setChecked(preferences.getBoolean("relative_mouse_movement", false));
 
         // Initialize the xinput toggle checkbox
         cbXinputToggle = view.findViewById(R.id.CBXinputToggle);
@@ -319,6 +325,7 @@ public class SettingsFragment extends Fragment {
             editor.putBoolean("enable_wine_debug", cbEnableWineDebug.isChecked());
             editor.putBoolean("enable_box64_logs", cbEnableBox64Logs.isChecked());
             editor.putBoolean("cursor_lock", cbCursorLock.isChecked()); // Save cursor lock state
+            editor.putBoolean("relative_mouse_movement", cbRelativeMouseMovement.isChecked());
             editor.putBoolean("xinput_toggle", cbXinputToggle.isChecked()); // Save xinput toggle state
             editor.putBoolean("enable_file_provider", cbEnableFileProvider.isChecked());
             editor.putBoolean("open_with_android_browser", cbOpenInBrowser.isChecked());

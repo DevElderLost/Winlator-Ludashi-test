@@ -182,7 +182,8 @@ public boolean dispatchGenericMotionEvent(MotionEvent event) {
     }
 
     // Tambahan: mouse Bluetooth
-    InputDevice device = event.getInputDevice();
+    // BENAR
+InputDevice device = InputDevice.getDevice(event.getDeviceId());
     if (device != null
         && event.getDeviceId() == controller.getDeviceId()
         && ExternalController.isMouseDevice(device)) {

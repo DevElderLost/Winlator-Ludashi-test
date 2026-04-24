@@ -537,72 +537,46 @@ private void renderCursor() {
             if (viewable) {
                 boolean forceFullscreen = false;
 
-                {
+                if (forceFullscreenWMClass != null) {
+                    // ForceFullscreen aktif — evaluasi apakah window ini perlu FullscreenTransformation.
                     short width = window.getWidth();
                     short height = window.getHeight();
                     float screenW = xServer.screenInfo.width;
                     float screenH = xServer.screenInfo.height;
 
-                    // Deteksi maximize via _NET_WM_STATE — hanya untuk leaf window
-                    // (childCount == 0) agar tidak tumpang tindih dengan parent decoration.
+                    // Deteksi maximize via _NET_WM_STATE (hanya leaf window).
                     boolean isMaximized = window.isMaximized() && window.getChildCount() == 0;
 
-                    // FullscreenTransformation aktif untuk window BESAR (≥75% layar)
-                    // ATAU window yang sedang maximize via _NET_WM_STATE.
+                    // Deteksi window besar: ≥75% lebar DAN tinggi layar.
                     boolean isLargeWindow = (width >= screenW * 0.75f) && (height >= screenH * 0.75f);
 
                     if (isMaximized || isLargeWindow) {
                         Window parent = window.getParent();
+                        boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
+                        boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
 
-                        if (forceFullscreenWMClass != null) {
-                            // --- Path dengan WMClass filter (logika lama dipertahankan) ---
-                            boolean hasWMClass = window.getClassName().contains(forceFullscreenWMClass);
-                            boolean parentHasWMClass = parent.getClassName().contains(forceFullscreenWMClass);
-
-                            if (hasWMClass) {
-                                // WMClass cocok — aktifkan FullscreenTransformation
-                                // jika parent tidak punya WMClass yang sama dan window adalah daun.
-                                forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
-                            } else if (isMaximized) {
-                                // Maximize via _NET_WM_STATE, WMClass tidak cocok.
-                                // Sembunyikan parent (title bar/decoration) dan render window ini fullscreen.
-                                forceFullscreen = true;
-                                removeRenderableWindow(parent);
-                            } else {
-                                // Fallback deteksi frame dekorasi tipis (borderX ≤ 12px).
-                                short borderX = (short) (parent.getWidth() - width);
-                                short borderY = (short) (parent.getHeight() - height);
-                                if (parent.getChildCount() == 1
-                                        && borderX > 0 && borderY > 0 && borderX <= 12) {
-                                    forceFullscreen = true;
-                                    removeRenderableWindow(parent);
-                                }
-                            }
+                        if (hasWMClass) {
+                            // WMClass cocok — fullscreen jika parent tidak cocok dan ini leaf window.
+                            forceFullscreen = !parentHasWMClass && window.getChildCount() == 0;
+                        } else if (isMaximized) {
+                            // Maximize via _NET_WM_STATE, WMClass tidak cocok.
+                            // Sembunyikan parent (title bar) dan render fullscreen.
+                            forceFullscreen = true;
+                            removeRenderableWindow(parent);
                         } else {
-                            // --- Path tanpa WMClass filter (semua app, logika baru) ---
-                            // Window maximize atau besar selalu dapat FullscreenTransformation,
-                            // tanpa perlu WMClass terdaftar. Parent decoration disembunyikan.
-                            if (isMaximized) {
-                                // maximize via _NET_WM_STATE: sembunyikan parent (title bar).
+                            // Fallback: deteksi frame dekorasi tipis (borderX ≤ 12px).
+                            short borderX = (short) (parent.getWidth() - width);
+                            short borderY = (short) (parent.getHeight() - height);
+                            if (parent.getChildCount() == 1
+                                    && borderX > 0 && borderY > 0 && borderX <= 12) {
                                 forceFullscreen = true;
                                 removeRenderableWindow(parent);
-                            } else {
-                                // Window besar (≥75% layar): cek dekorasi tipis seperti path lama.
-                                short borderX = (short) (parent.getWidth() - width);
-                                short borderY = (short) (parent.getHeight() - height);
-                                if (parent.getChildCount() == 1
-                                        && borderX > 0 && borderY > 0 && borderX <= 12) {
-                                    forceFullscreen = true;
-                                    removeRenderableWindow(parent);
-                                } else {
-                                    // Tidak ada parent decoration tipis — langsung fullscreen
-                                    // tanpa menghapus parent (parent mungkin tidak relevan).
-                                    forceFullscreen = window.getChildCount() == 0;
-                                }
                             }
                         }
                     }
                 }
+                // forceFullscreenWMClass == null → forceFullscreen tetap false,
+                // semua window dirender normal tanpa FullscreenTransformation.
                 // forceFullscreen sudah dievaluasi — lanjut render.
 
                 renderableWindows.add(new RenderableWindow(window.getContent(), x, y, forceFullscreen));

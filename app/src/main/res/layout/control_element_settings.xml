@@ -277,7 +277,7 @@
             android:id="@+id/CBHideStrokeFill"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Hide Stroke &amp; Fill"
+            android:text="@string/hide_stroke_fill"
             android:visibility="gone" />
 
         <!-- Custom text + icon picker — gone by default, Java atur visibility -->

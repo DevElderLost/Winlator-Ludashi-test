@@ -583,21 +583,29 @@ public class ExternalController {
 
 
 
-
-    public static ArrayList<ExternalController> getControllers() {
-        int[] deviceIds = InputDevice.getDeviceIds();
-        ArrayList<ExternalController> controllers = new ArrayList<>();
-        for (int i = deviceIds.length-1; i >= 0; i--) {
-            InputDevice device = InputDevice.getDevice(deviceIds[i]);
-            if (isGameController(device)) {
-                ExternalController controller = new ExternalController();
-                controller.setId(device.getDescriptor());
-                controller.setName(device.getName());
-                controllers.add(controller);
-            }
+public static ArrayList<ExternalController> getControllers() {
+    int[] deviceIds = InputDevice.getDeviceIds();
+    ArrayList<ExternalController> controllers = new ArrayList<>();
+    for (int i = deviceIds.length - 1; i >= 0; i--) {
+        InputDevice device = InputDevice.getDevice(deviceIds[i]);
+        if (device == null || device.isVirtual()) continue;
+        // Gamepad/joystick ATAU mouse Bluetooth
+        if (isGameController(device) || isMouseDevice(device)) {
+            ExternalController controller = new ExternalController();
+            controller.setId(device.getDescriptor());
+            controller.setName(device.getName());
+            controllers.add(controller);
         }
-        return controllers;
     }
+    return controllers;
+}
+
+// Tambah helper method baru
+public static boolean isMouseDevice(InputDevice device) {
+    if (device == null || device.isVirtual()) return false;
+    int sources = device.getSources();
+    return (sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
+}
 
     public static ExternalController getController(String id) {
         for (ExternalController controller : getControllers()) if (controller.getId().equals(id)) return controller;

@@ -624,11 +624,28 @@ public class TouchpadView extends View {
                     break;
                 case MotionEvent.ACTION_MOVE:
                 case MotionEvent.ACTION_HOVER_MOVE:
-                    float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
-                    if (xServer.isRelativeMouseMovement())
-                        xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
-                    else
-                        xServer.injectPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
+                    // Coba pakai RELATIVE axis dulu (tersedia untuk mouse Bluetooth/fisik)
+                    float relX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+                    float relY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+                    if (relX != 0f || relY != 0f) {
+                        // Ini adalah delta — hanya scale diagonal xform yang boleh diterapkan.
+                        // xform layout: [n11,n12, n21,n22, dx,dy]
+                        // xform[0]=scaleX, xform[3]=scaleY, xform[4]/[5]=translasi offset
+                        // Offset translasi TIDAK boleh ditambahkan ke nilai delta.
+                        float dx = relX * xform[0];
+                        float dy = relY * xform[3];
+                        if (xServer.isRelativeMouseMovement())
+                            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)dx, (int)dy, 0);
+                        else
+                            xServer.injectPointerMoveDelta((int)dx, (int)dy);
+                    } else {
+                        // Fallback ke posisi absolut (untuk touch/stylus) — XForm penuh benar di sini
+                        float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
+                        if (xServer.isRelativeMouseMovement())
+                            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
+                        else
+                            xServer.injectPointerMove((int)transformedPoint[0], (int)transformedPoint[1]);
+                    }
                     handled = true;
                     break;
                 case MotionEvent.ACTION_SCROLL:

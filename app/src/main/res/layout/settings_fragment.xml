@@ -388,14 +388,6 @@
                         android:text="Capture External Pointer"
                         android:layout_marginTop="8dp" />
 
-                    <!-- Relative Mouse Movement Checkbox -->
-                    <CheckBox
-                        android:id="@+id/CBRelativeMouseMovement"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/relative_mouse_movement"
-                        android:layout_marginTop="8dp" />
-
                     <!-- New Xinput Toggle Checkbox -->
                     <CheckBox
                         android:id="@+id/CBXinputToggle"

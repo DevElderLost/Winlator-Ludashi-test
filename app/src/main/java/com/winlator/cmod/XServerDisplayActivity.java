@@ -753,6 +753,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             xServerView.onResume();
             environment.onResume();
         }
+        
+        // ✅ TAMBAHAN: Re-request pointer capture saat resume
+        if (cursorLock && touchpadView != null) {
+            touchpadView.post(() -> {
+               if (hasWindowFocus()) {
+                touchpadView.requestPointerCapture();
+               }
+            });
+        }
+
         startTime = System.currentTimeMillis();
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
         ProcessHelper.resumeAllWineProcesses();
@@ -1212,6 +1222,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setFocusable(true);
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);
+        
+        // ✅ TAMBAHAN: Inisialisasi pointer capture setelah touchpadView dibuat
+        if (cursorLock) {
+        touchpadView.post(() -> {
+            touchpadView.requestPointerCapture();
+            Log.d("XServerDisplayActivity", "Pointer capture requested during setupUI");
+            });
+        }
 
         inputControlsView = new InputControlsView(this, timeoutHandler, hideControlsRunnable);
         inputControlsView.setOverlayOpacity(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));

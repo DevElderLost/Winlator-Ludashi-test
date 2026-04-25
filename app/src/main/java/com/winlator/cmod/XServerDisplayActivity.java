@@ -698,11 +698,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case MotionEvent.ACTION_MOVE:
             case MotionEvent.ACTION_HOVER_MOVE:
-                float[] transformedPoint = XForm.transformPoint(xform, event.getX(), event.getY());
+                // Saat pointer capture aktif, event.getX()/getY() adalah DELTA (bukan posisi absolut).
+                // Layout xform[6]: [n11,n12, n21,n22, dx,dy]
+                //   transformPoint = xform[0]*x + xform[2]*y + xform[4]  ← xform[4] adalah translasi offset
+                // Untuk delta, offset translasi (xform[4], xform[5]) TIDAK boleh ditambahkan.
+                // Hanya komponen scale diagonal yang dipakai: xform[0] untuk X, xform[3] untuk Y.
+                // (xform[1] dan xform[2] adalah shear, selalu 0 untuk transformasi ini)
+                float ddx = event.getX() * xform[0];
+                float ddy = event.getY() * xform[3];
                 if (xServer.isRelativeMouseMovement())
-                    xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)transformedPoint[0], (int)transformedPoint[1], 0);
+                    xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int)ddx, (int)ddy, 0);
                 else
-                    xServer.injectPointerMoveDelta((int)transformedPoint[0], (int)transformedPoint[1]);
+                    xServer.injectPointerMoveDelta((int)ddx, (int)ddy);
                 handled = true;
                 break;
             case MotionEvent.ACTION_SCROLL:
@@ -754,13 +761,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             environment.onResume();
         }
         
-        // ✅ TAMBAHAN: Re-request pointer capture saat resume
-        if (cursorLock && touchpadView != null) {
-            touchpadView.post(() -> {
-               if (hasWindowFocus()) {
-                touchpadView.requestPointerCapture();
-               }
-            });
+        // Re-request pointer capture saat resume (langsung, tanpa post() agar tidak race condition)
+        if (cursorLock && touchpadView != null && hasWindowFocus()) {
+            touchpadView.requestPointerCapture();
         }
 
         startTime = System.currentTimeMillis();
@@ -986,6 +989,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+
+        if (touchpadView == null) return;
 
         if (hasFocus && cursorLock)
             touchpadView.requestPointerCapture();
@@ -1223,13 +1228,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);
         
-        // ✅ TAMBAHAN: Inisialisasi pointer capture setelah touchpadView dibuat
-        if (cursorLock) {
-        touchpadView.post(() -> {
-            touchpadView.requestPointerCapture();
-            Log.d("XServerDisplayActivity", "Pointer capture requested during setupUI");
-            });
-        }
+        // Pointer capture dihandle sepenuhnya oleh onWindowFocusChanged()
+        // sehingga tidak perlu request di sini (window belum tentu punya focus saat setupUI berjalan)
 
         inputControlsView = new InputControlsView(this, timeoutHandler, hideControlsRunnable);
         inputControlsView.setOverlayOpacity(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));
@@ -1629,33 +1629,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        boolean handledByWinHandler = false;
-        boolean handledByTouchpadView = false;
+        // winHandler menangani event gamepad/joystick dari controller
+        if (winHandler != null && winHandler.onGenericMotionEvent(event)) return true;
 
-        // Let winHandler process the event if available
-        if (winHandler != null) {
-            handledByWinHandler = winHandler.onGenericMotionEvent(event);
-            if (handledByWinHandler) {
-                //Log.d("XServerDisplayActivity", "Event handled by winHandler");
-            }
-        }
+        // touchpadView menangani event mouse eksternal (Bluetooth mouse, dll.)
+        // Hanya dijalankan jika winHandler tidak mengklaim event ini,
+        // sehingga mencegah double-inject ke XServer
+        if (touchpadView != null && touchpadView.onExternalMouseEvent(event)) return true;
 
-        // Let touchpadView process the event if available
-        if (touchpadView != null) {
-            handledByTouchpadView = touchpadView.onExternalMouseEvent(event);
-            if (handledByTouchpadView) {
-                //Log.d("XServerDisplayActivity", "Event handled by touchpadView");
-            }
-        }
-
-        // Pass the event to the super method to ensure system-level handling
-        boolean handledBySuper = super.dispatchGenericMotionEvent(event);
-        if (!handledBySuper) {
-            //Log.d("XServerDisplayActivity", "Event not handled by super");
-        }
-
-        // Combine the results: any handler consuming the event indicates it was handled
-        return handledByWinHandler || handledByTouchpadView || handledBySuper;
+        return super.dispatchGenericMotionEvent(event);
     }
 
 

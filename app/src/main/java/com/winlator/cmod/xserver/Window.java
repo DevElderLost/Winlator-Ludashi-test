@@ -33,6 +33,7 @@ public class Window extends XResource {
     private short borderWidth;
     private ArrayMap<String, Object> tags;
     private Window parent;
+    private boolean confined = false;
     public final XClient originClient;
     public final WindowAttributes attributes = new WindowAttributes(this);
     private final SparseArray<Property> properties = new SparseArray<>();
@@ -132,6 +133,14 @@ public class Window extends XResource {
         this.parent = parent;
     }
 
+    public boolean isConfined() {
+        return confined;
+    }
+
+    public void setConfined(boolean confined) {
+       this.confined = confined;
+    }
+    
     public Property getProperty(int id) {
         return properties.get(id);
     }

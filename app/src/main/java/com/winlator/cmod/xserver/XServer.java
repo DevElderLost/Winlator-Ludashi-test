@@ -41,6 +41,7 @@ public class XServer {
     private WinHandler winHandler;
     private final EnumMap<Lockable, ReentrantLock> locks = new EnumMap<>(Lockable.class);
     private boolean relativeMouseMovement = false;
+    private boolean pointerCaptureActive = false;
     private boolean simulateTouchScreen = false;
     private boolean isGrabbed = false;
     private XClient grabbingClient = null;
@@ -66,8 +67,17 @@ public class XServer {
         return relativeMouseMovement;
     }
 
+    public boolean isPointerCaptureActive() {
+       return pointerCaptureActive;
+    }
+
+    public void setPointerCaptureActive(boolean pointerCaptureActive) {
+        this.pointerCaptureActive = pointerCaptureActive;
+            cursorLocker.setEnabled(!relativeMouseMovement && !pointerCaptureActive);
+    }
+
     public void setRelativeMouseMovement(boolean relativeMouseMovement) {
-        cursorLocker.setEnabled(!relativeMouseMovement);
+        cursorLocker.setEnabled(!relativeMouseMovement && !pointerCaptureActive);
         this.relativeMouseMovement = relativeMouseMovement;
     }
 

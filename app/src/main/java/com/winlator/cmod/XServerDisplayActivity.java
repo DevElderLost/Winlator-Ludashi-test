@@ -18,6 +18,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.input.InputManager;
+import android.view.InputDevice;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;

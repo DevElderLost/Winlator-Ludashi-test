@@ -174,7 +174,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private short taskAffinityMask = 0;
     private short taskAffinityMaskWoW64 = 0;
     private int frameRatingWindowId = -1;
-//    private boolean cursorLock; // Flag to track if pointer capture was requested
+//    private boolean cursorLock; // Flag to track if pointer capture was requested (obsolete - now uses tryCapturePointer/hasExternalMouse)
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
     private boolean navigationFocused = false;
@@ -187,7 +187,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
 
-	private boolean isPointerCaptureForcedOff = false;
+    private boolean isMouseDisabled = false;
     private boolean isVolumeUpPressed = false;
     private boolean isVolumeDownPressed = false;
 	
@@ -226,14 +226,19 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private void tryCapturePointer() {
-        if (touchpadView != null && hasExternalMouse() && (drawerStateHolder == null || !drawerStateHolder.isDrawerOpen())) {
+        if (touchpadView != null && hasExternalMouse() && drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
             touchpadView.postDelayed(() -> {
                 if (touchpadView != null) {
-                    updatePointerCapture();
+                    touchpadView.requestFocus();
+                    touchpadView.requestPointerCapture();
+                    touchpadView.setOnCapturedPointerListener((view, event) -> {
+                        handleCapturedPointer(event);
+                        return true;
+                    });
                 }
             }, 100);
         }
-	}
+    }
 
     private void createNotifcationChannel() {
         String name = "Winlator";
@@ -303,8 +308,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         preloaderDialog = new PreloaderDialog(this);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
-
-        cursorLock = preferences.getBoolean("cursor_lock", true);
 
         // Check for Dark Mode
         isDarkMode = preferences.getBoolean("dark_mode", false);
@@ -399,6 +402,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             public void onDrawerOpened(View drawerView) {
                 super.onDrawerOpened(drawerView);
                 navigationView.requestFocus();
+                if (touchpadView != null) {
+                    touchpadView.releasePointerCapture();
+                    touchpadView.setOnCapturedPointerListener(null);
+                }
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                super.onDrawerClosed(drawerView);
+                tryCapturePointer();
             }
         });
 
@@ -680,6 +693,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     // Inside XServerDisplayActivity class
     private void handleCapturedPointer(MotionEvent event) {
+        if (isMouseDisabled) {
+            return;
+        }
+        if (xServer.getRenderer() != null) {
+            xServer.getRenderer().setCursorVisible(true);
+        }
+        if (timeoutHandler != null && hideControlsRunnable != null) {
+            timeoutHandler.removeCallbacks(hideControlsRunnable);
+            timeoutHandler.postDelayed(hideControlsRunnable, 5000);
+        }
         boolean handled = false;
 
         int actionButton = event.getActionButton();
@@ -785,11 +808,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (environment != null) {
             xServerView.onResume();
             environment.onResume();
-        }
-        
-        // Re-request pointer capture saat resume (langsung, tanpa post() agar tidak race condition)
-        if (cursorLock && touchpadView != null && hasWindowFocus()) {
-            touchpadView.requestPointerCapture();
         }
 
         startTime = System.currentTimeMillis();
@@ -1018,12 +1036,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
 
-        if (touchpadView == null) return;
-
-        if (hasFocus && cursorLock)
-            touchpadView.requestPointerCapture();
-        else if (!hasFocus)
-            touchpadView.releasePointerCapture();
+        if (hasFocus) {
+            tryCapturePointer();
+        } else {
+            if (touchpadView != null) {
+                touchpadView.releasePointerCapture();
+                touchpadView.setOnCapturedPointerListener(null);
+            }
+        }
     }
 
     private void extractInputDLLs() {
@@ -1244,20 +1264,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView.setFourFingersTapCallback(() -> {
             if (!drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.openDrawer(GravityCompat.START);
         });
-        View.OnCapturedPointerListener capturedPointerListener = new View.OnCapturedPointerListener() {
-        	@Override
-            public boolean onCapturedPointer(View view, MotionEvent event) {
-            	handleCapturedPointer(event);
-                return true;
-            }
-        };
-        touchpadView.setOnCapturedPointerListener(cursorLock ? capturedPointerListener : null);
         touchpadView.setFocusable(true);
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);
-        
-        // Pointer capture dihandle sepenuhnya oleh onWindowFocusChanged()
-        // sehingga tidak perlu request di sini (window belum tentu punya focus saat setupUI berjalan)
+
+        // Pointer capture dihandle oleh tryCapturePointer() via onWindowFocusChanged() dan onDrawerClosed()
 
         inputControlsView = new InputControlsView(this, timeoutHandler, hideControlsRunnable);
         inputControlsView.setOverlayOpacity(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));

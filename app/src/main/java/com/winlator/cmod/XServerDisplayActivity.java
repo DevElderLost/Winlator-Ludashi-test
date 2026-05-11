@@ -17,6 +17,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.input.InputManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -173,7 +174,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private short taskAffinityMask = 0;
     private short taskAffinityMaskWoW64 = 0;
     private int frameRatingWindowId = -1;
-    private boolean cursorLock; // Flag to track if pointer capture was requested
+//    private boolean cursorLock; // Flag to track if pointer capture was requested
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
     private boolean navigationFocused = false;
@@ -186,6 +187,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
 
+	private boolean isPointerCaptureForcedOff = false;
+    private boolean isVolumeUpPressed = false;
+    private boolean isVolumeDownPressed = false;
+	
     // Inside the XServerDisplayActivity class
     private SensorManager sensorManager;
     private Sensor gyroSensor;
@@ -208,6 +213,27 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
+
+	private boolean hasExternalMouse() {
+        InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+        for (int deviceId : inputManager.getInputDeviceIds()) {
+            InputDevice device = inputManager.getInputDevice(deviceId);
+            if (device != null && !device.isVirtual() && (device.getSources() & InputDevice.SOURCE_MOUSE) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void tryCapturePointer() {
+        if (touchpadView != null && hasExternalMouse() && (drawerStateHolder == null || !drawerStateHolder.isDrawerOpen())) {
+            touchpadView.postDelayed(() -> {
+                if (touchpadView != null) {
+                    updatePointerCapture();
+                }
+            }, 100);
+        }
+	}
 
     private void createNotifcationChannel() {
         String name = "Winlator";
@@ -774,6 +800,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onPause() {
         super.onPause();
+		isVolumeUpPressed = false;
+        isVolumeDownPressed = false;
         boolean gyroEnabled = preferences.getBoolean("gyro_enabled", true);
 
         if (gyroEnabled) {

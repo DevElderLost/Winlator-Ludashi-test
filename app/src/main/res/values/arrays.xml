@@ -321,4 +321,25 @@
         <item>CAS</item>
         <item>DLS</item>
     </string-array>
+    <!-- ═══════════════════════════════════════════════
+         LSFG Present Mode — digunakan di SLsfgPresentMode spinner
+         Urutan harus sesuai dengan normalizeLsfgPresentMode():
+           index 0 → fifo
+           index 1 → mailbox
+           index 2 → immediate
+    ═══════════════════════════════════════════════ -->
+    <string-array name="lsfg_present_mode_entries">
+        <item>FIFO (V-Sync)</item>
+        <item>Mailbox</item>
+        <item>Immediate</item>
+    </string-array>
+
+    <!-- Nilai internal yang dikembalikan ke shortcut.putExtra("lsfgPresentMode", ...)
+         Jika menggunakan Spinner.getSelectedItemPosition() + mapping manual,
+         array ini tidak wajib dimuat ke Spinner. Tersedia sebagai referensi. -->
+    <string-array name="lsfg_present_mode_values">
+        <item>fifo</item>
+        <item>mailbox</item>
+        <item>immediate</item>
+    </string-array>
 </resources>

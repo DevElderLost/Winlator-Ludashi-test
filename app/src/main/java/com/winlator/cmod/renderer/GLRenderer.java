@@ -195,8 +195,8 @@ public int getCursorHotspotOffsetY() { return cursorHotspotOffsetY; }
         }
 
         if (cpuSaverMode) {
-            // CPU Saver mode: skip effectComposer, render langsung.
-            if (frameRating != null) frameRating.setIsNative(false);
+            // CPU Saver / Direct Rendering+ mode: skip effectComposer, render langsung.
+            if (frameRating != null) frameRating.setIsNative(true);
             drawFrame();
         } else {
             if (frameRating != null) frameRating.setIsNative(false);

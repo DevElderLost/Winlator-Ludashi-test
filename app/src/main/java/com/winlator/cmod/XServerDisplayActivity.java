@@ -1393,7 +1393,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         xServerView = new XServerView(this, xServer);
         final GLRenderer renderer = xServerView.getRenderer();
         renderer.setCursorVisible(false);
-		renderer.setNativeMode(getIntent().getBooleanExtra("native_rendering", false));
+        // Baca nativeRendering dari shortcut extra, bukan dari intent (intent tidak pernah diisi)
+        boolean nativeRenderingEnabled = shortcut != null
+                && shortcut.getExtra("nativeRendering", "0").equals("1");
+        renderer.setNativeMode(nativeRenderingEnabled);
 
 		if (shortcut != null) {
             if (shortcut.getExtra("forceFullscreen", "0").equals("1")) renderer.setForceFullscreenWMClass(shortcut.wmClass);
@@ -1435,6 +1438,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             frameRating = new FrameRating(this, graphicsDriverConfig);
             frameRating.setVisibility(View.GONE);
             rootView.addView(frameRating);
+            // Hubungkan ke renderer agar setIsNative() dipanggil setiap frame
+            renderer.setFrameRating(frameRating);
+            // Terapkan konfigurasi elemen HUD dari shortcut langsung saat startup
+            applyHudElementsFromShortcut();
         }
 
         // Get the fullscreen stretched extra from the shortcut if available
@@ -2145,6 +2152,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (frameRatingWindowId == -1 && property.nameAsString().contains("_MESA_DRV")) {
                 frameRatingWindowId = window.id;
                 Log.d("XServerDisplayActivity", "Showing hud for Window " + window.getName());
+                // BUG FIX: frameRating harus di-set VISIBLE agar overlay muncul
+                runOnUiThread(() -> frameRating.setVisibility(View.VISIBLE));
                 frameRating.update();
             }
             if (property.nameAsString().contains("_MESA_DRV_ENGINE_NAME")) {
@@ -2159,6 +2168,31 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             Log.d("XServerDisplayActivity", "Hiding hud for Window " + window.getName());
             runOnUiThread(() -> frameRating.setVisibility(View.GONE));
             runOnUiThread(() -> frameRating.reset());
+        }
+    }
+
+    /**
+     * Membaca konfigurasi elemen HUD dari shortcut extra "hudElements" (bitmask int)
+     * dan menerapkannya ke FrameRating tanpa perlu menekan menu.
+     *
+     * Bit mapping (sesuai FrameRating.toggleElement):
+     *   bit 0 = FPS         (element 0)
+     *   bit 1 = Renderer    (element 1)
+     *   bit 2 = GPU         (element 2)
+     *   bit 3 = CPU/RAM     (element 3)
+     *   bit 4 = Battery/Temp(element 4)
+     *   bit 5 = Graph       (element 5)
+     * Default (tidak ada extra): semua aktif → 0b111111 = 63
+     */
+    private void applyHudElementsFromShortcut() {
+        if (frameRating == null) return;
+        int mask = 63; // default: semua elemen aktif
+        if (shortcut != null) {
+            String raw = shortcut.getExtra("hudElements", "63");
+            try { mask = Integer.parseInt(raw); } catch (Exception ignored) {}
+        }
+        for (int i = 0; i < 6; i++) {
+            frameRating.toggleElement(i, (mask & (1 << i)) != 0);
         }
     }
 

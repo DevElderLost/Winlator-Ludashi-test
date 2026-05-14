@@ -103,6 +103,16 @@ public class SettingsFragment extends Fragment {
     private static final int REQUEST_CODE_INSTALL_SOUNDFONT = 1001;
     private static final int REQUEST_CODE_IMPORT_BOX64_PRESET = 1004;
     private static final int REQUEST_CODE_IMPORT_FEXCORE_PRESET = 1005;
+    private static final int REQUEST_CODE_IMPORT_LSFG_DLL = 1006;
+
+    // LSFG global — path DLL tersimpan di SharedPreferences key "lsfg_dll_path"
+    // dan flag enable/disable di "lsfg_enabled_global".
+    // pendingLsfgDllPath menyimpan path sementara sebelum BTConfirm ditekan;
+    // originalLsfgDllPath adalah nilai yang sudah tersimpan saat fragment dibuka.
+    private String originalLsfgDllPath = "";
+    private String pendingLsfgDllPath = "";
+    private CheckBox cbLsfgEnabled;
+    private TextView tvLsfgDllName;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -305,6 +315,20 @@ public class SettingsFragment extends Fragment {
             ContentDialog.confirm(context, R.string.do_you_want_to_reinstall_imagefs, () -> ImageFsInstaller.installFromAssets((MainActivity) getActivity()));
         });
 
+        // ── LSFG global ──────────────────────────────────────────────────────
+        cbLsfgEnabled = view.findViewById(R.id.CBLsfgEnabled);
+        tvLsfgDllName = view.findViewById(R.id.TVLsfgDllName);
+
+        originalLsfgDllPath = preferences.getString("lsfg_dll_path", "");
+        pendingLsfgDllPath   = originalLsfgDllPath;
+
+        cbLsfgEnabled.setChecked(preferences.getBoolean("lsfg_enabled_global", false));
+        updateLsfgDllNameDisplay(originalLsfgDllPath);
+
+        // Satu tombol: "Import" jika belum ada file, "Change" jika sudah ada
+        view.findViewById(R.id.BTImportLsfgDll).setOnClickListener(v -> openFile(REQUEST_CODE_IMPORT_LSFG_DLL));
+        // ─────────────────────────────────────────────────────────────────────
+
         view.findViewById(R.id.BTConfirm).setOnClickListener((v) -> {
             SharedPreferences.Editor editor = preferences.edit();
 
@@ -325,6 +349,23 @@ public class SettingsFragment extends Fragment {
             editor.putBoolean("share_android_clipboard", cbShareClipboard.isChecked());
 
             editor.putString("downloadable_contents_url", etDownloadableContentsURL.getText().toString());
+
+            // Save LSFG global settings
+            editor.putBoolean("lsfg_enabled_global", cbLsfgEnabled.isChecked());
+            // Commit pending DLL path: jika user sudah pilih file baru, simpan
+            // path-nya; jika sudah di-clear, hapus key-nya.
+            if (!pendingLsfgDllPath.isEmpty()) {
+                editor.putString("lsfg_dll_path", pendingLsfgDllPath);
+                // Bersihkan file DLL lama yang berbeda dari yang baru
+                if (!originalLsfgDllPath.isEmpty()
+                        && !originalLsfgDllPath.equals(pendingLsfgDllPath)) {
+                    clearManagedLsfgDll(originalLsfgDllPath);
+                }
+                originalLsfgDllPath = pendingLsfgDllPath;
+            } else {
+                editor.remove("lsfg_dll_path");
+                originalLsfgDllPath = "";
+            }
 
             if (!wineDebugChannels.isEmpty()) {
                 editor.putString("wine_debug_channels", String.join(",", wineDebugChannels));
@@ -347,6 +388,114 @@ public class SettingsFragment extends Fragment {
 
         return view;
     }
+
+    // ── LSFG global helpers ───────────────────────────────────────────────────
+
+    /**
+     * Tampilkan nama file raw persis seperti yang tersimpan di path,
+     * mis. "global-1777952628276-Lossless.dll".
+     * Logika ini mengikuti pola Kotlin di ShortcutSettingsComposeDialog:
+     *
+     *   val displayName = if (hasFile)
+     *       currentDllPath.substringAfterLast('/').substringAfterLast('\\')
+     *           .ifBlank { currentDllPath }
+     *   else ""
+     */
+    private void updateLsfgDllNameDisplay(String dllPath) {
+        if (tvLsfgDllName == null) return;
+        boolean hasFile = dllPath != null && !dllPath.isEmpty();
+        String displayName = "";
+        if (hasFile) {
+            String afterSlash  = dllPath.contains("/")   ? dllPath.substring(dllPath.lastIndexOf('/') + 1)   : dllPath;
+            String afterBSlash = afterSlash.contains("\\") ? afterSlash.substring(afterSlash.lastIndexOf('\\') + 1) : afterSlash;
+            displayName = afterBSlash.isEmpty() ? dllPath : afterBSlash;
+        }
+        tvLsfgDllName.setText(displayName);
+
+        // Tombol berubah teks: "Import" jika belum ada file, "Change" jika sudah ada
+        View btnImport = getView() != null ? getView().findViewById(R.id.BTImportLsfgDll) : null;
+        if (btnImport instanceof android.widget.Button) {
+            ((android.widget.Button) btnImport).setText(hasFile
+                    ? getString(R.string.lsfg_change_dll)
+                    : getString(R.string.lsfg_import_dll));
+        }
+    }
+
+    /** Import DLL dari URI ke direktori internal "lsfg", beri nama unik. */
+    private void importLsfgDll(Uri uri) {
+        final Context context = getContext();
+        if (context == null) return;
+
+        String rawFileName = uri.getLastPathSegment();
+        if (rawFileName == null) rawFileName = "Lossless.dll";
+        // Ambil nama file paling akhir setelah '/' atau '%2F' (encoded)
+        if (rawFileName.contains("/"))  rawFileName = rawFileName.substring(rawFileName.lastIndexOf('/') + 1);
+        if (rawFileName.contains("%2F")) rawFileName = rawFileName.substring(rawFileName.lastIndexOf("%2F") + 3);
+
+        // Saring karakter tidak aman
+        final StringBuilder sb = new StringBuilder();
+        for (char c : rawFileName.toCharArray()) {
+            if (Character.isLetterOrDigit(c) || c == '.' || c == '_' || c == '-') sb.append(c);
+        }
+        final String safeFileName = sb.toString();
+
+        if (!safeFileName.toLowerCase(java.util.Locale.ROOT).endsWith(".dll")) {
+            AppUtils.showToast(context, R.string.settings_lsfg_select_valid_dll);
+            return;
+        }
+
+        java.io.File lsfgDir = new java.io.File(context.getFilesDir(), "lsfg");
+        if (!lsfgDir.exists()) lsfgDir.mkdirs();
+
+        // Prefix "global-" membedakan file ini dari DLL milik per-shortcut
+        java.io.File outputFile = new java.io.File(lsfgDir,
+                "global-" + System.currentTimeMillis() + "-" + safeFileName);
+
+        try {
+            java.io.InputStream input = context.getContentResolver().openInputStream(uri);
+            if (input == null) throw new java.io.IOException("null stream");
+            java.io.OutputStream output = new java.io.FileOutputStream(outputFile);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = input.read(buf)) != -1) output.write(buf, 0, n);
+            input.close();
+            output.close();
+        } catch (Exception e) {
+            AppUtils.showToast(context, R.string.settings_lsfg_import_failed);
+            return;
+        }
+
+        // Hapus pending lama jika belum disimpan
+        if (!pendingLsfgDllPath.isEmpty() && !pendingLsfgDllPath.equals(originalLsfgDllPath)) {
+            clearManagedLsfgDll(pendingLsfgDllPath);
+        }
+        pendingLsfgDllPath = outputFile.getAbsolutePath();
+        updateLsfgDllNameDisplay(pendingLsfgDllPath);
+    }
+
+    /** Clear pending DLL (belum BTConfirm) dan sembunyikan nama file. */
+    private void clearLsfgDll() {
+        if (!pendingLsfgDllPath.isEmpty() && !pendingLsfgDllPath.equals(originalLsfgDllPath)) {
+            clearManagedLsfgDll(pendingLsfgDllPath);
+        }
+        pendingLsfgDllPath = "";
+        updateLsfgDllNameDisplay("");
+    }
+
+    /** Hapus file fisik DLL dari direktori internal "lsfg" jika memang ada di sana. */
+    private void clearManagedLsfgDll(String path) {
+        if (path == null || path.isEmpty()) return;
+        Context context = getContext();
+        if (context == null) return;
+        java.io.File lsfgDir = new java.io.File(context.getFilesDir(), "lsfg");
+        java.io.File file = new java.io.File(path);
+        if (file.getParentFile() != null
+                && file.getParentFile().getAbsolutePath().equals(lsfgDir.getAbsolutePath())
+                && file.exists()) {
+            file.delete();
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void updateTheme(boolean isDarkMode) {
         if (isDarkMode) {
@@ -767,6 +916,10 @@ public class SettingsFragment extends Fragment {
                             FEXCorePresetManager.loadSpinner(sFEXCorePreset, preferences.getString("fexcore_preset", FEXCorePreset.INTERMEDIATE));
                         } catch (FileNotFoundException e) {
                         }
+                        break;
+
+                    case REQUEST_CODE_IMPORT_LSFG_DLL:
+                        importLsfgDll(uri);
                         break;
                         // Add future cases here for other request codes...
                     default:

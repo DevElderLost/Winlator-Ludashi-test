@@ -332,31 +332,28 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
         // ── HUD Elements: Spinner multi-checkbox (bitmask) ──────────────────
         // Spinner ini menampilkan preset kombinasi elemen HUD yang akan ditampilkan.
-        // Bit mapping: 0=FPS, 1=Renderer, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph
-        // Default semua aktif = 63 (0b111111).
-        final Spinner sHudElements = findViewById(R.id.SHudElements);
-        // Label preset → nilai bitmask
-        final String[] hudPresetLabels = {
-            "All (FPS + GPU + CPU + Bat + Graph)",   // 63
-            "FPS + GPU + CPU + Battery",              // 31 (no graph)
-            "FPS + Renderer + GPU",                   // 7
-            "FPS Only",                               // 1
-            "FPS + GPU",                              // 5
-            "FPS + CPU/RAM",                          // 9
-            "None (Hide All)"                         // 0
-        };
-        final int[] hudPresetValues = { 63, 31, 7, 1, 5, 9, 0 };
-        sHudElements.setAdapter(new ArrayAdapter<>(context,
-                android.R.layout.simple_spinner_dropdown_item, hudPresetLabels));
+        // ── HUD Elements: checkbox per elemen
+        // Bitmask: bit0=FPS, bit1=API/Renderer, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
+        final CheckBox cbHudFps     = findViewById(R.id.CBHudFps);
+        final CheckBox cbHudApi     = findViewById(R.id.CBHudApi);
+        final CheckBox cbHudGpu     = findViewById(R.id.CBHudGpu);
+        final CheckBox cbHudCpu     = findViewById(R.id.CBHudCpu);
+        final CheckBox cbHudRam     = findViewById(R.id.CBHudRam);
+        final CheckBox cbHudBattery = findViewById(R.id.CBHudBattery);
+        final CheckBox cbHudTemp    = findViewById(R.id.CBHudTemp);
+        final CheckBox cbHudGraph   = findViewById(R.id.CBHudGraph);
         {
-            int savedMask = 63;
-            try { savedMask = Integer.parseInt(shortcut.getExtra("hudElements", "63")); }
+            int mask = 255; // default: semua aktif (bit0-7 = 0xFF)
+            try { mask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
             catch (Exception ignored) {}
-            int bestMatch = 0;
-            for (int i = 0; i < hudPresetValues.length; i++) {
-                if (hudPresetValues[i] == savedMask) { bestMatch = i; break; }
-            }
-            sHudElements.setSelection(bestMatch, false);
+            if (cbHudFps     != null) cbHudFps.setChecked((mask & (1 << 0)) != 0);
+            if (cbHudApi     != null) cbHudApi.setChecked((mask & (1 << 1)) != 0);
+            if (cbHudGpu     != null) cbHudGpu.setChecked((mask & (1 << 2)) != 0);
+            if (cbHudCpu     != null) cbHudCpu.setChecked((mask & (1 << 3)) != 0);
+            if (cbHudRam     != null) cbHudRam.setChecked((mask & (1 << 4)) != 0);
+            if (cbHudBattery != null) cbHudBattery.setChecked((mask & (1 << 5)) != 0);
+            if (cbHudTemp    != null) cbHudTemp.setChecked((mask & (1 << 6)) != 0);
+            if (cbHudGraph   != null) cbHudGraph.setChecked((mask & (1 << 7)) != 0);
         }
 
         final Runnable showInputWarning = () -> ContentDialog.alert(context, R.string.enable_xinput_and_dinput_same_time, null);
@@ -617,8 +614,16 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 }
                 shortcut.putExtra("lsfgPacingMode", lsfgPacingMode);
 
-                // Simpan konfigurasi elemen HUD sebagai bitmask
-                int hudMask = hudPresetValues[sHudElements.getSelectedItemPosition()];
+                // Simpan konfigurasi elemen HUD sebagai bitmask dari 6 checkbox
+                int hudMask = 0;
+                if (cbHudFps     != null && cbHudFps.isChecked())     hudMask |= (1 << 0);
+                if (cbHudApi     != null && cbHudApi.isChecked())     hudMask |= (1 << 1);
+                if (cbHudGpu     != null && cbHudGpu.isChecked())     hudMask |= (1 << 2);
+                if (cbHudCpu     != null && cbHudCpu.isChecked())     hudMask |= (1 << 3);
+                if (cbHudRam     != null && cbHudRam.isChecked())     hudMask |= (1 << 4);
+                if (cbHudBattery != null && cbHudBattery.isChecked()) hudMask |= (1 << 5);
+                if (cbHudTemp    != null && cbHudTemp.isChecked())    hudMask |= (1 << 6);
+                if (cbHudGraph   != null && cbHudGraph.isChecked())   hudMask |= (1 << 7);
                 shortcut.putExtra("hudElements", String.valueOf(hudMask));
 
                 // Save all changes to the shortcut
@@ -710,7 +715,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         Spinner sStartupSelection = findViewById(R.id.SStartupSelection);
         Spinner sLsfgPresentModeStyle = view.findViewById(R.id.SLsfgPresentMode);
         Spinner sLsfgPacingModeStyle  = view.findViewById(R.id.SLsfgPacingMode);
-        Spinner sHudElementsStyle     = view.findViewById(R.id.SHudElements);
         
 
         // Set dark or light mode background for spinners
@@ -728,7 +732,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         sStartupSelection.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         if (sLsfgPresentModeStyle != null) sLsfgPresentModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         if (sLsfgPacingModeStyle  != null) sLsfgPacingModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
-        if (sHudElementsStyle     != null) sHudElementsStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
 
 //        EditText etLC_ALL = view.findViewById(R.id.ETlcall);
         EditText etExecArgs = view.findViewById(R.id.ETExecArgs);

@@ -191,6 +191,14 @@ public class FrameRating extends LinearLayout implements Runnable {
         super.onAttachedToWindow();
         bringToFront();
         setElevation(1000.0f);
+        // Reset failure counters agar GPU/CPU/battery polling retry saat
+        // view di-attach ulang (misalnya setelah activity recreate).
+        canReadGpu  = true;
+        canReadCpu  = true;
+        canReadBatt = true;
+        gpuFailCount  = 0;
+        cpuFailCount  = 0;
+        battFailCount = 0;
         removeCallbacks(this);
         post(this);
         startStatsUpdate();
@@ -332,14 +340,24 @@ public class FrameRating extends LinearLayout implements Runnable {
         // --- GPU load ---
         if (enableGpu && canReadGpu) {
             try {
-                gpuLoad = calculateGPULoad();
+                int newLoad = calculateGPULoad();
+                if (gpuLoad < 0 && newLoad >= 0) {
+                    // Pertama kali berhasil baca — log path yang sukses untuk debugging
+                    Log.d(TAG, "GPU load reading succeeded, value=" + newLoad + "%");
+                }
+                gpuLoad = newLoad;
                 gpuFailCount = 0;
             } catch (Exception e) {
                 gpuLoad = -1;
                 gpuFailCount++;
+                if (gpuFailCount == 1) {
+                    // Log sekali saja saat pertama gagal, bukan setiap detik
+                    Log.w(TAG, "GPU sysfs read failed (attempt " + gpuFailCount + "): " + e.getMessage());
+                }
                 if (gpuFailCount > 5) {
                     canReadGpu = false;
-                    Log.w(TAG, "OEM denied GPU read permission or file missing. Displaying N/A.");
+                    Log.w(TAG, "GPU read permanently disabled after 5 failures. "
+                            + "Device may require root/SELinux permissive for sysfs GPU access.");
                 }
             }
         }
@@ -421,38 +439,73 @@ public class FrameRating extends LinearLayout implements Runnable {
 
     private int calculateGPULoad() throws Exception {
         final String stripNonDigits = "[^0-9]";
+        int val;
 
-        // Qualcomm Adreno — busy percentage
-        int val = tryReadSysFsInt("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage", stripNonDigits);
+        // ── Qualcomm Adreno ──────────────────────────────────────────────────
+        // gpu_busy_percentage: format "42 %" — strip non-digit sudah handle
+        val = tryReadSysFsInt("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage", stripNonDigits);
         if (val >= 0) return val;
 
-        // Qualcomm Adreno — devfreq gpu_load
+        // devfreq gpu_load (0-100, beberapa OEM Snapdragon)
         val = tryReadSysFsInt("/sys/class/kgsl/kgsl-3d0/devfreq/gpu_load", stripNonDigits);
         if (val >= 0) return val;
 
-        // ARM Mali — utilisation
-        val = tryReadSysFsInt("/sys/class/misc/mali0/device/utilisation", stripNonDigits);
-        if (val >= 0) return val;
-
-        // Qualcomm Adreno — gpubusy (ratio: active/total)
+        // gpubusy: format "active total" -> hitung persentase
         val = tryReadGpuBusy("/sys/class/kgsl/kgsl-3d0/gpubusy");
         if (val >= 0) return val;
 
-        throw new Exception("Failed to read GPU usage.");
+        // kernel/gpu/gpu_busy — path alternatif ROM kustom Adreno
+        val = tryReadSysFsInt("/sys/kernel/gpu/gpu_busy", stripNonDigits);
+        if (val >= 0) return val;
+
+        // ── ARM Mali ─────────────────────────────────────────────────────────
+        // Mali Midgard/Bifrost/Valhall — /sys/class/misc/mali0
+        val = tryReadSysFsInt("/sys/class/misc/mali0/device/utilisation", stripNonDigits);
+        if (val >= 0) return val;
+
+        // Beberapa OEM Mali: tanpa 's' di ujung
+        val = tryReadSysFsInt("/sys/class/misc/mali0/device/utilization", stripNonDigits);
+        if (val >= 0) return val;
+
+        // Mali via platform device (Exynos, MediaTek Mali)
+        val = tryReadGlobSysFsInt("/sys/devices/platform/", "gpu/misc/mali0/device/utilisation", stripNonDigits);
+        if (val >= 0) return val;
+
+        // ── MediaTek GPU (MFG) ───────────────────────────────────────────────
+        val = tryReadSysFsInt("/sys/kernel/debug/ged/hal/gpu_utilization", stripNonDigits);
+        if (val >= 0) return val;
+
+        throw new Exception("Failed to read GPU usage from all known sysfs paths.");
     }
 
     /** Reads a sysfs file, strips non-digit characters, returns int or -1 on failure. */
+    /**
+     * Membaca sysfs file integer.
+     * BUG FIX: setelah strip non-digit, string bisa kosong (misal nilai "0 %")
+     * yang menyebabkan parseInt("") throw NumberFormatException dan return -1
+     * meski GPU sebenarnya idle (0%). Cek isEmpty() dulu lalu default ke "0".
+     */
     private int tryReadSysFsInt(String path, String stripPattern) {
         File f = new File(path);
         if (!f.exists() || !f.canRead()) return -1;
         try (BufferedReader br = new BufferedReader(new FileReader(f))) {
             String line = br.readLine();
-            if (line != null) return Integer.parseInt(line.trim().replaceAll(stripPattern, ""));
+            if (line != null) {
+                String digits = line.trim().replaceAll(stripPattern, "");
+                if (digits.isEmpty()) return 0; // kosong setelah strip = nilai "0 %"
+                int v = Integer.parseInt(digits);
+                return Math.max(0, Math.min(100, v)); // clamp 0-100
+            }
         } catch (Exception ignored) {}
         return -1;
     }
 
-    /** Reads gpubusy sysfs file formatted as "active total", returns percentage or -1. */
+    /**
+     * Membaca gpubusy "active total" dan hitung persentase.
+     * BUG FIX: active==0 (GPU idle) sebelumnya mengembalikan 0 yang valid,
+     * tapi total==0 return -1. Ditambahkan pengecekan total<active untuk
+     * menghindari persentase > 100 pada beberapa OEM.
+     */
     private int tryReadGpuBusy(String path) {
         File f = new File(path);
         if (!f.exists() || !f.canRead()) return -1;
@@ -463,8 +516,30 @@ public class FrameRating extends LinearLayout implements Runnable {
                 if (parts.length >= 2) {
                     long active = Long.parseLong(parts[0]);
                     long total  = Long.parseLong(parts[1]);
-                    if (total != 0) return (int) ((100 * active) / total);
+                    if (total > 0) return (int) Math.min(100, (100 * active) / total);
+                    if (active == 0) return 0; // GPU idle, total belum diupdate
                 }
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+
+    /**
+     * Glob sederhana: scan direktori parent untuk subdir yang mengandung suffix path tertentu.
+     * Digunakan untuk Mali via platform device yang nama subdirnya bervariasi per OEM
+     * (mis. "/sys/devices/platform/13000000.gpu/misc/mali0/...").
+     */
+    private int tryReadGlobSysFsInt(String parentDir, String suffix, String stripPattern) {
+        try {
+            File parent = new File(parentDir);
+            if (!parent.exists() || !parent.isDirectory()) return -1;
+            File[] children = parent.listFiles();
+            if (children == null) return -1;
+            for (File child : children) {
+                if (!child.isDirectory()) continue;
+                File target = new File(child, suffix);
+                int v = tryReadSysFsInt(target.getAbsolutePath(), stripPattern);
+                if (v >= 0) return v;
             }
         } catch (Exception ignored) {}
         return -1;
@@ -547,21 +622,65 @@ public class FrameRating extends LinearLayout implements Runnable {
     // Drag to reposition
     // =========================================================================
 
+    // -------------------------------------------------------------------------
+    // Double-tap state (digunakan di setupDragListener)
+    // -------------------------------------------------------------------------
+    private long  lastTapTime    = 0;
+    private float lastTapX       = 0;
+    private float lastTapY       = 0;
+    /** Threshold gerakan (px) agar tap tidak dianggap drag. */
+    private static final float TAP_SLOP_PX      = 10f;
+    /** Interval maksimum antar dua tap agar dianggap double-tap (ms). */
+    private static final long  DOUBLE_TAP_MS    = 300L;
+
     private void setupDragListener() {
-        final float[] lastTouch = new float[2];
+        final float[] lastTouch  = new float[2];
+        final boolean[] isDragging = {false};
+
         setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     lastTouch[0] = event.getRawX();
                     lastTouch[1] = event.getRawY();
+                    isDragging[0] = false;
                     break;
+
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - lastTouch[0];
                     float dy = event.getRawY() - lastTouch[1];
-                    setX(getX() + dx);
-                    setY(getY() + dy);
-                    lastTouch[0] = event.getRawX();
-                    lastTouch[1] = event.getRawY();
+                    // Tandai sebagai drag jika melewati slop
+                    if (!isDragging[0] &&
+                            (Math.abs(dx) > TAP_SLOP_PX || Math.abs(dy) > TAP_SLOP_PX)) {
+                        isDragging[0] = true;
+                    }
+                    if (isDragging[0]) {
+                        setX(getX() + dx);
+                        setY(getY() + dy);
+                        lastTouch[0] = event.getRawX();
+                        lastTouch[1] = event.getRawY();
+                    }
+                    break;
+
+                case MotionEvent.ACTION_UP:
+                    if (!isDragging[0]) {
+                        // Ini adalah tap (bukan drag) — cek double-tap
+                        long now = SystemClock.uptimeMillis();
+                        float upX = event.getRawX();
+                        float upY = event.getRawY();
+                        boolean withinTime = (now - lastTapTime) <= DOUBLE_TAP_MS;
+                        boolean withinPos  = Math.abs(upX - lastTapX) <= TAP_SLOP_PX * 3
+                                          && Math.abs(upY - lastTapY) <= TAP_SLOP_PX * 3;
+                        if (withinTime && withinPos) {
+                            // Double-tap terdeteksi — toggle orientasi horizontal/vertikal
+                            boolean nowHorizontal = getOrientation() == LinearLayout.HORIZONTAL;
+                            setLayoutOrientation(!nowHorizontal);
+                            lastTapTime = 0; // reset agar triple-tap tidak langsung toggle lagi
+                        } else {
+                            lastTapTime = now;
+                            lastTapX    = upX;
+                            lastTapY    = upY;
+                        }
+                    }
                     break;
             }
             return true;

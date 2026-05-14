@@ -330,6 +330,35 @@ public class ShortcutSettingsDialog extends ContentDialog {
             cbNativeRendering.setChecked(shortcut.getExtra("nativeRendering", "0").equals("1"));
         }
 
+        // ── HUD Elements: Spinner multi-checkbox (bitmask) ──────────────────
+        // Spinner ini menampilkan preset kombinasi elemen HUD yang akan ditampilkan.
+        // Bit mapping: 0=FPS, 1=Renderer, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph
+        // Default semua aktif = 63 (0b111111).
+        final Spinner sHudElements = findViewById(R.id.SHudElements);
+        // Label preset → nilai bitmask
+        final String[] hudPresetLabels = {
+            "All (FPS + GPU + CPU + Bat + Graph)",   // 63
+            "FPS + GPU + CPU + Battery",              // 31 (no graph)
+            "FPS + Renderer + GPU",                   // 7
+            "FPS Only",                               // 1
+            "FPS + GPU",                              // 5
+            "FPS + CPU/RAM",                          // 9
+            "None (Hide All)"                         // 0
+        };
+        final int[] hudPresetValues = { 63, 31, 7, 1, 5, 9, 0 };
+        sHudElements.setAdapter(new ArrayAdapter<>(context,
+                android.R.layout.simple_spinner_dropdown_item, hudPresetLabels));
+        {
+            int savedMask = 63;
+            try { savedMask = Integer.parseInt(shortcut.getExtra("hudElements", "63")); }
+            catch (Exception ignored) {}
+            int bestMatch = 0;
+            for (int i = 0; i < hudPresetValues.length; i++) {
+                if (hudPresetValues[i] == savedMask) { bestMatch = i; break; }
+            }
+            sHudElements.setSelection(bestMatch, false);
+        }
+
         final Runnable showInputWarning = () -> ContentDialog.alert(context, R.string.enable_xinput_and_dinput_same_time, null);
         final CheckBox cbEnableXInput = findViewById(R.id.CBEnableXInput);
         final CheckBox cbEnableDInput = findViewById(R.id.CBEnableDInput);
@@ -588,6 +617,10 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 }
                 shortcut.putExtra("lsfgPacingMode", lsfgPacingMode);
 
+                // Simpan konfigurasi elemen HUD sebagai bitmask
+                int hudMask = hudPresetValues[sHudElements.getSelectedItemPosition()];
+                shortcut.putExtra("hudElements", String.valueOf(hudMask));
+
                 // Save all changes to the shortcut
                 shortcut.saveData();
             }
@@ -677,6 +710,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
         Spinner sStartupSelection = findViewById(R.id.SStartupSelection);
         Spinner sLsfgPresentModeStyle = view.findViewById(R.id.SLsfgPresentMode);
         Spinner sLsfgPacingModeStyle  = view.findViewById(R.id.SLsfgPacingMode);
+        Spinner sHudElementsStyle     = view.findViewById(R.id.SHudElements);
         
 
         // Set dark or light mode background for spinners
@@ -694,6 +728,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
         sStartupSelection.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         if (sLsfgPresentModeStyle != null) sLsfgPresentModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         if (sLsfgPacingModeStyle  != null) sLsfgPacingModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+        if (sHudElementsStyle     != null) sHudElementsStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
 
 //        EditText etLC_ALL = view.findViewById(R.id.ETlcall);
         EditText etExecArgs = view.findViewById(R.id.ETExecArgs);

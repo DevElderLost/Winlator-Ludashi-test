@@ -699,6 +699,181 @@
                     android:text="@string/vkbasalt" />
             </FrameLayout>
 
+            <!-- ═══════════════ LSFG ═══════════════ -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout
+                    style="@style/FieldSet"
+                    android:id="@+id/LLLsfg">
+
+                    <!-- Enable toggle -->
+                    <CheckBox
+                        android:id="@+id/CBLsfgEnabled"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_lsfg_enable" />
+
+                    <!-- DLL row: nama file + tombol Import/Change + tombol Delete -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="4dp">
+
+                        <TextView
+                            android:id="@+id/TVLsfgDllPath"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="start"
+                            android:maxLines="1"
+                            android:textSize="12sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:text="@string/settings_lsfg_no_dll_imported" />
+
+                        <Button
+                            android:id="@+id/BTImportLsfgDll"
+                            style="@style/ButtonNeutral"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:text="@string/common_ui_import" />
+
+                        <Button
+                            android:id="@+id/BTClearLsfgDll"
+                            style="@style/ButtonNeutral"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:paddingStart="10dp"
+                            android:paddingEnd="10dp"
+                            android:text="@string/common_ui_remove"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- ── Frame Generation ── -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textStyle="bold"
+                        android:textSize="12sp"
+                        android:text="@string/settings_lsfg_frame_generation" />
+
+                    <!-- Multiplier: radio group 2x / 3x / 4x -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/settings_lsfg_multiplier" />
+
+                    <RadioGroup
+                        android:id="@+id/RGLsfgMultiplier"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="2dp">
+
+                        <RadioButton
+                            android:id="@+id/RBLsfgMult2x"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="2x"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/RBLsfgMult3x"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="3x" />
+
+                        <RadioButton
+                            android:id="@+id/RBLsfgMult4x"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="4x" />
+                    </RadioGroup>
+
+                    <!-- Flow Scale seekbar -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="6dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/settings_lsfg_flow_scale" />
+
+                        <TextView
+                            android:id="@+id/TVLsfgFlowScale"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minWidth="36dp"
+                            android:gravity="end"
+                            android:text="80%" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/SBLsfgFlowScale"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:min="25"
+                        android:max="100"
+                        android:progress="80" />
+
+                    <!-- Performance Mode -->
+                    <CheckBox
+                        android:id="@+id/CBLsfgPerformanceMode"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:checked="true"
+                        android:text="@string/settings_lsfg_performance_mode" />
+
+                    <!-- HDR Mode -->
+                    <CheckBox
+                        android:id="@+id/CBLsfgHdrMode"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/settings_lsfg_hdr_mode" />
+
+                    <!-- Present Mode spinner -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/settings_lsfg_present_mode" />
+
+                    <Spinner
+                        android:id="@+id/SLsfgPresentMode"
+                        style="@style/ComboBox"
+                        android:layout_width="match_parent"
+                        android:entries="@array/lsfg_present_mode_entries"
+                        android:spinnerMode="dialog" />
+
+                </LinearLayout>
+
+                <TextView
+                    style="@style/FieldSetLabel"
+                    android:background="#ffffff"
+                    android:text="@string/settings_lsfg_title" />
+
+            </FrameLayout>
+            <!-- ════════════════════════════════════ -->
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

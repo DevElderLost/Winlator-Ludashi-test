@@ -3,7 +3,6 @@ package com.winlator.cmod.contentdialog;
 
 
 import android.content.Context;
-import android.net.Uri;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.Icon;
@@ -18,7 +17,6 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -63,11 +61,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
     private TextView tvGraphicsDriverVersion;
     private String box64Version;
     private CheckBox cbNativeRendering;
-
-    // LSFG
-    private static final int REQUEST_CODE_IMPORT_LSFG_DLL = 2006;
-    private String originalLsfgDllPath = "";
-    private String pendingLsfgDllPath  = "";
 
 
     public ShortcutSettingsDialog(ShortcutsFragment fragment, Shortcut shortcut) {
@@ -212,6 +205,119 @@ public class ShortcutSettingsDialog extends ContentDialog {
         boolean forceFullscreen = shortcut.getExtra("forceFullscreen", "0").equals("1");
         cbForceFullscreen.setChecked(forceFullscreen);
 
+        // LSFG render params — enable/disable global dan DLL path dikelola di
+        // SettingsFragment (SharedPreferences). Di sini hanya parameter render
+        // per-shortcut yang dimuat.
+
+        // ── Multiplier: 3 CheckBox horizontal (2x / 3x / 4x) ────────────────
+        // Pola visual sama seperti CPUListView — checkbox horizontal yang
+        // saling eksklusif (radio behavior). Dibangun programatik karena
+        // jumlah pilihan tetap (2x, 3x, 4x).
+        final LinearLayout llLsfgMultiplier = findViewById(R.id.LLLsfgMultiplier);
+        final int[] multiplierValues = {2, 3, 4};
+        final String[] multiplierLabels = {"2x", "3x", "4x"};
+        final CheckBox[] cbMultiplier = new CheckBox[multiplierValues.length];
+        {
+            int savedMultiplier = Math.max(2, Math.min(4,
+                    Integer.parseInt(shortcut.getExtra("lsfgMultiplier", "2"))));
+            llLsfgMultiplier.removeAllViews();
+            for (int i = 0; i < multiplierValues.length; i++) {
+                CheckBox cb = new CheckBox(context);
+                cb.setText(multiplierLabels[i]);
+                cb.setChecked(multiplierValues[i] == savedMultiplier);
+                final int idx = i;
+                cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    if (isChecked) {
+                        // Radio behavior: uncheck semua yang lain
+                        for (int j = 0; j < cbMultiplier.length; j++) {
+                            if (j != idx && cbMultiplier[j] != null)
+                                cbMultiplier[j].setChecked(false);
+                        }
+                    } else {
+                        // Cegah semua ter-uncheck: kembalikan jika user mencoba
+                        // uncheck yang sedang aktif
+                        boolean anyChecked = false;
+                        for (CheckBox c : cbMultiplier) {
+                            if (c != null && c.isChecked()) { anyChecked = true; break; }
+                        }
+                        if (!anyChecked) cb.setChecked(true);
+                    }
+                });
+                cbMultiplier[i] = cb;
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                lp.setMarginEnd((int)(8 * context.getResources().getDisplayMetrics().density));
+                llLsfgMultiplier.addView(cb, lp);
+            }
+        }
+
+        // ── Present Mode: Spinner (FIFO / Mailbox / Immediate) ───────────────
+        // Pola identik dengan sControlsProfile dan sStartupSelection.
+        final Spinner sLsfgPresentMode = findViewById(R.id.SLsfgPresentMode);
+        {
+            String[] presentModeEntries = {"FIFO", "Mailbox", "Immediate"};
+            sLsfgPresentMode.setAdapter(new ArrayAdapter<>(context,
+                    android.R.layout.simple_spinner_dropdown_item, presentModeEntries));
+            String savedPresentMode = shortcut.getExtra("lsfgPresentMode", "fifo")
+                    .toLowerCase(java.util.Locale.ROOT);
+            int presentModeIdx;
+            switch (savedPresentMode) {
+                case "mailbox":   presentModeIdx = 1; break;
+                case "immediate": presentModeIdx = 2; break;
+                default:          presentModeIdx = 0; break;
+            }
+            sLsfgPresentMode.setSelection(presentModeIdx, false);
+        }
+
+        // ── Pacing Mode: Spinner (Disabled / None / Sleep / Busy Wait) ───────
+        // "disabled" → hapus LSFGVK_PACING, yang lain → set nilai ke env var.
+        final Spinner sLsfgPacingMode = findViewById(R.id.SLsfgPacingMode);
+        {
+            String[] pacingModeEntries = {"Disabled", "None", "Sleep", "Busy Wait"};
+            sLsfgPacingMode.setAdapter(new ArrayAdapter<>(context,
+                    android.R.layout.simple_spinner_dropdown_item, pacingModeEntries));
+            String savedPacingMode = shortcut.getExtra("lsfgPacingMode", "disabled")
+                    .toLowerCase(java.util.Locale.ROOT);
+            int pacingModeIdx;
+            switch (savedPacingMode) {
+                case "none":      pacingModeIdx = 1; break;
+                case "sleep":     pacingModeIdx = 2; break;
+                case "busy_wait": pacingModeIdx = 3; break;
+                default:          pacingModeIdx = 0; break;
+            }
+            sLsfgPacingMode.setSelection(pacingModeIdx, false);
+        }
+
+        // ── Flow Scale: SeekBar 0.25–1.00 ────────────────────────────────────
+        // SeekBar max=75, progress = round((flowScale - 0.25) * 100)
+        // mis. 0.80 → progress 55, 0.25 → 0, 1.00 → 75
+        final SeekBar sbLsfgFlowScale = findViewById(R.id.SBLsfgFlowScale);
+        final TextView tvLsfgFlowScale = findViewById(R.id.TVLsfgFlowScale);
+        {
+            float saved = 0.80f;
+            try { saved = Float.parseFloat(shortcut.getExtra("lsfgFlowScale", "0.80")); }
+            catch (Exception ignored) {}
+            saved = Math.max(0.25f, Math.min(1.00f, saved));
+            int progress = Math.round((saved - 0.25f) * 100f);
+            sbLsfgFlowScale.setProgress(progress);
+            tvLsfgFlowScale.setText(String.format(java.util.Locale.US, "%.2f", saved));
+        }
+        sbLsfgFlowScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float value = 0.25f + (progress / 100f);
+                tvLsfgFlowScale.setText(String.format(java.util.Locale.US, "%.2f", value));
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        final CheckBox cbLsfgPerformanceMode = findViewById(R.id.CBLsfgPerformanceMode);
+        cbLsfgPerformanceMode.setChecked(shortcut.getExtra("lsfgPerformanceMode", "1").equals("1"));
+
+        final CheckBox cbLsfgHdrMode = findViewById(R.id.CBLsfgHdrMode);
+        cbLsfgHdrMode.setChecked(shortcut.getExtra("lsfgHdrMode", "0").equals("1"));
+
         // Native Rendering (Direct Rendering+) checkbox.
         // Looked up by resource name to match the decompiled logic, so the layout
         // can keep or remove the view without causing a crash.
@@ -354,82 +460,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         final CPUListView cpuListView = findViewById(R.id.CPUListView);
         cpuListView.setCheckedCPUList(shortcut.getExtra("cpuList", shortcut.container.getCPUList(true)));
 
-        // ── LSFG: load state ──────────────────────────────────────────────
-        CheckBox cbLsfgEnabled           = findViewById(R.id.CBLsfgEnabled);
-        TextView tvLsfgDllPath           = findViewById(R.id.TVLsfgDllPath);
-        android.widget.Button btImportLsfgDll = findViewById(R.id.BTImportLsfgDll);
-        android.widget.Button btClearLsfgDll  = findViewById(R.id.BTClearLsfgDll);
-        android.widget.RadioGroup rgLsfgMult  = findViewById(R.id.RGLsfgMultiplier);
-        SeekBar sbLsfgFlowScale          = findViewById(R.id.SBLsfgFlowScale);
-        TextView tvLsfgFlowScale         = findViewById(R.id.TVLsfgFlowScale);
-        CheckBox cbLsfgPerfMode          = findViewById(R.id.CBLsfgPerformanceMode);
-        CheckBox cbLsfgHdrMode           = findViewById(R.id.CBLsfgHdrMode);
-        Spinner  sLsfgPresentMode        = findViewById(R.id.SLsfgPresentMode);
-
-        if (cbLsfgEnabled != null) {
-            originalLsfgDllPath = shortcut.getExtra("lsfgDllPath", "");
-
-            // Enable checkbox
-            cbLsfgEnabled.setChecked("1".equals(shortcut.getExtra("lsfgEnabled", "0")));
-
-            // DLL path label
-            updateLsfgDllLabel(tvLsfgDllPath, btClearLsfgDll, originalLsfgDllPath);
-
-            // Import button
-            if (btImportLsfgDll != null) {
-                btImportLsfgDll.setOnClickListener(v ->
-                    fragment.openFileForResult(REQUEST_CODE_IMPORT_LSFG_DLL, new String[]{"*/*"}));
-            }
-
-            // Clear button
-            if (btClearLsfgDll != null) {
-                btClearLsfgDll.setOnClickListener(v -> {
-                    clearManagedLsfgDll(pendingLsfgDllPath.isEmpty() ? originalLsfgDllPath : pendingLsfgDllPath);
-                    pendingLsfgDllPath = "";
-                    originalLsfgDllPath = "";
-                    updateLsfgDllLabel(tvLsfgDllPath, btClearLsfgDll, "");
-                });
-            }
-
-            // Multiplier radio (2=index 0, 3=index 1, 4=index 2)
-            if (rgLsfgMult != null) {
-                int mult = Integer.parseInt(clampLsfgInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
-                int radioId = mult == 3 ? R.id.RBLsfgMult3x : mult == 4 ? R.id.RBLsfgMult4x : R.id.RBLsfgMult2x;
-                rgLsfgMult.check(radioId);
-            }
-
-            // Flow Scale seekbar (stored as int 25–100, represents %)
-            if (sbLsfgFlowScale != null) {
-                int flowPct = Math.round(
-                    Float.parseFloat(clampLsfgFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f)) * 100f);
-                sbLsfgFlowScale.setProgress(flowPct);
-                if (tvLsfgFlowScale != null) tvLsfgFlowScale.setText(flowPct + "%");
-                sbLsfgFlowScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                    @Override public void onProgressChanged(SeekBar sb, int prog, boolean fromUser) {
-                        if (tvLsfgFlowScale != null) tvLsfgFlowScale.setText(prog + "%");
-                    }
-                    @Override public void onStartTrackingTouch(SeekBar sb) {}
-                    @Override public void onStopTrackingTouch(SeekBar sb) {}
-                });
-            }
-
-            // Performance Mode checkbox
-            if (cbLsfgPerfMode != null)
-                cbLsfgPerfMode.setChecked("1".equals(shortcut.getExtra("lsfgPerformanceMode", "1")));
-
-            // HDR Mode checkbox
-            if (cbLsfgHdrMode != null)
-                cbLsfgHdrMode.setChecked("1".equals(shortcut.getExtra("lsfgHdrMode", "0")));
-
-            // Present Mode spinner (fifo=0, mailbox=1, immediate=2)
-            if (sLsfgPresentMode != null) {
-                String pm = shortcut.getExtra("lsfgPresentMode", "fifo");
-                int pmIdx = "mailbox".equals(pm) ? 1 : "immediate".equals(pm) ? 2 : 0;
-                sLsfgPresentMode.setSelection(pmIdx);
-            }
-        }
-        // ─────────────────────────────────────────────────────────────────
-
         setOnConfirmCallback(() -> {
             String name = etName.getText().toString().trim();
             boolean nameChanged = !shortcut.name.equals(name) && !name.isEmpty();
@@ -519,57 +549,44 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 String cpuList = cpuListView.getCheckedCPUListAsString();
                 shortcut.putExtra("cpuList", cpuList);
 
-                // ── LSFG: save state ────────────────────────────────────
-                CheckBox cbLsfg = findViewById(R.id.CBLsfgEnabled);
-                if (cbLsfg != null) {
-                    shortcut.putExtra("lsfgEnabled", cbLsfg.isChecked() ? "1" : null);
+                // Save LSFG render params per-shortcut.
+                // Enable/disable global dan DLL path disimpan di SettingsFragment.
 
-                    // DLL path
-                    String lsfgDllPath = pendingLsfgDllPath.isEmpty() ? originalLsfgDllPath : pendingLsfgDllPath;
-                    shortcut.putExtra("lsfgDllPath", lsfgDllPath.isEmpty() ? null : lsfgDllPath);
-                    if (!lsfgDllPath.equals(originalLsfgDllPath)) {
-                        clearManagedLsfgDll(originalLsfgDllPath);
-                        originalLsfgDllPath = lsfgDllPath;
-                    }
-                    pendingLsfgDllPath = "";
-
-                    // Multiplier
-                    android.widget.RadioGroup rgMult = findViewById(R.id.RGLsfgMultiplier);
-                    if (rgMult != null) {
-                        int checkedId = rgMult.getCheckedRadioButtonId();
-                        int mult = checkedId == R.id.RBLsfgMult3x ? 3
-                                 : checkedId == R.id.RBLsfgMult4x ? 4 : 2;
-                        shortcut.putExtra("lsfgMultiplier", String.valueOf(mult));
-                    }
-
-                    // Flow Scale (seekbar progress 25–100 → store as float "0.25"–"1.00")
-                    SeekBar sbFlow = findViewById(R.id.SBLsfgFlowScale);
-                    if (sbFlow != null) {
-                        String flowVal = String.format(java.util.Locale.US, "%.2f", sbFlow.getProgress() / 100f);
-                        shortcut.putExtra("lsfgFlowScale", flowVal);
-                    }
-
-                    // Performance Mode
-                    CheckBox cbPerf = findViewById(R.id.CBLsfgPerformanceMode);
-                    if (cbPerf != null)
-                        shortcut.putExtra("lsfgPerformanceMode", cbPerf.isChecked() ? "1" : "0");
-
-                    // HDR Mode
-                    CheckBox cbHdr = findViewById(R.id.CBLsfgHdrMode);
-                    if (cbHdr != null)
-                        shortcut.putExtra("lsfgHdrMode", cbHdr.isChecked() ? "1" : "0");
-
-                    // Present Mode (index 0=fifo, 1=mailbox, 2=immediate)
-                    Spinner sPresentMode = findViewById(R.id.SLsfgPresentMode);
-                    if (sPresentMode != null) {
-                        String[] pmValues = {"fifo", "mailbox", "immediate"};
-                        int pmIdx = sPresentMode.getSelectedItemPosition();
-                        shortcut.putExtra("lsfgPresentMode",
-                            (pmIdx >= 0 && pmIdx < pmValues.length) ? pmValues[pmIdx] : "fifo");
+                // Multiplier: cari CheckBox yang di-check, ambil nilai 2/3/4
+                int lsfgMultiplier = 2; // default
+                for (int i = 0; i < cbMultiplier.length; i++) {
+                    if (cbMultiplier[i] != null && cbMultiplier[i].isChecked()) {
+                        lsfgMultiplier = multiplierValues[i];
+                        break;
                     }
                 }
-                // ────────────────────────────────────────────────────────
+                shortcut.putExtra("lsfgMultiplier", String.valueOf(lsfgMultiplier));
 
+                // Flow scale: progress 0–75 → nilai 0.25–1.00
+                float lsfgFlowScale = 0.25f + (sbLsfgFlowScale.getProgress() / 100f);
+                shortcut.putExtra("lsfgFlowScale", String.format(java.util.Locale.US, "%.2f", lsfgFlowScale));
+
+                shortcut.putExtra("lsfgPerformanceMode", cbLsfgPerformanceMode.isChecked() ? "1" : "0");
+                shortcut.putExtra("lsfgHdrMode", cbLsfgHdrMode.isChecked() ? "1" : "0");
+
+                // Present mode: index 0→"fifo", 1→"mailbox", 2→"immediate"
+                String lsfgPresentMode;
+                switch (sLsfgPresentMode.getSelectedItemPosition()) {
+                    case 1:  lsfgPresentMode = "mailbox";   break;
+                    case 2:  lsfgPresentMode = "immediate"; break;
+                    default: lsfgPresentMode = "fifo";      break;
+                }
+                shortcut.putExtra("lsfgPresentMode", lsfgPresentMode);
+
+                // Pacing mode: index 0→"disabled", 1→"none", 2→"sleep", 3→"busy_wait"
+                String lsfgPacingMode;
+                switch (sLsfgPacingMode.getSelectedItemPosition()) {
+                    case 1:  lsfgPacingMode = "none";      break;
+                    case 2:  lsfgPacingMode = "sleep";     break;
+                    case 3:  lsfgPacingMode = "busy_wait"; break;
+                    default: lsfgPacingMode = "disabled";  break;
+                }
+                shortcut.putExtra("lsfgPacingMode", lsfgPacingMode);
 
                 // Save all changes to the shortcut
                 shortcut.saveData();
@@ -658,6 +675,8 @@ public class ShortcutSettingsDialog extends ContentDialog {
         Spinner sFEXCoreVersion = view.findViewById(R.id.SFEXCoreVersion);
         Spinner sFEXCorePreset = view.findViewById(R.id.SFEXCorePreset);
         Spinner sStartupSelection = findViewById(R.id.SStartupSelection);
+        Spinner sLsfgPresentModeStyle = view.findViewById(R.id.SLsfgPresentMode);
+        Spinner sLsfgPacingModeStyle  = view.findViewById(R.id.SLsfgPacingMode);
         
 
         // Set dark or light mode background for spinners
@@ -673,6 +692,8 @@ public class ShortcutSettingsDialog extends ContentDialog {
         sFEXCorePreset.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         sFEXCoreVersion.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         sStartupSelection.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+        if (sLsfgPresentModeStyle != null) sLsfgPresentModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+        if (sLsfgPacingModeStyle  != null) sLsfgPacingModeStyle.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
 
 //        EditText etLC_ALL = view.findViewById(R.id.ETlcall);
         EditText etExecArgs = view.findViewById(R.id.ETExecArgs);
@@ -866,84 +887,4 @@ public class ShortcutSettingsDialog extends ContentDialog {
         AppUtils.setSpinnerSelectionFromIdentifier(sGraphicsDriver, selectedGraphicsDriver);
         update.run();
     }
-
-    // ── LSFG DLL Management ───────────────────────────────────────────────────
-
-    // ── LSFG clamp helpers (duplikat dari GuestProgramLauncherComponent) ──
-    private static String clampLsfgInt(String value, int min, int max) {
-        try { return String.valueOf(Math.max(min, Math.min(max, Integer.parseInt(value)))); }
-        catch (Exception ignored) { return String.valueOf(min); }
-    }
-
-    private static String clampLsfgFloat(String value, float min, float max) {
-        try {
-            float clamped = Math.max(min, Math.min(max, Float.parseFloat(value)));
-            return String.format(java.util.Locale.US, "%.2f", clamped);
-        } catch (Exception ignored) { return String.format(java.util.Locale.US, "%.2f", min); }
-    }
-    // ─────────────────────────────────────────────────────────────────────
-
-    /** Update label DLL dan visibility tombol Clear. */
-    private void updateLsfgDllLabel(TextView tvPath, android.widget.Button btClear, String path) {
-        if (tvPath != null) {
-            String name = (path == null || path.isEmpty()) ? "" : new java.io.File(path).getName();
-            tvPath.setText(name.isEmpty()
-                ? fragment.getContext().getString(R.string.settings_lsfg_no_dll_imported) : name);
-        }
-        if (btClear != null) {
-            btClear.setVisibility((path != null && !path.isEmpty())
-                ? android.view.View.VISIBLE : android.view.View.GONE);
-        }
-    }
-
-    /** Dipanggil oleh ShortcutsFragment.onActivityResult dengan REQUEST_CODE_IMPORT_LSFG_DLL. */
-    public void onLsfgDllSelected(android.net.Uri uri) {
-        if (uri == null) return;
-        Context context = fragment.getContext();
-        String rawFileName = uri.getLastPathSegment();
-        if (rawFileName == null) rawFileName = "Lossless.dll";
-        rawFileName = rawFileName.substring(rawFileName.lastIndexOf('/') + 1);
-        String safeFileName = rawFileName.replaceAll("[^a-zA-Z0-9._\\-]", "");
-        if (!safeFileName.toLowerCase(Locale.ROOT).endsWith(".dll")) {
-            AppUtils.showToast(context, R.string.settings_lsfg_select_valid_dll);
-            return;
-        }
-        String shortcutToken = shortcut.file.getName().replaceFirst("\\.desktop$", "");
-        java.io.File lsfgDir = new java.io.File(context.getFilesDir(), "lsfg");
-        if (!lsfgDir.exists()) lsfgDir.mkdirs();
-        java.io.File outputFile = new java.io.File(lsfgDir,
-            shortcutToken + "-" + System.currentTimeMillis() + "-" + safeFileName);
-        try {
-            try (java.io.InputStream in = context.getContentResolver().openInputStream(uri);
-                 java.io.OutputStream out = new java.io.FileOutputStream(outputFile)) {
-                if (in == null) throw new java.io.IOException("null stream");
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-            }
-        } catch (Exception e) {
-            AppUtils.showToast(context, R.string.settings_lsfg_import_failed);
-            return;
-        }
-        if (!pendingLsfgDllPath.isEmpty() && !pendingLsfgDllPath.equals(originalLsfgDllPath)) {
-            clearManagedLsfgDll(pendingLsfgDllPath);
-        }
-        pendingLsfgDllPath = outputFile.getAbsolutePath();
-        updateLsfgDllLabel(
-            (TextView) findViewById(R.id.TVLsfgDllPath),
-            (android.widget.Button) findViewById(R.id.BTClearLsfgDll),
-            pendingLsfgDllPath);
-    }
-
-    private void clearManagedLsfgDll(String path) {
-        if (path == null || path.isEmpty()) return;
-        java.io.File lsfgDir = new java.io.File(fragment.getContext().getFilesDir(), "lsfg");
-        java.io.File file = new java.io.File(path);
-        if (lsfgDir.getAbsolutePath().equals(file.getParent()) && file.exists()) {
-            file.delete();
-        }
-    }
-
-    public static int getRequestCodeImportLsfgDll() { return REQUEST_CODE_IMPORT_LSFG_DLL; }
-    // ─────────────────────────────────────────────────────────────────────────
 }

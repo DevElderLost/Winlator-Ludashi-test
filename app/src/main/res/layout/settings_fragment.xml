@@ -527,6 +527,59 @@
                     style="@style/FieldSetLabel"
                     android:text="@string/imagefs" />
             </FrameLayout>
+
+            <!-- ══ LSFG Global (Lossless Scaling Frame Generation) ══ -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout style="@style/FieldSet">
+
+                    <!-- Enable/disable global LSFG -->
+                    <CheckBox
+                        android:id="@+id/CBLsfgEnabled"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/lsfg_enable_global" />
+
+                    <View style="@style/FieldSeparator" />
+
+                    <!-- Lossless.dll: nama file raw + tombol Import/Change di kanan -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/TVLsfgDllName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="middle"
+                            android:singleLine="true"
+                            android:textStyle="italic" />
+
+                        <!-- Tombol berubah teks: "Import" jika belum ada file,
+                             "Change" jika sudah ada. Diatur dari Java. -->
+                        <Button
+                            style="@style/ButtonNeutral"
+                            android:id="@+id/BTImportLsfgDll"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/lsfg_import_dll" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/TVLsfg"
+                    style="@style/FieldSetLabel"
+                    android:text="@string/lsfg_section_label" />
+
+            </FrameLayout>
+            <!-- ══ end LSFG Global ══ -->
         </LinearLayout>
     </ScrollView>
 

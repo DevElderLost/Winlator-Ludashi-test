@@ -310,15 +310,6 @@
                             android:singleLine="true"
                             android:textStyle="italic" />
 
-                        <!-- Tombol Delete: hanya tampil jika file sudah ada. Diatur dari Java. -->
-                        <Button
-                            style="@style/ButtonNegative"
-                            android:id="@+id/BTDeleteLsfgDll"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/delete"
-                            android:visibility="gone" />
-
                         <!-- Tombol berubah teks: "Import" jika belum ada file,
                              "Change" jika sudah ada. Diatur dari Java. -->
                         <Button
@@ -328,6 +319,15 @@
                             android:layout_height="wrap_content"
                             android:text="@string/lsfg_import_dll" />
 
+                        <!-- Tombol Delete: hanya tampil jika file sudah ada. Diatur dari Java. -->
+                        <Button
+                            style="@style/ButtonNeutral"
+                            android:id="@+id/BTDeleteLsfgDll"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/delete"
+                            android:visibility="gone" />
+                        
                     </LinearLayout>
 
                 </LinearLayout>

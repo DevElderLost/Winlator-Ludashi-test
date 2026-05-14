@@ -869,6 +869,20 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
     // ── LSFG DLL Management ───────────────────────────────────────────────────
 
+    // ── LSFG clamp helpers (duplikat dari GuestProgramLauncherComponent) ──
+    private static String clampLsfgInt(String value, int min, int max) {
+        try { return String.valueOf(Math.max(min, Math.min(max, Integer.parseInt(value)))); }
+        catch (Exception ignored) { return String.valueOf(min); }
+    }
+
+    private static String clampLsfgFloat(String value, float min, float max) {
+        try {
+            float clamped = Math.max(min, Math.min(max, Float.parseFloat(value)));
+            return String.format(java.util.Locale.US, "%.2f", clamped);
+        } catch (Exception ignored) { return String.format(java.util.Locale.US, "%.2f", min); }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     /** Update label DLL dan visibility tombol Clear. */
     private void updateLsfgDllLabel(TextView tvPath, android.widget.Button btClear, String path) {
         if (tvPath != null) {

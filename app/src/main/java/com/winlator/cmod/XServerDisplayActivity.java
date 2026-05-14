@@ -2242,8 +2242,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // Update icon menu untuk memberi feedback visual aktif/tidak
             if (hudMenuItem != null) {
                 hudMenuItem.setIcon(hudManuallyVisible
-                        ? android.R.drawable.ic_menu_close_clear_cancel  // HUD aktif → "X" / off icon
-                        : R.drawable.icon_fps_hud);                       // HUD mati  → icon normal
+                        ? R.drawable.icon_fps_monitor  // HUD aktif → "X" / off icon
+                        : R.drawable.icon_fps_monitor);                       // HUD mati  → icon normal
             }
         });
     }

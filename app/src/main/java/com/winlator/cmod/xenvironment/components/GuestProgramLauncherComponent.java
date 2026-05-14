@@ -30,6 +30,8 @@ import com.winlator.cmod.xconnector.UnixSocketConfig;
 import com.winlator.cmod.xenvironment.EnvironmentComponent;
 import com.winlator.cmod.xenvironment.ImageFs;
 
+import android.content.SharedPreferences;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -341,7 +343,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         // === LSFG: dipanggil SETELAH merge envVars ===
         // VK_LAYER_PATH per-container tidak tertimpa oleh VK_LAYER_PATH global
-        // FAKE_EVDEV_DIR sudah di-protect sehingga controller tetap bekerja
         applyLsfgEnvVars(envVars, imageFs);
         // === end LSFG ===
 
@@ -388,57 +389,57 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
     // =================== LSFG ===================
     private void applyLsfgEnvVars(EnvVars envVars, ImageFs imageFs) {
-        if (shortcut == null || imageFs == null) {
-            Log.d("GuestProgramLauncherComponent", "LSFG skip: shortcut=" + shortcut + " imageFs=" + imageFs);
+        if (imageFs == null) {
             envVars.put("DISABLE_LSFG", "1");
             return;
         }
 
-        boolean enabled = "1".equals(shortcut.getExtra("lsfgEnabled", "0"));
-        Log.d("GuestProgramLauncherComponent", "LSFG check: enabled=" + enabled
-            + " shortcutName=" + shortcut.name);
+        // Enable/disable dan dllPath dibaca dari SharedPreferences GLOBAL
+        // (diset di SettingsFragment), bukan dari shortcut extras.
+        android.content.SharedPreferences prefs =
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(environment.getContext());
 
-        if (!enabled) {
-            envVars.put("DISABLE_LSFG", "1");
-            Log.d("GuestProgramLauncherComponent", "LSFG disabled by user");
-            return;
-        }
+        boolean enabled = prefs.getBoolean("lsfg_enabled_global", false);
+        String dllPath  = prefs.getString("lsfg_dll_path", "");
 
-        // Gunakan imageFs.home_path (bukan hardcode /home/xuser) agar
-        // cocok dengan path yang ditulis oleh prepareLsfgRuntime()
-        String containerHome  = imageFs.getRootDir().getPath() + imageFs.home_path;
+        File rootDir = imageFs.getRootDir();
+        String containerHome = rootDir.getPath() + "/home/xuser";
         File layerDir     = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
         File manifestFile = new File(layerDir, "VkLayer_LS_frame_generation.json");
         File soFile       = new File(containerHome + "/.local/lib/liblsfg-vk-layer.so");
         File configDir    = new File(containerHome + "/.config/lsfg-vk");
         File lsfgTmpDir   = new File(containerHome + "/.local/share/lsfg-vk");
 
-        Log.d("GuestProgramLauncherComponent", "LSFG paths:"
-            + " home=" + containerHome
-            + " manifest=" + manifestFile.exists() + " [" + manifestFile.getAbsolutePath() + "]"
-            + " so=" + soFile.exists() + " [" + soFile.getAbsolutePath() + "]");
-
-        if (!manifestFile.exists() || !soFile.exists()) {
+        if (!enabled || !manifestFile.exists() || !soFile.exists()) {
             envVars.put("DISABLE_LSFG", "1");
-            Log.w("GuestProgramLauncherComponent", "LSFG disabled: runtime files missing"
-                + " manifest=" + manifestFile.exists()
-                + " so=" + soFile.exists());
+            Log.d("GuestProgramLauncherComponent", "LSFG disabled:"
+                    + " enabled=" + enabled
+                    + " manifest=" + manifestFile.exists()
+                    + " so=" + soFile.exists());
             return;
         }
 
-        String dllPath = shortcut.getExtra("lsfgDllPath", "");
-        Log.d("GuestProgramLauncherComponent", "LSFG dll: [" + dllPath + "] exists=" + new java.io.File(dllPath).isFile());
         if (dllPath.isEmpty() || !new java.io.File(dllPath).isFile()) {
             envVars.put("DISABLE_LSFG", "1");
-            Log.w("GuestProgramLauncherComponent", "LSFG: Lossless.dll not found: [" + dllPath + "]");
+            Log.w("GuestProgramLauncherComponent", "LSFG: Lossless.dll not found: " + dllPath);
             return;
         }
 
-        int multiplier     = Integer.parseInt(clampLsfgInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
-        String flowScale   = clampLsfgFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f);
-        boolean perfMode   = "1".equals(shortcut.getExtra("lsfgPerformanceMode", "1"));
-        boolean hdrMode    = "1".equals(shortcut.getExtra("lsfgHdrMode", "0"));
-        String presentMode = normalizeLsfgPresentMode(shortcut.getExtra("lsfgPresentMode", "fifo"));
+        // Parameter render (multiplier, flow scale, dll) dibaca dari shortcut extras
+        // jika shortcut tersedia; jika tidak (mis. launch langsung dari container),
+        // gunakan default.
+        int multiplier = Integer.parseInt(clampLsfgInt(
+                shortcut != null ? shortcut.getExtra("lsfgMultiplier", "2") : "2", 2, 4));
+        String flowScale = clampLsfgFloat(
+                shortcut != null ? shortcut.getExtra("lsfgFlowScale", "0.80") : "0.80", 0.25f, 1.0f);
+        boolean perfMode = "1".equals(
+                shortcut != null ? shortcut.getExtra("lsfgPerformanceMode", "1") : "1");
+        boolean hdrMode  = "1".equals(
+                shortcut != null ? shortcut.getExtra("lsfgHdrMode", "0") : "0");
+        String presentMode = normalizeLsfgPresentMode(
+                shortcut != null ? shortcut.getExtra("lsfgPresentMode", "fifo") : "fifo");
+        String pacingMode = normalizeLsfgPacingMode(
+                shortcut != null ? shortcut.getExtra("lsfgPacingMode", "disabled") : "disabled");
 
         // Resolve process name dari guestExecutable
         String processName = "";
@@ -455,7 +456,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         configDir.mkdirs();
         lsfgTmpDir.mkdirs();
 
-        // Tulis conf.toml
+        // Tulis conf.toml ke per-container config dir
         java.io.File confToml = new java.io.File(configDir, "conf.toml");
         StringBuilder toml = new StringBuilder();
         toml.append("version = 1\n[global]\n");
@@ -467,12 +468,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             toml.append("flow_scale = ").append(flowScale).append("\n");
             toml.append("performance_mode = ").append(perfMode ? "true" : "false").append("\n");
             toml.append("hdr_mode = ").append(hdrMode ? "true" : "false").append("\n");
-            toml.append("present_mode = \"").append(presentMode).append("\"\n");
         }
         FileUtils.writeString(confToml, toml.toString());
 
-        // VK_LAYER_PATH: prepend path layer container
-        String existingLayerPath  = envVars.get("VK_LAYER_PATH");
+        // VK_LAYER_PATH — per-container dir di-prepend ke nilai global yang sudah ada
+        String existingLayerPath = envVars.get("VK_LAYER_PATH");
         String containerLayerPath = layerDir.getAbsolutePath();
         if (existingLayerPath == null || existingLayerPath.isEmpty()) {
             envVars.put("VK_LAYER_PATH", containerLayerPath);
@@ -481,28 +481,33 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         }
 
         envVars.remove("DISABLE_LSFG");
-        envVars.put("LSFG_CONFIG",                    confToml.getAbsolutePath());
-        envVars.put("LSFG_LAST_PATH",                 new java.io.File(lsfgTmpDir, "lsfg-vk_last").getAbsolutePath());
-        envVars.put("LSFG_TMP_DIR",                   lsfgTmpDir.getAbsolutePath());
-        envVars.put("LSFG_MULTIPLIER",                String.valueOf(multiplier));
-        envVars.put("LSFG_FLOW_SCALE",                flowScale);
-        envVars.put("LSFG_PERFORMANCE_MODE",          perfMode ? "1" : "0");
-        envVars.put("LSFG_HDR_MODE",                  hdrMode  ? "1" : "0");
+        envVars.put("LSFG_CONFIG", confToml.getAbsolutePath());
+        envVars.put("LSFG_LAST_PATH", new java.io.File(lsfgTmpDir, "lsfg-vk_last").getAbsolutePath());
+        envVars.put("LSFG_TMP_DIR", lsfgTmpDir.getAbsolutePath());
+        envVars.put("LSFG_MULTIPLIER", String.valueOf(multiplier));
+        envVars.put("LSFG_FLOW_SCALE", flowScale);
+        envVars.put("LSFG_PERFORMANCE_MODE", perfMode ? "1" : "0");
+        envVars.put("LSFG_HDR_MODE", hdrMode ? "1" : "0");
         envVars.put("LSFG_EXPERIMENTAL_PRESENT_MODE", presentMode);
-        envVars.put("LSFG_DLL_PATH",                  dllPath);
-        envVars.put("LSFG_DLL_PATH_UNIX",             dllPath);
-//        envVars.put("LSFG_LEGACY",                    "1");
+        // Pacing mode — jika "disabled": hapus env var agar lsfg-vk tidak aktifkan pacing
+        if ("disabled".equalsIgnoreCase(pacingMode)) {
+            envVars.remove("LSFGVK_PACING");
+        } else {
+            envVars.put("LSFGVK_PACING", pacingMode);
+        }
+        envVars.put("LSFG_DLL_PATH", dllPath);
+        envVars.put("LSFG_DLL_PATH_UNIX", dllPath);
+//        envVars.put("LSFG_LEGACY", "1");
         if (!processName.isEmpty()) {
-            envVars.put("LSFG_PROCESS",     processName);
+            envVars.put("LSFG_PROCESS", processName);
             envVars.put("LSFG_PROCESS_EXE", processName);
         }
 
-        Log.d("GuestProgramLauncherComponent", "LSFG ARMED:"
-            + " process='" + processName + "'"
-            + " dll='" + dllPath + "'"
-            + " multiplier=" + multiplier
-            + " flowScale=" + flowScale
-            + " VK_LAYER_PATH=" + envVars.get("VK_LAYER_PATH"));
+        Log.d("GuestProgramLauncherComponent", "LSFG armed:"
+                + " process='" + processName + "' dll='" + dllPath + "'"
+                + " multiplier=" + multiplier + " flowScale=" + flowScale
+                + " perfMode=" + perfMode + " presentMode=" + presentMode
+                + " pacingMode=" + pacingMode);
     }
 
     private static String clampLsfgInt(String value, int min, int max) {
@@ -523,6 +528,16 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             case "mailbox":   return "mailbox";
             case "immediate": return "immediate";
             default:          return "fifo";
+        }
+    }
+
+    private static String normalizeLsfgPacingMode(String value) {
+        if (value == null) return "disabled";
+        switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "none":      return "none";
+            case "sleep":     return "sleep";
+            case "busy_wait": return "busy_wait";
+            default:          return "disabled"; // hapus env var LSFGVK_PACING
         }
     }
     // ============================================

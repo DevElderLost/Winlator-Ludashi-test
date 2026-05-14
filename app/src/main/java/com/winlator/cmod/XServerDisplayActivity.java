@@ -2192,7 +2192,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             runOnUiThread(() -> {
                 frameRating.setVisibility(View.GONE);
                 frameRating.reset();
-                if (hudMenuItem != null) hudMenuItem.setIcon(R.drawable.icon_fps_hud);
+                if (hudMenuItem != null) hudMenuItem.setIcon(R.drawable.icon_fps_monitor);
             });
         }
     }

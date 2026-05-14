@@ -215,9 +215,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
 
-    // LSFG
-    private static final int LSFG_RUNTIME_VERSION = 3;
-
 	private boolean hasExternalMouse() {
         InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         for (int deviceId : inputManager.getInputDeviceIds()) {
@@ -1118,6 +1115,148 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (containerDataChanged) container.saveData();
     }
 
+    // =================== LSFG ===================
+    // Naikkan versi ini setiap kali liblsfg-vk-layer.so di assets diperbarui.
+    // Container akan re-extract .so secara otomatis bila versi tidak cocok.
+    private static final int LSFG_RUNTIME_VERSION = 2;
+
+    /**
+     * Dipanggil dari setupXEnvironment() setelah merge envVars.
+     *
+     * Perbedaan dari referensi:
+     *   - enabled  → baca dari SharedPreferences global ("lsfg_enabled_global")
+     *                bukan shortcut.getExtra("lsfgEnabled")
+     *   - dllPath  → baca dari SharedPreferences global ("lsfg_dll_path")
+     *                bukan shortcut.getExtra("lsfgDllPath")
+     * Ini mengikuti arsitektur yang sudah ditetapkan di SettingsFragment.
+     */
+    private void prepareLsfgRuntime() {
+        if (imageFs == null) return;
+
+        // Baca dari SharedPreferences global (diset di SettingsFragment)
+        boolean enabled  = preferences.getBoolean("lsfg_enabled_global", false);
+        String  dllPath  = preferences.getString("lsfg_dll_path", "");
+
+        File rootDir         = imageFs.getRootDir();
+        String containerHome = rootDir.getPath() + "/home/xuser";
+        File containerLibDir   = new File(containerHome + "/.local/lib");
+        File containerLayerDir = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
+        File manifestFile      = new File(containerLayerDir, "VkLayer_LS_frame_generation.json");
+        File soDestFile        = new File(containerLibDir,   "liblsfg-vk-layer.so");
+
+        if (!enabled) {
+            // Hapus manifest agar layer tidak dimuat oleh Vulkan loader
+            if (manifestFile.exists()) {
+                manifestFile.delete();
+                Log.d("XServerDisplayActivity", "LSFG disabled — deleted manifest");
+            }
+            return;
+        }
+
+        if (dllPath.isEmpty() || !new File(dllPath).isFile()) {
+            Log.w("XServerDisplayActivity", "LSFG requested but no imported Lossless.dll");
+            if (manifestFile.exists()) manifestFile.delete();
+            return;
+        }
+
+        // Cek apakah .so perlu di-extract ulang dari assets
+        String installedVersion = container != null
+                ? container.getExtra("lsfgRuntimeVersion", "0") : "0";
+        boolean needsInstall = !soDestFile.exists()
+                || !Integer.toString(LSFG_RUNTIME_VERSION).equals(installedVersion);
+
+        if (needsInstall) {
+            containerLibDir.mkdirs();
+            boolean copied = copyLsfgSoFromAssets(soDestFile);
+            if (!copied) {
+                Log.w("XServerDisplayActivity", "LSFG: failed to install liblsfg-vk-layer.so from assets");
+                if (manifestFile.exists()) manifestFile.delete();
+                return;
+            }
+            // Simpan versi agar tidak extract ulang saat launch berikutnya
+            if (container != null) {
+                container.putExtra("lsfgRuntimeVersion", Integer.toString(LSFG_RUNTIME_VERSION));
+                container.saveData();
+            }
+        }
+
+        if (!soDestFile.exists()) {
+            Log.w("XServerDisplayActivity", "LSFG: liblsfg-vk-layer.so missing after install");
+            if (manifestFile.exists()) manifestFile.delete();
+            return;
+        }
+
+        // Tulis manifest + buat direktori config
+        containerLayerDir.mkdirs();
+        writeLsfgLayerManifest(manifestFile);
+        new File(containerHome + "/.config/lsfg-vk").mkdirs();
+        new File(containerHome + "/.local/share/lsfg-vk").mkdirs();
+
+        Log.d("XServerDisplayActivity", "LSFG runtime prepared: so=" + soDestFile.getAbsolutePath());
+    }
+
+    /**
+     * Tulis VkLayer_LS_frame_generation.json ke dalam container.
+     * api_version diambil dari graphicsDriverConfig (vulkanVersion),
+     * fallback ke "1.3.0" jika belum tersedia.
+     */
+    private void writeLsfgLayerManifest(File manifestFile) {
+        String apiVersion = "1.3.0";
+        if (graphicsDriverConfig != null) {
+            String vkVer = graphicsDriverConfig.get("vulkanVersion");
+            if (vkVer != null && !vkVer.isEmpty()) {
+                String[] parts = vkVer.split("\\.");
+                if (parts.length == 2) {
+                    apiVersion = vkVer + ".0";   // "1.3" → "1.3.0"
+                } else if (parts.length >= 3) {
+                    apiVersion = vkVer;          // sudah "1.3.xxx"
+                }
+            }
+        }
+        Log.d("XServerDisplayActivity", "LSFG manifest api_version=" + apiVersion);
+        String manifest =
+                "{\n" +
+                "  \"file_format_version\": \"1.0.0\",\n" +
+                "  \"layer\": {\n" +
+                "    \"name\": \"VK_LAYER_LS_frame_generation\",\n" +
+                "    \"type\": \"GLOBAL\",\n" +
+                "    \"api_version\": \"" + apiVersion + "\",\n" +
+                "    \"library_path\": \"../../../lib/liblsfg-vk-layer.so\",\n" +
+                "    \"implementation_version\": \"1\",\n" +
+                "    \"description\": \"Lossless Scaling frame generation layer\",\n" +
+                "    \"functions\": {\n" +
+                "      \"vkGetInstanceProcAddr\": \"layer_vkGetInstanceProcAddr\",\n" +
+                "      \"vkGetDeviceProcAddr\": \"layer_vkGetDeviceProcAddr\"\n" +
+                "    },\n" +
+                "    \"disable_environment\": {\n" +
+                "      \"DISABLE_LSFG\": \"1\"\n" +
+                "    }\n" +
+                "  }\n" +
+                "}\n";
+        FileUtils.writeString(manifestFile, manifest);
+    }
+
+    /**
+     * Copy liblsfg-vk-layer.so dari assets/lsfg_vk/android_arm64_v8a/
+     * ke direktori lib container.
+     * File .so harus sudah ada di assets sebelum build.
+     */
+    private boolean copyLsfgSoFromAssets(File destFile) {
+        String assetPath = "lsfg_vk/android_arm64_v8a/liblsfg-vk-layer.so";
+        try (java.io.InputStream is = getAssets().open(assetPath);
+             java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+            destFile.setExecutable(true, false);
+            return true;
+        } catch (Exception e) {
+            Log.e("XServerDisplayActivity", "Failed to copy liblsfg-vk-layer.so from assets", e);
+            return false;
+        }
+    }
+    // ============================================
+
     private void setupXEnvironment() throws PackageManager.NameNotFoundException {
 
         // Set environment variables
@@ -1162,6 +1301,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 envVars.put("WINEESYNC", "1");
             }
 
+            prepareLsfgRuntime();
+
             ArrayList<String> bindingPaths = new ArrayList<>();
             for (String[] drive : container.drivesIterator()) {
                 bindingPaths.add(drive[1]);
@@ -1187,9 +1328,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.putAll(overrideEnvVars);
             overrideEnvVars.clear(); // Clear overrideEnvVars as per smali logic
         }
-
-        // LSFG: siapkan runtime (.so + manifest) sebelum proses diluncurkan
-        prepareLsfgRuntime();
 
         // Create our overall XEnvironment with various components
         environment = new XEnvironment(this, imageFs);
@@ -2035,220 +2173,5 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
-
-    // =================== LSFG ===================
-
-    private static int lsfgPresentModeStringToIndex(String mode) {
-        if (mode == null) return 0;
-        switch (mode.toLowerCase(java.util.Locale.ROOT)) {
-            case "mailbox":   return 1;
-            case "immediate": return 2;
-            default:          return 0;
-        }
-    }
-
-    /**
-     * Dipanggil saat container akan diluncurkan.
-     * Menyalin liblsfg-vk-layer.so dari assets (jika versi baru),
-     * lalu menulis VkLayer_LS_frame_generation.json ke implicit_layer.d container.
-     * Jika LSFG dinonaktifkan atau DLL tidak ada, manifest dihapus agar layer tidak termuat.
-     */
-    private void prepareLsfgRuntime() {
-        if (imageFs == null) {
-            Log.w("XServerDisplayActivity", "LSFG prepareLsfgRuntime: imageFs is null, skip");
-            return;
-        }
-        if (shortcut == null) {
-            Log.d("XServerDisplayActivity", "LSFG prepareLsfgRuntime: no shortcut, skip");
-            return;
-        }
-
-        boolean enabled = "1".equals(shortcut.getExtra("lsfgEnabled", "0"));
-        Log.d("XServerDisplayActivity", "LSFG prepareLsfgRuntime: enabled=" + enabled);
-
-        // Gunakan imageFs.home_path agar path konsisten dengan applyLsfgEnvVars
-        String containerHome   = imageFs.getRootDir().getPath() + imageFs.home_path;
-        File containerLibDir   = new File(containerHome + "/.local/lib");
-        File containerLayerDir = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
-        File manifestFile      = new File(containerLayerDir, "VkLayer_LS_frame_generation.json");
-        File soDestFile        = new File(containerLibDir, "liblsfg-vk-layer.so");
-
-        Log.d("XServerDisplayActivity", "LSFG paths:"
-            + " home=" + containerHome
-            + " so=" + soDestFile.getAbsolutePath()
-            + " manifest=" + manifestFile.getAbsolutePath());
-
-        if (!enabled) {
-            if (manifestFile.exists()) manifestFile.delete();
-            Log.d("XServerDisplayActivity", "LSFG disabled, manifest removed");
-            return;
-        }
-
-        // Baca DLL path dari shortcut extras (bukan SharedPreferences)
-        String dllPath = shortcut.getExtra("lsfgDllPath", "");
-        if (dllPath == null || dllPath.isEmpty() || !new File(dllPath).isFile()) {
-            if (manifestFile.exists()) manifestFile.delete();
-            Log.w("XServerDisplayActivity", "LSFG: dll not found [" + dllPath + "], manifest removed");
-            return;
-        }
-
-        // Salin .so dari assets jika belum ada atau versi runtime berubah
-        String installedVersion = container != null
-                ? container.getExtra("lsfgRuntimeVersion", "0") : "0";
-        boolean needsInstall = !soDestFile.exists()
-                || !Integer.toString(LSFG_RUNTIME_VERSION).equals(installedVersion);
-
-        Log.d("XServerDisplayActivity", "LSFG so: exists=" + soDestFile.exists()
-            + " installedVer=" + installedVersion
-            + " targetVer=" + LSFG_RUNTIME_VERSION
-            + " needsInstall=" + needsInstall);
-
-        if (needsInstall) {
-            containerLibDir.mkdirs();
-            if (!copyLsfgSoFromAssets(soDestFile)) {
-                if (manifestFile.exists()) manifestFile.delete();
-                Log.e("XServerDisplayActivity", "LSFG: failed to copy .so, aborting");
-                return;
-            }
-            if (container != null) {
-                container.putExtra("lsfgRuntimeVersion", Integer.toString(LSFG_RUNTIME_VERSION));
-                container.saveData();
-            }
-            Log.d("XServerDisplayActivity", "LSFG: .so installed to " + soDestFile.getAbsolutePath());
-        }
-
-        if (!soDestFile.exists()) {
-            if (manifestFile.exists()) manifestFile.delete();
-            Log.e("XServerDisplayActivity", "LSFG: .so still missing after install attempt");
-            return;
-        }
-
-        containerLayerDir.mkdirs();
-        new File(containerHome + "/.config/lsfg-vk").mkdirs();
-        new File(containerHome + "/.local/share/lsfg-vk").mkdirs();
-        writeLsfgLayerManifest(manifestFile);
-        Log.d("XServerDisplayActivity", "LSFG runtime ready:"
-            + " so=" + soDestFile.getAbsolutePath()
-            + " manifest=" + manifestFile.getAbsolutePath());
-    }
-
-    /** Tulis JSON manifest Vulkan implicit layer untuk lsfg-vk. */
-    private void writeLsfgLayerManifest(File manifestFile) {
-        String manifest =
-                "{\n" +
-                "  \"file_format_version\": \"1.0.0\",\n" +
-                "  \"layer\": {\n" +
-                "    \"name\": \"VK_LAYER_LS_frame_generation\",\n" +
-                "    \"type\": \"GLOBAL\",\n" +
-                "    \"api_version\": \"1.4.313\",\n" +
-                "    \"library_path\": \"../../../lib/liblsfg-vk-layer.so\",\n" +
-                "    \"implementation_version\": \"1\",\n" +
-                "    \"description\": \"Lossless Scaling frame generation layer\",\n" +
-                "    \"functions\": {\n" +
-                "      \"vkGetInstanceProcAddr\": \"layer_vkGetInstanceProcAddr\",\n" +
-                "      \"vkGetDeviceProcAddr\": \"layer_vkGetDeviceProcAddr\"\n" +
-                "    },\n" +
-                "    \"disable_environment\": {\n" +
-                "      \"DISABLE_LSFG\": \"1\"\n" +
-                "    }\n" +
-                "  }\n" +
-                "}\n";
-        FileUtils.writeString(manifestFile, manifest);
-    }
-
-    /** Salin liblsfg-vk-layer.so dari assets ke direktori lib container. */
-    private boolean copyLsfgSoFromAssets(File destFile) {
-        try (java.io.InputStream is = getAssets().open("lsfg_vk/android_arm64_v8a/liblsfg-vk-layer.so");
-             java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
-            byte[] buf = new byte[8192];
-            int len;
-            while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
-            destFile.setExecutable(true, false);
-            return true;
-        } catch (Exception e) {
-            Log.e("XServerDisplayActivity", "Failed to copy liblsfg-vk-layer.so", e);
-            return false;
-        }
-    }
-
-    /**
-     * Update conf.toml LSFG saat pengaturan berubah di in-game drawer
-     * (multiplier, flow scale, present mode, dsb.).
-     * Hanya menulis ulang jika file conf.toml sudah ada (runtime sudah siap).
-     */
-    private void updateLsfgConfig() {
-        if (imageFs == null || shortcut == null) return;
-
-        String containerHome = imageFs.getRootDir().getPath() + imageFs.home_path;
-        File confToml = new File(containerHome + "/.config/lsfg-vk/conf.toml");
-        if (!confToml.exists()) return;
-
-        // Baca dari shortcut extras (sumber kebenaran yang sama dengan applyLsfgEnvVars)
-        String dllPath = shortcut.getExtra("lsfgDllPath", "");
-        if (dllPath == null || dllPath.isEmpty()) return;
-
-        int multiplier = Integer.parseInt(
-            clampLsfgConfigInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
-        float flowScaleF = Float.parseFloat(
-            clampLsfgConfigFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f));
-        String flowScale = String.format(java.util.Locale.US, "%.2f", flowScaleF);
-        boolean perfMode = "1".equals(shortcut.getExtra("lsfgPerformanceMode", "1"));
-        boolean hdrMode  = "1".equals(shortcut.getExtra("lsfgHdrMode", "0"));
-        String presentMode = normalizeLsfgConfigPresentMode(shortcut.getExtra("lsfgPresentMode", "fifo"));
-
-        // Resolve nama exe dari guestProgramLauncherComponent
-        String processName = "";
-        if (guestProgramLauncherComponent != null) {
-            String exe = guestProgramLauncherComponent.getGuestExecutable();
-            if (exe != null && !exe.isEmpty()) {
-                String[] parts = exe.split("\\s+");
-                for (int i = parts.length - 1; i >= 0; i--) {
-                    if (parts[i].toLowerCase(java.util.Locale.ROOT).endsWith(".exe")) {
-                        processName = new File(parts[i].replace("\\", "/")).getName();
-                        break;
-                    }
-                }
-            }
-        }
-
-        StringBuilder toml = new StringBuilder();
-        toml.append("version = 1\n[global]\n");
-        toml.append("dll_path = \"").append(dllPath.replace("\\", "\\\\")).append("\"\n\n");
-        if (!processName.isEmpty()) {
-            toml.append("[[game]]\n");
-            toml.append("exe = \"").append(processName).append("\"\n");
-            toml.append("multiplier = ").append(multiplier).append("\n");
-            toml.append("flow_scale = ").append(flowScale).append("\n");
-            toml.append("performance_mode = ").append(perfMode ? "true" : "false").append("\n");
-            toml.append("hdr_mode = ").append(hdrMode ? "true" : "false").append("\n");
-            toml.append("present_mode = \"").append(presentMode).append("\"\n");
-        }
-        FileUtils.writeString(confToml, toml.toString());
-        Log.d("XServerDisplayActivity", "LSFG config updated: mult=" + multiplier
-            + " flow=" + flowScale + " process=" + processName);
-    }
-
-    private static String clampLsfgConfigInt(String value, int min, int max) {
-        try { return String.valueOf(Math.max(min, Math.min(max, Integer.parseInt(value)))); }
-        catch (Exception ignored) { return String.valueOf(min); }
-    }
-
-    private static String clampLsfgConfigFloat(String value, float min, float max) {
-        try {
-            float c = Math.max(min, Math.min(max, Float.parseFloat(value)));
-            return String.format(java.util.Locale.US, "%.2f", c);
-        } catch (Exception ignored) { return String.format(java.util.Locale.US, "%.2f", min); }
-    }
-
-    private static String normalizeLsfgConfigPresentMode(String value) {
-        if (value == null) return "fifo";
-        switch (value.toLowerCase(java.util.Locale.ROOT)) {
-            case "mailbox":   return "mailbox";
-            case "immediate": return "immediate";
-            default:          return "fifo";
-        }
-    }
-
-    // ============================================
 
 }

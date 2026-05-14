@@ -323,10 +323,20 @@ public class SettingsFragment extends Fragment {
         pendingLsfgDllPath   = originalLsfgDllPath;
 
         cbLsfgEnabled.setChecked(preferences.getBoolean("lsfg_enabled_global", false));
-        updateLsfgDllNameDisplay(originalLsfgDllPath);
+        // Pakai overload eksplisit agar tombol langsung diupdate sewaktu onCreateView
+        updateLsfgDllNameDisplay(view, originalLsfgDllPath);
 
-        // Satu tombol: "Import" jika belum ada file, "Change" jika sudah ada
+        // Import/Change — satu tombol berganti teks
         view.findViewById(R.id.BTImportLsfgDll).setOnClickListener(v -> openFile(REQUEST_CODE_IMPORT_LSFG_DLL));
+
+        // Delete — tampil hanya jika sudah ada file (diatur di updateLsfgDllNameDisplay)
+        view.findViewById(R.id.BTDeleteLsfgDll).setOnClickListener(v -> {
+            if (!pendingLsfgDllPath.isEmpty() && !pendingLsfgDllPath.equals(originalLsfgDllPath)) {
+                clearManagedLsfgDll(pendingLsfgDllPath);
+            }
+            pendingLsfgDllPath = "";
+            updateLsfgDllNameDisplay(view, "");
+        });
         // ─────────────────────────────────────────────────────────────────────
 
         view.findViewById(R.id.BTConfirm).setOnClickListener((v) -> {
@@ -394,14 +404,20 @@ public class SettingsFragment extends Fragment {
     /**
      * Tampilkan nama file raw persis seperti yang tersimpan di path,
      * mis. "global-1777952628276-Lossless.dll".
-     * Logika ini mengikuti pola Kotlin di ShortcutSettingsComposeDialog:
      *
-     *   val displayName = if (hasFile)
-     *       currentDllPath.substringAfterLast('/').substringAfterLast('\\')
-     *           .ifBlank { currentDllPath }
-     *   else ""
+     * @param dllPath path DLL yang sedang aktif / pending
      */
     private void updateLsfgDllNameDisplay(String dllPath) {
+        // Delegate ke overload yang pakai getView() (dipanggil setelah onCreateView selesai)
+        View root = getView();
+        if (root != null) updateLsfgDllNameDisplay(root, dllPath);
+    }
+
+    /**
+     * Overload yang menerima root view secara eksplisit — dipakai saat onCreateView
+     * masih berjalan dan getView() belum tersedia.
+     */
+    private void updateLsfgDllNameDisplay(View root, String dllPath) {
         if (tvLsfgDllName == null) return;
         boolean hasFile = dllPath != null && !dllPath.isEmpty();
         String displayName = "";
@@ -412,12 +428,18 @@ public class SettingsFragment extends Fragment {
         }
         tvLsfgDllName.setText(displayName);
 
-        // Tombol berubah teks: "Import" jika belum ada file, "Change" jika sudah ada
-        View btnImport = getView() != null ? getView().findViewById(R.id.BTImportLsfgDll) : null;
+        // Tombol Import/Change
+        View btnImport = root.findViewById(R.id.BTImportLsfgDll);
         if (btnImport instanceof android.widget.Button) {
             ((android.widget.Button) btnImport).setText(hasFile
                     ? getString(R.string.lsfg_change_dll)
                     : getString(R.string.lsfg_import_dll));
+        }
+
+        // Tombol Delete: tampil hanya jika ada file
+        View btnDelete = root.findViewById(R.id.BTDeleteLsfgDll);
+        if (btnDelete != null) {
+            btnDelete.setVisibility(hasFile ? View.VISIBLE : View.GONE);
         }
     }
 

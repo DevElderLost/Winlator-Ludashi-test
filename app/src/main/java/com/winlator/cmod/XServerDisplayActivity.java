@@ -2054,25 +2054,41 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      * Jika LSFG dinonaktifkan atau DLL tidak ada, manifest dihapus agar layer tidak termuat.
      */
     private void prepareLsfgRuntime() {
-        if (imageFs == null) return;
-        boolean enabled = preferences.getBoolean("lsfg_enabled", false);
+        if (imageFs == null) {
+            Log.w("XServerDisplayActivity", "LSFG prepareLsfgRuntime: imageFs is null, skip");
+            return;
+        }
+        if (shortcut == null) {
+            Log.d("XServerDisplayActivity", "LSFG prepareLsfgRuntime: no shortcut, skip");
+            return;
+        }
 
-        File rootDir = imageFs.getRootDir();
-        String containerHome = rootDir.getPath() + "/home/xuser";
+        boolean enabled = "1".equals(shortcut.getExtra("lsfgEnabled", "0"));
+        Log.d("XServerDisplayActivity", "LSFG prepareLsfgRuntime: enabled=" + enabled);
+
+        // Gunakan imageFs.home_path agar path konsisten dengan applyLsfgEnvVars
+        String containerHome   = imageFs.getRootDir().getPath() + imageFs.home_path;
         File containerLibDir   = new File(containerHome + "/.local/lib");
         File containerLayerDir = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
         File manifestFile      = new File(containerLayerDir, "VkLayer_LS_frame_generation.json");
         File soDestFile        = new File(containerLibDir, "liblsfg-vk-layer.so");
 
+        Log.d("XServerDisplayActivity", "LSFG paths:"
+            + " home=" + containerHome
+            + " so=" + soDestFile.getAbsolutePath()
+            + " manifest=" + manifestFile.getAbsolutePath());
+
         if (!enabled) {
             if (manifestFile.exists()) manifestFile.delete();
+            Log.d("XServerDisplayActivity", "LSFG disabled, manifest removed");
             return;
         }
 
-        String dllPath = preferences.getString("lsfg_dll_path", "");
+        // Baca DLL path dari shortcut extras (bukan SharedPreferences)
+        String dllPath = shortcut.getExtra("lsfgDllPath", "");
         if (dllPath == null || dllPath.isEmpty() || !new File(dllPath).isFile()) {
-            Log.w("XServerDisplayActivity", "LSFG enabled but no Lossless.dll found");
             if (manifestFile.exists()) manifestFile.delete();
+            Log.w("XServerDisplayActivity", "LSFG: dll not found [" + dllPath + "], manifest removed");
             return;
         }
 
@@ -2082,28 +2098,38 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         boolean needsInstall = !soDestFile.exists()
                 || !Integer.toString(LSFG_RUNTIME_VERSION).equals(installedVersion);
 
+        Log.d("XServerDisplayActivity", "LSFG so: exists=" + soDestFile.exists()
+            + " installedVer=" + installedVersion
+            + " targetVer=" + LSFG_RUNTIME_VERSION
+            + " needsInstall=" + needsInstall);
+
         if (needsInstall) {
             containerLibDir.mkdirs();
             if (!copyLsfgSoFromAssets(soDestFile)) {
                 if (manifestFile.exists()) manifestFile.delete();
+                Log.e("XServerDisplayActivity", "LSFG: failed to copy .so, aborting");
                 return;
             }
             if (container != null) {
                 container.putExtra("lsfgRuntimeVersion", Integer.toString(LSFG_RUNTIME_VERSION));
                 container.saveData();
             }
+            Log.d("XServerDisplayActivity", "LSFG: .so installed to " + soDestFile.getAbsolutePath());
         }
 
         if (!soDestFile.exists()) {
             if (manifestFile.exists()) manifestFile.delete();
+            Log.e("XServerDisplayActivity", "LSFG: .so still missing after install attempt");
             return;
         }
 
         containerLayerDir.mkdirs();
-        writeLsfgLayerManifest(manifestFile);
         new File(containerHome + "/.config/lsfg-vk").mkdirs();
         new File(containerHome + "/.local/share/lsfg-vk").mkdirs();
-        Log.d("XServerDisplayActivity", "LSFG runtime prepared");
+        writeLsfgLayerManifest(manifestFile);
+        Log.d("XServerDisplayActivity", "LSFG runtime ready:"
+            + " so=" + soDestFile.getAbsolutePath()
+            + " manifest=" + manifestFile.getAbsolutePath());
     }
 
     /** Tulis JSON manifest Vulkan implicit layer untuk lsfg-vk. */
@@ -2151,29 +2177,26 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      * Hanya menulis ulang jika file conf.toml sudah ada (runtime sudah siap).
      */
     private void updateLsfgConfig() {
-        if (imageFs == null) return;
-        String containerHome = imageFs.getRootDir().getPath() + "/home/xuser";
+        if (imageFs == null || shortcut == null) return;
+
+        String containerHome = imageFs.getRootDir().getPath() + imageFs.home_path;
         File confToml = new File(containerHome + "/.config/lsfg-vk/conf.toml");
         if (!confToml.exists()) return;
 
-        String dllPath = preferences.getString("lsfg_dll_path", "");
+        // Baca dari shortcut extras (sumber kebenaran yang sama dengan applyLsfgEnvVars)
+        String dllPath = shortcut.getExtra("lsfgDllPath", "");
         if (dllPath == null || dllPath.isEmpty()) return;
 
-        int multiplier = Math.max(2, Math.min(4, preferences.getInt("lsfg_multiplier", 2)));
-        float flowScaleF = Math.max(0.25f, Math.min(1.0f,
-                preferences.getFloat("lsfg_flow_scale", 0.80f)));
+        int multiplier = Integer.parseInt(
+            clampLsfgConfigInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
+        float flowScaleF = Float.parseFloat(
+            clampLsfgConfigFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f));
         String flowScale = String.format(java.util.Locale.US, "%.2f", flowScaleF);
-        boolean perfMode = preferences.getBoolean("lsfg_performance_mode", true);
-        boolean hdrMode  = preferences.getBoolean("lsfg_hdr_mode", false);
-        String prefPresent = preferences.getString("lsfg_present_mode", "fifo");
-        String presentMode;
-        switch (prefPresent != null ? prefPresent.toLowerCase(java.util.Locale.ROOT) : "fifo") {
-            case "mailbox":   presentMode = "mailbox";   break;
-            case "immediate": presentMode = "immediate"; break;
-            default:          presentMode = "fifo";      break;
-        }
+        boolean perfMode = "1".equals(shortcut.getExtra("lsfgPerformanceMode", "1"));
+        boolean hdrMode  = "1".equals(shortcut.getExtra("lsfgHdrMode", "0"));
+        String presentMode = normalizeLsfgConfigPresentMode(shortcut.getExtra("lsfgPresentMode", "fifo"));
 
-        // Resolve nama exe dari guestExecutable
+        // Resolve nama exe dari guestProgramLauncherComponent
         String processName = "";
         if (guestProgramLauncherComponent != null) {
             String exe = guestProgramLauncherComponent.getGuestExecutable();
@@ -2202,7 +2225,28 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
         FileUtils.writeString(confToml, toml.toString());
         Log.d("XServerDisplayActivity", "LSFG config updated: mult=" + multiplier
-                + " flow=" + flowScale);
+            + " flow=" + flowScale + " process=" + processName);
+    }
+
+    private static String clampLsfgConfigInt(String value, int min, int max) {
+        try { return String.valueOf(Math.max(min, Math.min(max, Integer.parseInt(value)))); }
+        catch (Exception ignored) { return String.valueOf(min); }
+    }
+
+    private static String clampLsfgConfigFloat(String value, float min, float max) {
+        try {
+            float c = Math.max(min, Math.min(max, Float.parseFloat(value)));
+            return String.format(java.util.Locale.US, "%.2f", c);
+        } catch (Exception ignored) { return String.format(java.util.Locale.US, "%.2f", min); }
+    }
+
+    private static String normalizeLsfgConfigPresentMode(String value) {
+        if (value == null) return "fifo";
+        switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "mailbox":   return "mailbox";
+            case "immediate": return "immediate";
+            default:          return "fifo";
+        }
     }
 
     // ============================================

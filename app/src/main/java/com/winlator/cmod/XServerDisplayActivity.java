@@ -175,6 +175,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private short taskAffinityMask = 0;
     private short taskAffinityMaskWoW64 = 0;
     private int frameRatingWindowId = -1;
+    /** True = HUD sedang ditampilkan secara manual via menu toggle. */
+    private boolean hudManuallyVisible = false;
+    /** Reference ke menu item HUD agar icon bisa diupdate saat toggle. */
+    private MenuItem hudMenuItem = null;
 //    private boolean cursorLock; // Flag to track if pointer capture was requested (obsolete - now uses tryCapturePointer/hasExternalMouse)
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
@@ -395,6 +399,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         Menu menu = navigationView.getMenu();
         menu.findItem(R.id.main_menu_logs).setVisible(enableLogs);
         if (XrActivity.isEnabled(this)) menu.findItem(R.id.main_menu_magnifier).setVisible(false);
+        // Simpan reference hudMenuItem; sembunyikan jika container tidak mengaktifkan HUD
+        hudMenuItem = menu.findItem(R.id.main_menu_toggle_hud);
+        if (hudMenuItem != null) {
+            boolean hudEnabled = container != null && container.isShowFPS();
+            hudMenuItem.setVisible(hudEnabled);
+        }
         navigationView.setNavigationItemSelectedListener(this);
         navigationView.setPointerIcon(PointerIcon.getSystemIcon(this, PointerIcon.TYPE_ARROW));
         navigationView.setOnFocusChangeListener((v, hasFocus) -> navigationFocused = hasFocus);
@@ -1019,6 +1029,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 });
                 Log.d("ScreenEffectDialog", "Showing ScreenEffectDialog");
                 screenEffectDialog.show();
+                drawerLayout.closeDrawers();
+                break;
+            case R.id.main_menu_toggle_hud:
+                toggleHudVisibility();
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_logs:
@@ -2152,8 +2166,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             if (frameRatingWindowId == -1 && property.nameAsString().contains("_MESA_DRV")) {
                 frameRatingWindowId = window.id;
                 Log.d("XServerDisplayActivity", "Showing hud for Window " + window.getName());
-                // BUG FIX: frameRating harus di-set VISIBLE agar overlay muncul
-                runOnUiThread(() -> frameRating.setVisibility(View.VISIBLE));
+                // Hanya auto-show jika user belum secara eksplisit menyembunyikan via toggle menu
+                if (!hudManuallyVisible) {
+                    hudManuallyVisible = true;
+                    runOnUiThread(() -> {
+                        frameRating.setVisibility(View.VISIBLE);
+                        if (hudMenuItem != null) hudMenuItem.setIcon(android.R.drawable.ic_menu_close_clear_cancel);
+                    });
+                } else {
+                    runOnUiThread(() -> frameRating.setVisibility(View.VISIBLE));
+                }
                 frameRating.update();
             }
             if (property.nameAsString().contains("_MESA_DRV_ENGINE_NAME")) {
@@ -2166,8 +2188,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         else if (frameRatingWindowId != -1) {
             frameRatingWindowId = -1;
             Log.d("XServerDisplayActivity", "Hiding hud for Window " + window.getName());
-            runOnUiThread(() -> frameRating.setVisibility(View.GONE));
-            runOnUiThread(() -> frameRating.reset());
+            hudManuallyVisible = false;
+            runOnUiThread(() -> {
+                frameRating.setVisibility(View.GONE);
+                frameRating.reset();
+                if (hudMenuItem != null) hudMenuItem.setIcon(R.drawable.icon_fps_hud);
+            });
         }
     }
 
@@ -2179,21 +2205,47 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      *   bit 0 = FPS         (element 0)
      *   bit 1 = Renderer    (element 1)
      *   bit 2 = GPU         (element 2)
-     *   bit 3 = CPU/RAM     (element 3)
-     *   bit 4 = Battery/Temp(element 4)
-     *   bit 5 = Graph       (element 5)
-     * Default (tidak ada extra): semua aktif → 0b111111 = 63
+     *   bit 3 = CPU         (element 3)
+     *   bit 4 = RAM         (element 4)
+     *   bit 5 = Battery     (element 5)
+     *   bit 6 = Temp        (element 6)
+     *   bit 7 = Graph       (element 7)
+     * Default: semua aktif → 0b11111111 = 255
      */
     private void applyHudElementsFromShortcut() {
         if (frameRating == null) return;
-        int mask = 63; // default: semua elemen aktif
+        int mask = 255; // default: semua elemen aktif
         if (shortcut != null) {
-            String raw = shortcut.getExtra("hudElements", "63");
+            String raw = shortcut.getExtra("hudElements", "255");
             try { mask = Integer.parseInt(raw); } catch (Exception ignored) {}
         }
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 8; i++) {
             frameRating.toggleElement(i, (mask & (1 << i)) != 0);
         }
+    }
+
+    /**
+     * Toggle visibilitas HUD FrameRating secara manual dari menu.
+     * - Tekan pertama  : tampilkan HUD (set VISIBLE, tandai hudManuallyVisible=true)
+     * - Tekan kedua   : sembunyikan HUD (set GONE, tandai hudManuallyVisible=false)
+     *
+     * Note: changeFrameRatingVisibility() tetap berjalan untuk auto-show/hide
+     * berdasarkan properti _MESA_DRV. Toggle manual ini bersifat override:
+     * jika user menyembunyikan manual, HUD tidak akan muncul otomatis lagi sampai
+     * di-toggle kembali.
+     */
+    private void toggleHudVisibility() {
+        if (frameRating == null) return;
+        hudManuallyVisible = !hudManuallyVisible;
+        runOnUiThread(() -> {
+            frameRating.setVisibility(hudManuallyVisible ? View.VISIBLE : View.GONE);
+            // Update icon menu untuk memberi feedback visual aktif/tidak
+            if (hudMenuItem != null) {
+                hudMenuItem.setIcon(hudManuallyVisible
+                        ? android.R.drawable.ic_menu_close_clear_cancel  // HUD aktif → "X" / off icon
+                        : R.drawable.icon_fps_hud);                       // HUD mati  → icon normal
+            }
+        });
     }
 
     public String getScreenEffectProfile() {

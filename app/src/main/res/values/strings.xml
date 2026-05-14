@@ -665,4 +665,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="lsfg_flow_scale">Flow Scale</string>
     <string name="lsfg_change_dll">Change</string>
     <string name="lsfg_pacing_mode">Pacing Mode</string>
+    <string name="hud_elements">HUD Elements</string>
 </resources>

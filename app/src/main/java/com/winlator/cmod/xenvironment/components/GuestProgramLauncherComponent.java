@@ -339,6 +339,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.putAll(this.envVars);
         }
 
+        // === LSFG: dipanggil SETELAH merge envVars ===
+        // VK_LAYER_PATH per-container tidak tertimpa oleh VK_LAYER_PATH global
+        // FAKE_EVDEV_DIR sudah di-protect sehingga controller tetap bekerja
+        applyLsfgEnvVars(envVars, imageFs);
+        // === end LSFG ===
+
         String emulator = container.getEmulator();
         if (shortcut != null)
             emulator = shortcut.getExtra("emulator", container.getEmulator());
@@ -379,6 +385,127 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 terminationCallback.call(status);
         });
     }
+
+    // =================== LSFG ===================
+    private void applyLsfgEnvVars(EnvVars envVars, ImageFs imageFs) {
+        if (shortcut == null || imageFs == null) {
+            envVars.put("DISABLE_LSFG", "1");
+            return;
+        }
+
+        boolean enabled = "1".equals(shortcut.getExtra("lsfgEnabled", "0"));
+        File rootDir = imageFs.getRootDir();
+        String containerHome = rootDir.getPath() + "/home/xuser";
+        File layerDir     = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
+        File manifestFile = new File(layerDir, "VkLayer_LS_frame_generation.json");
+        File soFile       = new File(containerHome + "/.local/lib/liblsfg-vk-layer.so");
+        File configDir    = new File(containerHome + "/.config/lsfg-vk");
+        File lsfgTmpDir   = new File(containerHome + "/.local/share/lsfg-vk");
+
+        if (!enabled || !manifestFile.exists() || !soFile.exists()) {
+            envVars.put("DISABLE_LSFG", "1");
+            Log.d("GuestProgramLauncherComponent", "LSFG disabled:"
+                + " enabled=" + enabled
+                + " manifest=" + manifestFile.exists()
+                + " so=" + soFile.exists());
+            return;
+        }
+
+        String dllPath = shortcut.getExtra("lsfgDllPath", "");
+        if (dllPath.isEmpty() || !new java.io.File(dllPath).isFile()) {
+            envVars.put("DISABLE_LSFG", "1");
+            Log.w("GuestProgramLauncherComponent", "LSFG: Lossless.dll not found: " + dllPath);
+            return;
+        }
+
+        int multiplier     = Integer.parseInt(clampLsfgInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
+        String flowScale   = clampLsfgFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f);
+        boolean perfMode   = "1".equals(shortcut.getExtra("lsfgPerformanceMode", "1"));
+        boolean hdrMode    = "1".equals(shortcut.getExtra("lsfgHdrMode", "0"));
+        String presentMode = normalizeLsfgPresentMode(shortcut.getExtra("lsfgPresentMode", "fifo"));
+
+        // Resolve process name dari guestExecutable
+        String processName = "";
+        if (guestExecutable != null && !guestExecutable.isEmpty()) {
+            String[] parts = guestExecutable.split("\\s+");
+            for (int i = parts.length - 1; i >= 0; i--) {
+                if (parts[i].toLowerCase(java.util.Locale.ROOT).endsWith(".exe")) {
+                    processName = new java.io.File(parts[i].replace("\\", "/")).getName();
+                    break;
+                }
+            }
+        }
+
+        configDir.mkdirs();
+        lsfgTmpDir.mkdirs();
+
+        // Tulis conf.toml ke per-container config dir
+        java.io.File confToml = new java.io.File(configDir, "conf.toml");
+        StringBuilder toml = new StringBuilder();
+        toml.append("version = 1\n[global]\n");
+        toml.append("dll_path = \"").append(dllPath.replace("\\", "\\\\")).append("\"\n\n");
+        if (!processName.isEmpty()) {
+            toml.append("[[game]]\n");
+            toml.append("exe = \"").append(processName).append("\"\n");
+            toml.append("multiplier = ").append(multiplier).append("\n");
+            toml.append("flow_scale = ").append(flowScale).append("\n");
+            toml.append("performance_mode = ").append(perfMode ? "true" : "false").append("\n");
+            toml.append("hdr_mode = ").append(hdrMode ? "true" : "false").append("\n");
+        }
+        FileUtils.writeString(confToml, toml.toString());
+
+        // VK_LAYER_PATH — per-container dir di-prepend ke nilai global yang sudah ada
+        String existingLayerPath = envVars.get("VK_LAYER_PATH");
+        String containerLayerPath = layerDir.getAbsolutePath();
+        if (existingLayerPath == null || existingLayerPath.isEmpty()) {
+            envVars.put("VK_LAYER_PATH", containerLayerPath);
+        } else if (!existingLayerPath.contains(containerLayerPath)) {
+            envVars.put("VK_LAYER_PATH", containerLayerPath + ":" + existingLayerPath);
+        }
+
+        envVars.remove("DISABLE_LSFG");
+        envVars.put("LSFG_CONFIG",                    confToml.getAbsolutePath());
+        envVars.put("LSFG_LAST_PATH",                 new java.io.File(lsfgTmpDir, "lsfg-vk_last").getAbsolutePath());
+        envVars.put("LSFG_TMP_DIR",                   lsfgTmpDir.getAbsolutePath());
+        envVars.put("LSFG_MULTIPLIER",                String.valueOf(multiplier));
+        envVars.put("LSFG_FLOW_SCALE",                flowScale);
+        envVars.put("LSFG_PERFORMANCE_MODE",          perfMode ? "1" : "0");
+        envVars.put("LSFG_HDR_MODE",                  hdrMode  ? "1" : "0");
+        envVars.put("LSFG_EXPERIMENTAL_PRESENT_MODE", presentMode);
+        envVars.put("LSFG_DLL_PATH",                  dllPath);
+        envVars.put("LSFG_DLL_PATH_UNIX",             dllPath);
+//        envVars.put("LSFG_LEGACY",                    "1");
+        if (!processName.isEmpty()) {
+            envVars.put("LSFG_PROCESS",     processName);
+            envVars.put("LSFG_PROCESS_EXE", processName);
+        }
+
+        Log.d("GuestProgramLauncherComponent", "LSFG armed:"
+            + " process='" + processName + "' dll='" + dllPath + "'"
+            + " multiplier=" + multiplier + " flowScale=" + flowScale);
+    }
+
+    private static String clampLsfgInt(String value, int min, int max) {
+        try { return String.valueOf(Math.max(min, Math.min(max, Integer.parseInt(value)))); }
+        catch (Exception ignored) { return String.valueOf(min); }
+    }
+
+    private static String clampLsfgFloat(String value, float min, float max) {
+        try {
+            float clamped = Math.max(min, Math.min(max, Float.parseFloat(value)));
+            return String.format(java.util.Locale.US, "%.2f", clamped);
+        } catch (Exception ignored) { return String.format(java.util.Locale.US, "%.2f", min); }
+    }
+
+    private static String normalizeLsfgPresentMode(String value) {
+        if (value == null) return "fifo";
+        switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "mailbox":   return "mailbox";
+            case "immediate": return "immediate";
+            default:          return "fifo";
+        }
+    }
+    // ============================================
 
     private void addBox64EnvVars(EnvVars envVars, boolean enableLogs) {
         envVars.put("BOX64_NOBANNER", ProcessHelper.PRINT_DEBUG && enableLogs ? "0" : "1");

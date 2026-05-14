@@ -65,7 +65,6 @@ public class ShortcutsFragment extends Fragment {
     private RecyclerView recyclerView;
     private TextView emptyTextView;
     private ContainerManager manager;
-    private ShortcutSettingsDialog activeShortcutSettingsDialog;
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -167,8 +166,7 @@ public class ShortcutsFragment extends Fragment {
             listItemMenu.setOnMenuItemClickListener((menuItem) -> {
                 int itemId = menuItem.getItemId();
                 if (itemId == R.id.shortcut_settings) {
-                    activeShortcutSettingsDialog = new ShortcutSettingsDialog(ShortcutsFragment.this, shortcut);
-                    activeShortcutSettingsDialog.show();
+                    (new ShortcutSettingsDialog(ShortcutsFragment.this, shortcut)).show();
                 }
                 else if (itemId == R.id.shortcut_remove) {
                     ContentDialog.confirm(context, R.string.do_you_want_to_remove_this_shortcut, () -> {
@@ -427,33 +425,4 @@ public class ShortcutsFragment extends Fragment {
             }
         } catch (Exception e) {}
     }
-
-    // ── File picker helper (dipakai oleh ShortcutSettingsDialog untuk LSFG DLL) ──
-    public void openFileForResult(int requestCode, String[] mimeTypes) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        if (mimeTypes != null && mimeTypes.length == 1) {
-            intent.setType(mimeTypes[0]);
-        } else {
-            intent.setType("*/*");
-            if (mimeTypes != null && mimeTypes.length > 1) {
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
-            }
-        }
-        getActivity().startActivityFromFragment(this, intent, requestCode);
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode == Activity.RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            if (uri != null && requestCode == ShortcutSettingsDialog.getRequestCodeImportLsfgDll()) {
-                if (activeShortcutSettingsDialog != null) {
-                    activeShortcutSettingsDialog.onLsfgDllSelected(uri);
-                }
-            }
-        }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
 }

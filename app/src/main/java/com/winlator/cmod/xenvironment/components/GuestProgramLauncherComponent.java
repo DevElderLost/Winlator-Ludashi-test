@@ -389,32 +389,48 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     // =================== LSFG ===================
     private void applyLsfgEnvVars(EnvVars envVars, ImageFs imageFs) {
         if (shortcut == null || imageFs == null) {
+            Log.d("GuestProgramLauncherComponent", "LSFG skip: shortcut=" + shortcut + " imageFs=" + imageFs);
             envVars.put("DISABLE_LSFG", "1");
             return;
         }
 
         boolean enabled = "1".equals(shortcut.getExtra("lsfgEnabled", "0"));
-        File rootDir = imageFs.getRootDir();
-        String containerHome = rootDir.getPath() + "/home/xuser";
+        Log.d("GuestProgramLauncherComponent", "LSFG check: enabled=" + enabled
+            + " shortcutName=" + shortcut.name);
+
+        if (!enabled) {
+            envVars.put("DISABLE_LSFG", "1");
+            Log.d("GuestProgramLauncherComponent", "LSFG disabled by user");
+            return;
+        }
+
+        // Gunakan imageFs.home_path (bukan hardcode /home/xuser) agar
+        // cocok dengan path yang ditulis oleh prepareLsfgRuntime()
+        String containerHome  = imageFs.getRootDir().getPath() + imageFs.home_path;
         File layerDir     = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
         File manifestFile = new File(layerDir, "VkLayer_LS_frame_generation.json");
         File soFile       = new File(containerHome + "/.local/lib/liblsfg-vk-layer.so");
         File configDir    = new File(containerHome + "/.config/lsfg-vk");
         File lsfgTmpDir   = new File(containerHome + "/.local/share/lsfg-vk");
 
-        if (!enabled || !manifestFile.exists() || !soFile.exists()) {
+        Log.d("GuestProgramLauncherComponent", "LSFG paths:"
+            + " home=" + containerHome
+            + " manifest=" + manifestFile.exists() + " [" + manifestFile.getAbsolutePath() + "]"
+            + " so=" + soFile.exists() + " [" + soFile.getAbsolutePath() + "]");
+
+        if (!manifestFile.exists() || !soFile.exists()) {
             envVars.put("DISABLE_LSFG", "1");
-            Log.d("GuestProgramLauncherComponent", "LSFG disabled:"
-                + " enabled=" + enabled
+            Log.w("GuestProgramLauncherComponent", "LSFG disabled: runtime files missing"
                 + " manifest=" + manifestFile.exists()
                 + " so=" + soFile.exists());
             return;
         }
 
         String dllPath = shortcut.getExtra("lsfgDllPath", "");
+        Log.d("GuestProgramLauncherComponent", "LSFG dll: [" + dllPath + "] exists=" + new java.io.File(dllPath).isFile());
         if (dllPath.isEmpty() || !new java.io.File(dllPath).isFile()) {
             envVars.put("DISABLE_LSFG", "1");
-            Log.w("GuestProgramLauncherComponent", "LSFG: Lossless.dll not found: " + dllPath);
+            Log.w("GuestProgramLauncherComponent", "LSFG: Lossless.dll not found: [" + dllPath + "]");
             return;
         }
 
@@ -439,7 +455,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         configDir.mkdirs();
         lsfgTmpDir.mkdirs();
 
-        // Tulis conf.toml ke per-container config dir
+        // Tulis conf.toml
         java.io.File confToml = new java.io.File(configDir, "conf.toml");
         StringBuilder toml = new StringBuilder();
         toml.append("version = 1\n[global]\n");
@@ -451,11 +467,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             toml.append("flow_scale = ").append(flowScale).append("\n");
             toml.append("performance_mode = ").append(perfMode ? "true" : "false").append("\n");
             toml.append("hdr_mode = ").append(hdrMode ? "true" : "false").append("\n");
+            toml.append("present_mode = \"").append(presentMode).append("\"\n");
         }
         FileUtils.writeString(confToml, toml.toString());
 
-        // VK_LAYER_PATH — per-container dir di-prepend ke nilai global yang sudah ada
-        String existingLayerPath = envVars.get("VK_LAYER_PATH");
+        // VK_LAYER_PATH: prepend path layer container
+        String existingLayerPath  = envVars.get("VK_LAYER_PATH");
         String containerLayerPath = layerDir.getAbsolutePath();
         if (existingLayerPath == null || existingLayerPath.isEmpty()) {
             envVars.put("VK_LAYER_PATH", containerLayerPath);
@@ -480,9 +497,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             envVars.put("LSFG_PROCESS_EXE", processName);
         }
 
-        Log.d("GuestProgramLauncherComponent", "LSFG armed:"
-            + " process='" + processName + "' dll='" + dllPath + "'"
-            + " multiplier=" + multiplier + " flowScale=" + flowScale);
+        Log.d("GuestProgramLauncherComponent", "LSFG ARMED:"
+            + " process='" + processName + "'"
+            + " dll='" + dllPath + "'"
+            + " multiplier=" + multiplier
+            + " flowScale=" + flowScale
+            + " VK_LAYER_PATH=" + envVars.get("VK_LAYER_PATH"));
     }
 
     private static String clampLsfgInt(String value, int min, int max) {

@@ -651,41 +651,18 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="offset_scale">Offset Scale</string>
     <string name="cursor_hotspot_offset">Cursor Center Position</string>
     <string name="hide_stroke_fill">Hide Stroke Fill</string>
-    <!-- Section header / FieldSetLabel -->
-    <string name="settings_lsfg_title">LSFG (Frame Generation)</string>
-
-    <!-- Enable checkbox -->
-    <string name="settings_lsfg_enable">Enable LSFG</string>
-
-    <!-- DLL row -->
-    <string name="settings_lsfg_lossless_dll">Lossless.dll</string>
-    <string name="settings_lsfg_no_dll_imported">No Lossless.dll imported</string>
-
-    <!-- Toast messages -->
+    <string name="lsfg_section_label">LSFG</string>
+    <string name="lsfg_multiplier">Multiplier</string>
+    <string name="lsfg_present_mode">Present Mode</string>
+    <string name="lsfg_performance_mode">Performance Mode</string>
+    <string name="lsfg_hdr_mode">HDR Mode</string>
+    <string name="lsfg_enable_global">Enable LSFG</string>
+    <string name="lsfg_dll_label">Lossless.dll</string>
+    <string name="lsfg_import_dll">Import DLL</string>
+    <string name="lsfg_clear_dll">Clear DLL</string>
     <string name="settings_lsfg_select_valid_dll">Please select a valid .dll file</string>
-    <string name="settings_lsfg_import_failed">Failed to import Lossless.dll</string>
-
-    <!-- Sub-section label -->
-    <string name="settings_lsfg_frame_generation">Frame Generation</string>
-
-    <!-- Multiplier -->
-    <string name="settings_lsfg_multiplier">Multiplier</string>
-
-    <!-- Flow Scale seekbar -->
-    <string name="settings_lsfg_flow_scale">Flow Scale</string>
-
-    <!-- Checkboxes -->
-    <string name="settings_lsfg_performance_mode">Performance Mode</string>
-    <string name="settings_lsfg_hdr_mode">HDR Mode</string>
-
-    <!-- Present Mode spinner label -->
-    <string name="settings_lsfg_present_mode">Present Mode</string>
-
-    <!-- ═══════════════════════════════════════════════
-         Common UI strings (tambahkan hanya jika belum ada
-         di strings.xml project)
-    ═══════════════════════════════════════════════ -->
-    <string name="common_ui_import">Import</string>
-    <string name="common_ui_remove">Remove</string>
-    
+    <string name="settings_lsfg_import_failed">Failed to import DLL file</string>
+    <string name="lsfg_flow_scale">Flow Scale</string>
+    <string name="lsfg_change_dll">Change</string>
+    <string name="lsfg_pacing_mode">Pacing Mode</string>
 </resources>

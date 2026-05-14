@@ -215,6 +215,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
 
+    // LSFG
+    private static final int LSFG_RUNTIME_VERSION = 3;
+
 	private boolean hasExternalMouse() {
         InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         for (int deviceId : inputManager.getInputDeviceIds()) {
@@ -1185,6 +1188,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             overrideEnvVars.clear(); // Clear overrideEnvVars as per smali logic
         }
 
+        // LSFG: siapkan runtime (.so + manifest) sebelum proses diluncurkan
+        prepareLsfgRuntime();
+
         // Create our overall XEnvironment with various components
         environment = new XEnvironment(this, imageFs);
         environment.addComponent(
@@ -2029,5 +2035,176 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     protected void attachBaseContext(Context context) {
         super.attachBaseContext(LocaleHelper.setSystemLocale(context));
     }
+
+    // =================== LSFG ===================
+
+    private static int lsfgPresentModeStringToIndex(String mode) {
+        if (mode == null) return 0;
+        switch (mode.toLowerCase(java.util.Locale.ROOT)) {
+            case "mailbox":   return 1;
+            case "immediate": return 2;
+            default:          return 0;
+        }
+    }
+
+    /**
+     * Dipanggil saat container akan diluncurkan.
+     * Menyalin liblsfg-vk-layer.so dari assets (jika versi baru),
+     * lalu menulis VkLayer_LS_frame_generation.json ke implicit_layer.d container.
+     * Jika LSFG dinonaktifkan atau DLL tidak ada, manifest dihapus agar layer tidak termuat.
+     */
+    private void prepareLsfgRuntime() {
+        if (imageFs == null) return;
+        boolean enabled = preferences.getBoolean("lsfg_enabled", false);
+
+        File rootDir = imageFs.getRootDir();
+        String containerHome = rootDir.getPath() + "/home/xuser";
+        File containerLibDir   = new File(containerHome + "/.local/lib");
+        File containerLayerDir = new File(containerHome + "/.local/share/vulkan/implicit_layer.d");
+        File manifestFile      = new File(containerLayerDir, "VkLayer_LS_frame_generation.json");
+        File soDestFile        = new File(containerLibDir, "liblsfg-vk-layer.so");
+
+        if (!enabled) {
+            if (manifestFile.exists()) manifestFile.delete();
+            return;
+        }
+
+        String dllPath = preferences.getString("lsfg_dll_path", "");
+        if (dllPath == null || dllPath.isEmpty() || !new File(dllPath).isFile()) {
+            Log.w("XServerDisplayActivity", "LSFG enabled but no Lossless.dll found");
+            if (manifestFile.exists()) manifestFile.delete();
+            return;
+        }
+
+        // Salin .so dari assets jika belum ada atau versi runtime berubah
+        String installedVersion = container != null
+                ? container.getExtra("lsfgRuntimeVersion", "0") : "0";
+        boolean needsInstall = !soDestFile.exists()
+                || !Integer.toString(LSFG_RUNTIME_VERSION).equals(installedVersion);
+
+        if (needsInstall) {
+            containerLibDir.mkdirs();
+            if (!copyLsfgSoFromAssets(soDestFile)) {
+                if (manifestFile.exists()) manifestFile.delete();
+                return;
+            }
+            if (container != null) {
+                container.putExtra("lsfgRuntimeVersion", Integer.toString(LSFG_RUNTIME_VERSION));
+                container.saveData();
+            }
+        }
+
+        if (!soDestFile.exists()) {
+            if (manifestFile.exists()) manifestFile.delete();
+            return;
+        }
+
+        containerLayerDir.mkdirs();
+        writeLsfgLayerManifest(manifestFile);
+        new File(containerHome + "/.config/lsfg-vk").mkdirs();
+        new File(containerHome + "/.local/share/lsfg-vk").mkdirs();
+        Log.d("XServerDisplayActivity", "LSFG runtime prepared");
+    }
+
+    /** Tulis JSON manifest Vulkan implicit layer untuk lsfg-vk. */
+    private void writeLsfgLayerManifest(File manifestFile) {
+        String manifest =
+                "{\n" +
+                "  \"file_format_version\": \"1.0.0\",\n" +
+                "  \"layer\": {\n" +
+                "    \"name\": \"VK_LAYER_LS_frame_generation\",\n" +
+                "    \"type\": \"GLOBAL\",\n" +
+                "    \"api_version\": \"1.4.313\",\n" +
+                "    \"library_path\": \"../../../lib/liblsfg-vk-layer.so\",\n" +
+                "    \"implementation_version\": \"1\",\n" +
+                "    \"description\": \"Lossless Scaling frame generation layer\",\n" +
+                "    \"functions\": {\n" +
+                "      \"vkGetInstanceProcAddr\": \"layer_vkGetInstanceProcAddr\",\n" +
+                "      \"vkGetDeviceProcAddr\": \"layer_vkGetDeviceProcAddr\"\n" +
+                "    },\n" +
+                "    \"disable_environment\": {\n" +
+                "      \"DISABLE_LSFG\": \"1\"\n" +
+                "    }\n" +
+                "  }\n" +
+                "}\n";
+        FileUtils.writeString(manifestFile, manifest);
+    }
+
+    /** Salin liblsfg-vk-layer.so dari assets ke direktori lib container. */
+    private boolean copyLsfgSoFromAssets(File destFile) {
+        try (java.io.InputStream is = getAssets().open("lsfg_vk/android_arm64_v8a/liblsfg-vk-layer.so");
+             java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+            destFile.setExecutable(true, false);
+            return true;
+        } catch (Exception e) {
+            Log.e("XServerDisplayActivity", "Failed to copy liblsfg-vk-layer.so", e);
+            return false;
+        }
+    }
+
+    /**
+     * Update conf.toml LSFG saat pengaturan berubah di in-game drawer
+     * (multiplier, flow scale, present mode, dsb.).
+     * Hanya menulis ulang jika file conf.toml sudah ada (runtime sudah siap).
+     */
+    private void updateLsfgConfig() {
+        if (imageFs == null) return;
+        String containerHome = imageFs.getRootDir().getPath() + "/home/xuser";
+        File confToml = new File(containerHome + "/.config/lsfg-vk/conf.toml");
+        if (!confToml.exists()) return;
+
+        String dllPath = preferences.getString("lsfg_dll_path", "");
+        if (dllPath == null || dllPath.isEmpty()) return;
+
+        int multiplier = Math.max(2, Math.min(4, preferences.getInt("lsfg_multiplier", 2)));
+        float flowScaleF = Math.max(0.25f, Math.min(1.0f,
+                preferences.getFloat("lsfg_flow_scale", 0.80f)));
+        String flowScale = String.format(java.util.Locale.US, "%.2f", flowScaleF);
+        boolean perfMode = preferences.getBoolean("lsfg_performance_mode", true);
+        boolean hdrMode  = preferences.getBoolean("lsfg_hdr_mode", false);
+        String prefPresent = preferences.getString("lsfg_present_mode", "fifo");
+        String presentMode;
+        switch (prefPresent != null ? prefPresent.toLowerCase(java.util.Locale.ROOT) : "fifo") {
+            case "mailbox":   presentMode = "mailbox";   break;
+            case "immediate": presentMode = "immediate"; break;
+            default:          presentMode = "fifo";      break;
+        }
+
+        // Resolve nama exe dari guestExecutable
+        String processName = "";
+        if (guestProgramLauncherComponent != null) {
+            String exe = guestProgramLauncherComponent.getGuestExecutable();
+            if (exe != null && !exe.isEmpty()) {
+                String[] parts = exe.split("\\s+");
+                for (int i = parts.length - 1; i >= 0; i--) {
+                    if (parts[i].toLowerCase(java.util.Locale.ROOT).endsWith(".exe")) {
+                        processName = new File(parts[i].replace("\\", "/")).getName();
+                        break;
+                    }
+                }
+            }
+        }
+
+        StringBuilder toml = new StringBuilder();
+        toml.append("version = 1\n[global]\n");
+        toml.append("dll_path = \"").append(dllPath.replace("\\", "\\\\")).append("\"\n\n");
+        if (!processName.isEmpty()) {
+            toml.append("[[game]]\n");
+            toml.append("exe = \"").append(processName).append("\"\n");
+            toml.append("multiplier = ").append(multiplier).append("\n");
+            toml.append("flow_scale = ").append(flowScale).append("\n");
+            toml.append("performance_mode = ").append(perfMode ? "true" : "false").append("\n");
+            toml.append("hdr_mode = ").append(hdrMode ? "true" : "false").append("\n");
+            toml.append("present_mode = \"").append(presentMode).append("\"\n");
+        }
+        FileUtils.writeString(confToml, toml.toString());
+        Log.d("XServerDisplayActivity", "LSFG config updated: mult=" + multiplier
+                + " flow=" + flowScale);
+    }
+
+    // ============================================
 
 }

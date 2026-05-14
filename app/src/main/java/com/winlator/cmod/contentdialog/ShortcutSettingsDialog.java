@@ -3,6 +3,7 @@ package com.winlator.cmod.contentdialog;
 
 
 import android.content.Context;
+import android.net.Uri;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.Icon;
@@ -17,6 +18,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -61,6 +63,11 @@ public class ShortcutSettingsDialog extends ContentDialog {
     private TextView tvGraphicsDriverVersion;
     private String box64Version;
     private CheckBox cbNativeRendering;
+
+    // LSFG
+    private static final int REQUEST_CODE_IMPORT_LSFG_DLL = 2006;
+    private String originalLsfgDllPath = "";
+    private String pendingLsfgDllPath  = "";
 
 
     public ShortcutSettingsDialog(ShortcutsFragment fragment, Shortcut shortcut) {
@@ -347,6 +354,82 @@ public class ShortcutSettingsDialog extends ContentDialog {
         final CPUListView cpuListView = findViewById(R.id.CPUListView);
         cpuListView.setCheckedCPUList(shortcut.getExtra("cpuList", shortcut.container.getCPUList(true)));
 
+        // ── LSFG: load state ──────────────────────────────────────────────
+        CheckBox cbLsfgEnabled           = findViewById(R.id.CBLsfgEnabled);
+        TextView tvLsfgDllPath           = findViewById(R.id.TVLsfgDllPath);
+        android.widget.Button btImportLsfgDll = findViewById(R.id.BTImportLsfgDll);
+        android.widget.Button btClearLsfgDll  = findViewById(R.id.BTClearLsfgDll);
+        android.widget.RadioGroup rgLsfgMult  = findViewById(R.id.RGLsfgMultiplier);
+        SeekBar sbLsfgFlowScale          = findViewById(R.id.SBLsfgFlowScale);
+        TextView tvLsfgFlowScale         = findViewById(R.id.TVLsfgFlowScale);
+        CheckBox cbLsfgPerfMode          = findViewById(R.id.CBLsfgPerformanceMode);
+        CheckBox cbLsfgHdrMode           = findViewById(R.id.CBLsfgHdrMode);
+        Spinner  sLsfgPresentMode        = findViewById(R.id.SLsfgPresentMode);
+
+        if (cbLsfgEnabled != null) {
+            originalLsfgDllPath = shortcut.getExtra("lsfgDllPath", "");
+
+            // Enable checkbox
+            cbLsfgEnabled.setChecked("1".equals(shortcut.getExtra("lsfgEnabled", "0")));
+
+            // DLL path label
+            updateLsfgDllLabel(tvLsfgDllPath, btClearLsfgDll, originalLsfgDllPath);
+
+            // Import button
+            if (btImportLsfgDll != null) {
+                btImportLsfgDll.setOnClickListener(v ->
+                    fragment.openFileForResult(REQUEST_CODE_IMPORT_LSFG_DLL, new String[]{"*/*"}));
+            }
+
+            // Clear button
+            if (btClearLsfgDll != null) {
+                btClearLsfgDll.setOnClickListener(v -> {
+                    clearManagedLsfgDll(pendingLsfgDllPath.isEmpty() ? originalLsfgDllPath : pendingLsfgDllPath);
+                    pendingLsfgDllPath = "";
+                    originalLsfgDllPath = "";
+                    updateLsfgDllLabel(tvLsfgDllPath, btClearLsfgDll, "");
+                });
+            }
+
+            // Multiplier radio (2=index 0, 3=index 1, 4=index 2)
+            if (rgLsfgMult != null) {
+                int mult = Integer.parseInt(clampLsfgInt(shortcut.getExtra("lsfgMultiplier", "2"), 2, 4));
+                int radioId = mult == 3 ? R.id.RBLsfgMult3x : mult == 4 ? R.id.RBLsfgMult4x : R.id.RBLsfgMult2x;
+                rgLsfgMult.check(radioId);
+            }
+
+            // Flow Scale seekbar (stored as int 25–100, represents %)
+            if (sbLsfgFlowScale != null) {
+                int flowPct = Math.round(
+                    Float.parseFloat(clampLsfgFloat(shortcut.getExtra("lsfgFlowScale", "0.80"), 0.25f, 1.0f)) * 100f);
+                sbLsfgFlowScale.setProgress(flowPct);
+                if (tvLsfgFlowScale != null) tvLsfgFlowScale.setText(flowPct + "%");
+                sbLsfgFlowScale.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                    @Override public void onProgressChanged(SeekBar sb, int prog, boolean fromUser) {
+                        if (tvLsfgFlowScale != null) tvLsfgFlowScale.setText(prog + "%");
+                    }
+                    @Override public void onStartTrackingTouch(SeekBar sb) {}
+                    @Override public void onStopTrackingTouch(SeekBar sb) {}
+                });
+            }
+
+            // Performance Mode checkbox
+            if (cbLsfgPerfMode != null)
+                cbLsfgPerfMode.setChecked("1".equals(shortcut.getExtra("lsfgPerformanceMode", "1")));
+
+            // HDR Mode checkbox
+            if (cbLsfgHdrMode != null)
+                cbLsfgHdrMode.setChecked("1".equals(shortcut.getExtra("lsfgHdrMode", "0")));
+
+            // Present Mode spinner (fifo=0, mailbox=1, immediate=2)
+            if (sLsfgPresentMode != null) {
+                String pm = shortcut.getExtra("lsfgPresentMode", "fifo");
+                int pmIdx = "mailbox".equals(pm) ? 1 : "immediate".equals(pm) ? 2 : 0;
+                sLsfgPresentMode.setSelection(pmIdx);
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         setOnConfirmCallback(() -> {
             String name = etName.getText().toString().trim();
             boolean nameChanged = !shortcut.name.equals(name) && !name.isEmpty();
@@ -435,6 +518,58 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
                 String cpuList = cpuListView.getCheckedCPUListAsString();
                 shortcut.putExtra("cpuList", cpuList);
+
+                // ── LSFG: save state ────────────────────────────────────
+                CheckBox cbLsfg = findViewById(R.id.CBLsfgEnabled);
+                if (cbLsfg != null) {
+                    shortcut.putExtra("lsfgEnabled", cbLsfg.isChecked() ? "1" : null);
+
+                    // DLL path
+                    String lsfgDllPath = pendingLsfgDllPath.isEmpty() ? originalLsfgDllPath : pendingLsfgDllPath;
+                    shortcut.putExtra("lsfgDllPath", lsfgDllPath.isEmpty() ? null : lsfgDllPath);
+                    if (!lsfgDllPath.equals(originalLsfgDllPath)) {
+                        clearManagedLsfgDll(originalLsfgDllPath);
+                        originalLsfgDllPath = lsfgDllPath;
+                    }
+                    pendingLsfgDllPath = "";
+
+                    // Multiplier
+                    android.widget.RadioGroup rgMult = findViewById(R.id.RGLsfgMultiplier);
+                    if (rgMult != null) {
+                        int checkedId = rgMult.getCheckedRadioButtonId();
+                        int mult = checkedId == R.id.RBLsfgMult3x ? 3
+                                 : checkedId == R.id.RBLsfgMult4x ? 4 : 2;
+                        shortcut.putExtra("lsfgMultiplier", String.valueOf(mult));
+                    }
+
+                    // Flow Scale (seekbar progress 25–100 → store as float "0.25"–"1.00")
+                    SeekBar sbFlow = findViewById(R.id.SBLsfgFlowScale);
+                    if (sbFlow != null) {
+                        String flowVal = String.format(java.util.Locale.US, "%.2f", sbFlow.getProgress() / 100f);
+                        shortcut.putExtra("lsfgFlowScale", flowVal);
+                    }
+
+                    // Performance Mode
+                    CheckBox cbPerf = findViewById(R.id.CBLsfgPerformanceMode);
+                    if (cbPerf != null)
+                        shortcut.putExtra("lsfgPerformanceMode", cbPerf.isChecked() ? "1" : "0");
+
+                    // HDR Mode
+                    CheckBox cbHdr = findViewById(R.id.CBLsfgHdrMode);
+                    if (cbHdr != null)
+                        shortcut.putExtra("lsfgHdrMode", cbHdr.isChecked() ? "1" : "0");
+
+                    // Present Mode (index 0=fifo, 1=mailbox, 2=immediate)
+                    Spinner sPresentMode = findViewById(R.id.SLsfgPresentMode);
+                    if (sPresentMode != null) {
+                        String[] pmValues = {"fifo", "mailbox", "immediate"};
+                        int pmIdx = sPresentMode.getSelectedItemPosition();
+                        shortcut.putExtra("lsfgPresentMode",
+                            (pmIdx >= 0 && pmIdx < pmValues.length) ? pmValues[pmIdx] : "fifo");
+                    }
+                }
+                // ────────────────────────────────────────────────────────
+
 
                 // Save all changes to the shortcut
                 shortcut.saveData();
@@ -731,4 +866,70 @@ public class ShortcutSettingsDialog extends ContentDialog {
         AppUtils.setSpinnerSelectionFromIdentifier(sGraphicsDriver, selectedGraphicsDriver);
         update.run();
     }
+
+    // ── LSFG DLL Management ───────────────────────────────────────────────────
+
+    /** Update label DLL dan visibility tombol Clear. */
+    private void updateLsfgDllLabel(TextView tvPath, android.widget.Button btClear, String path) {
+        if (tvPath != null) {
+            String name = (path == null || path.isEmpty()) ? "" : new java.io.File(path).getName();
+            tvPath.setText(name.isEmpty()
+                ? fragment.getContext().getString(R.string.settings_lsfg_no_dll_imported) : name);
+        }
+        if (btClear != null) {
+            btClear.setVisibility((path != null && !path.isEmpty())
+                ? android.view.View.VISIBLE : android.view.View.GONE);
+        }
+    }
+
+    /** Dipanggil oleh ShortcutsFragment.onActivityResult dengan REQUEST_CODE_IMPORT_LSFG_DLL. */
+    public void onLsfgDllSelected(android.net.Uri uri) {
+        if (uri == null) return;
+        Context context = fragment.getContext();
+        String rawFileName = uri.getLastPathSegment();
+        if (rawFileName == null) rawFileName = "Lossless.dll";
+        rawFileName = rawFileName.substring(rawFileName.lastIndexOf('/') + 1);
+        String safeFileName = rawFileName.replaceAll("[^a-zA-Z0-9._\\-]", "");
+        if (!safeFileName.toLowerCase(Locale.ROOT).endsWith(".dll")) {
+            AppUtils.showToast(context, R.string.settings_lsfg_select_valid_dll);
+            return;
+        }
+        String shortcutToken = shortcut.file.getName().replaceFirst("\\.desktop$", "");
+        java.io.File lsfgDir = new java.io.File(context.getFilesDir(), "lsfg");
+        if (!lsfgDir.exists()) lsfgDir.mkdirs();
+        java.io.File outputFile = new java.io.File(lsfgDir,
+            shortcutToken + "-" + System.currentTimeMillis() + "-" + safeFileName);
+        try {
+            try (java.io.InputStream in = context.getContentResolver().openInputStream(uri);
+                 java.io.OutputStream out = new java.io.FileOutputStream(outputFile)) {
+                if (in == null) throw new java.io.IOException("null stream");
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            }
+        } catch (Exception e) {
+            AppUtils.showToast(context, R.string.settings_lsfg_import_failed);
+            return;
+        }
+        if (!pendingLsfgDllPath.isEmpty() && !pendingLsfgDllPath.equals(originalLsfgDllPath)) {
+            clearManagedLsfgDll(pendingLsfgDllPath);
+        }
+        pendingLsfgDllPath = outputFile.getAbsolutePath();
+        updateLsfgDllLabel(
+            (TextView) findViewById(R.id.TVLsfgDllPath),
+            (android.widget.Button) findViewById(R.id.BTClearLsfgDll),
+            pendingLsfgDllPath);
+    }
+
+    private void clearManagedLsfgDll(String path) {
+        if (path == null || path.isEmpty()) return;
+        java.io.File lsfgDir = new java.io.File(fragment.getContext().getFilesDir(), "lsfg");
+        java.io.File file = new java.io.File(path);
+        if (lsfgDir.getAbsolutePath().equals(file.getParent()) && file.exists()) {
+            file.delete();
+        }
+    }
+
+    public static int getRequestCodeImportLsfgDll() { return REQUEST_CODE_IMPORT_LSFG_DLL; }
+    // ─────────────────────────────────────────────────────────────────────────
 }

@@ -114,6 +114,7 @@ import com.winlator.cmod.xenvironment.components.GuestProgramLauncherComponent;
 import com.winlator.cmod.xenvironment.components.PulseAudioComponent;
 import com.winlator.cmod.xenvironment.components.SysVSharedMemoryComponent;
 import com.winlator.cmod.xenvironment.components.XServerComponent;
+import com.winlator.cmod.xserver.Atom;
 import com.winlator.cmod.xserver.Pointer;
 import com.winlator.cmod.xserver.Property;
 import com.winlator.cmod.xserver.ScreenInfo;
@@ -175,10 +176,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private short taskAffinityMask = 0;
     private short taskAffinityMaskWoW64 = 0;
     private int frameRatingWindowId = -1;
-    /** True = HUD sedang ditampilkan secara manual via menu toggle. */
-    private boolean hudManuallyVisible = false;
-    /** Reference ke menu item HUD agar icon bisa diupdate saat toggle. */
-    private MenuItem hudMenuItem = null;
+    private boolean effectiveShowFPS = false;
+    private String lastRendererName = "OpenGL";
+    private String lastGpuName = null;
+    private float hudTransparency = 1.0f;
+    private float hudScale = 1.0f;
+    private boolean[] hudElements = new boolean[]{true, true, true, true, true, true};
 //    private boolean cursorLock; // Flag to track if pointer capture was requested (obsolete - now uses tryCapturePointer/hasExternalMouse)
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
@@ -399,11 +402,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         Menu menu = navigationView.getMenu();
         menu.findItem(R.id.main_menu_logs).setVisible(enableLogs);
         if (XrActivity.isEnabled(this)) menu.findItem(R.id.main_menu_magnifier).setVisible(false);
-        // Simpan reference hudMenuItem; visibility akan diupdate di setupUI() setelah
-        // shortcut dan hudElements mask diketahui
-        hudMenuItem = menu.findItem(R.id.main_menu_toggle_hud);
-        // Sembunyikan dulu; akan ditampilkan di setupUI() jika hudMask > 0
-        hudMenuItem.setVisible(true);
         navigationView.setNavigationItemSelectedListener(this);
         navigationView.setPointerIcon(PointerIcon.getSystemIcon(this, PointerIcon.TYPE_ARROW));
         navigationView.setOnFocusChangeListener((v, hasFocus) -> navigationFocused = hasFocus);
@@ -580,7 +578,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                     winStarted[0] = true;
                 }
                     
-                if (frameRatingWindowId == window.id) frameRating.update();
+                if (frameRating != null && frameRatingWindowId == window.id) {
+                    frameRating.update();
+                }
             }
            
             @Override
@@ -1031,7 +1031,32 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_toggle_hud:
-                toggleHudVisibility();
+                if (frameRating == null) {
+                    frameRating = new FrameRating(this, graphicsDriverConfig);
+                    frameRating.setRenderer(lastRendererName);
+                    if (lastGpuName != null) frameRating.setGpuName(lastGpuName);
+                    frameRating.setVisibility(View.GONE);
+                    if (shortcut != null) {
+                        int mask = 0;
+                        try { mask = Integer.parseInt(shortcut.getExtra("hudElements", "0")); }
+                        catch (Exception ignored) {}
+                        for (int i = 0; i < 6; i++) {
+                            frameRating.toggleElement(i, (mask & (1 << i)) != 0);
+                        }
+                    }
+                    applyHUDSettings();
+                    FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
+                    rootView.addView(frameRating);
+                }
+                boolean isFpsVisible = frameRating.getVisibility() == View.VISIBLE;
+                boolean becomingVisible = !isFpsVisible;
+                frameRating.setVisibility(becomingVisible ? View.VISIBLE : View.GONE);
+                if (becomingVisible) {
+                    syncFrameRatingWithExistingWindows();
+                    applyHUDSettings();
+                }
+                updateHUDRenderMode();
+                effectiveShowFPS = becomingVisible;
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_logs:
@@ -1448,27 +1473,29 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         if (container != null && container.isShowFPS()) {
-            // Baca bitmask hudElements dari shortcut. Default 255 = semua aktif.
-            // Jika mask = 0, user menonaktifkan semua elemen → HUD tidak dibuat sama sekali.
-            int hudMask = 255;
+            loadHUDSettings();
+
+            // HUD Overlay per-shortcut — baca bitmask dari shortcut extra "hudElements"
+            // Bit 0=FPS, 1=Renderer, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph
+            // Nilai 0 atau null = HUD tidak tampil
+            int hudMask = 0;
             if (shortcut != null) {
-                try { hudMask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
+                try { hudMask = Integer.parseInt(shortcut.getExtra("hudElements", "0")); }
                 catch (Exception ignored) {}
             }
-            if (hudMask > 0) {
+            effectiveShowFPS = hudMask > 0;
+            if (effectiveShowFPS) {
                 frameRating = new FrameRating(this, graphicsDriverConfig);
-                frameRating.setVisibility(View.GONE);
-                rootView.addView(frameRating);
-                // Hubungkan ke renderer agar setIsNative() dipanggil setiap frame
-                renderer.setFrameRating(frameRating);
-                // Terapkan elemen HUD dari bitmask shortcut
-                for (int i = 0; i < 8; i++) {
+                frameRating.setRenderer(lastRendererName);
+                if (lastGpuName != null) frameRating.setGpuName(lastGpuName);
+                frameRating.setIsNative(renderer != null && renderer.isNativeMode());
+                frameRating.setVisibility(View.VISIBLE);
+                for (int i = 0; i < 6; i++) {
                     frameRating.toggleElement(i, (hudMask & (1 << i)) != 0);
                 }
-            }
-            // Update visibility menu item: tampilkan hanya jika HUD aktif
-            if (hudMenuItem != null) {
-                hudMenuItem.setVisible(hudMask > 0);
+                applyHUDSettings();
+                updateHUDRenderMode();
+                rootView.addView(frameRating);
             }
         }
 
@@ -2175,64 +2202,191 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private void changeFrameRatingVisibility(Window window, Property property) {
         if (frameRating == null) return;
-
         if (property != null) {
-            if (frameRatingWindowId == -1 && property.nameAsString().contains("_MESA_DRV")) {
-                frameRatingWindowId = window.id;
-                Log.d("XServerDisplayActivity", "Showing hud for Window " + window.getName());
-                // Hanya auto-show jika user belum secara eksplisit menyembunyikan via toggle menu
-                if (!hudManuallyVisible) {
-                    hudManuallyVisible = true;
-                    runOnUiThread(() -> {
-                        frameRating.setVisibility(View.VISIBLE);
-                        if (hudMenuItem != null) hudMenuItem.setIcon(android.R.drawable.ic_menu_close_clear_cancel);
-                    });
-                } else {
-                    runOnUiThread(() -> frameRating.setVisibility(View.VISIBLE));
+            String propName = property.nameAsString();
+            boolean isRendererProp = propName.contains("_MESA_DRV_ENGINE_NAME")
+                    || propName.contains("_UTIL_LAYER")
+                    || propName.contains("_MESA_DRV_RENDERER");
+
+            if (isRendererProp || propName.contains("_MESA_DRV_GPU_NAME")) {
+                syncFrameRatingWithExistingWindows();
+                return;
+            }
+
+            if (frameRatingWindowId == window.id) {
+                if (effectiveShowFPS) {
+                    if (propName.contains("_MESA_DRV") || propName.contains("_UTIL_LAYER")) {
+                        frameRating.update();
+                    }
                 }
-                frameRating.update();
+            } else if (frameRatingWindowId == -1) {
+                syncFrameRatingWithExistingWindows();
             }
-            if (property.nameAsString().contains("_MESA_DRV_ENGINE_NAME")) {
-                runOnUiThread(() -> frameRating.setRenderer(property.toString()));
+        } else {
+            // Window destroyed — sync/reset
+            syncFrameRatingWithExistingWindows();
+            if (frameRatingWindowId == -1 && !effectiveShowFPS) {
+                runOnUiThread(() -> {
+                    frameRating.setVisibility(View.GONE);
+                    frameRating.reset();
+                });
             }
-            if (property.nameAsString().contains("_MESA_DRV_GPU_NAME")) {
-                runOnUiThread(() -> frameRating.setGpuName(property.toString()));
-            }
-        }
-        else if (frameRatingWindowId != -1) {
-            frameRatingWindowId = -1;
-            Log.d("XServerDisplayActivity", "Hiding hud for Window " + window.getName());
-            hudManuallyVisible = false;
-            runOnUiThread(() -> {
-                frameRating.setVisibility(View.GONE);
-                frameRating.reset();
-                if (hudMenuItem != null) hudMenuItem.setIcon(R.drawable.icon_fps_monitor);
-            });
         }
     }
 
-    /**
-     * Toggle visibilitas HUD FrameRating secara manual dari menu.
-     * - Tekan pertama  : tampilkan HUD (set VISIBLE, tandai hudManuallyVisible=true)
-     * - Tekan kedua   : sembunyikan HUD (set GONE, tandai hudManuallyVisible=false)
-     *
-     * Note: changeFrameRatingVisibility() tetap berjalan untuk auto-show/hide
-     * berdasarkan properti _MESA_DRV. Toggle manual ini bersifat override:
-     * jika user menyembunyikan manual, HUD tidak akan muncul otomatis lagi sampai
-     * di-toggle kembali.
-     */
-    private void toggleHudVisibility() {
-        if (frameRating == null) return;
-        hudManuallyVisible = !hudManuallyVisible;
-        runOnUiThread(() -> {
-            frameRating.setVisibility(hudManuallyVisible ? View.VISIBLE : View.GONE);
-            // Update icon menu untuk memberi feedback visual aktif/tidak
-            if (hudMenuItem != null) {
-                hudMenuItem.setIcon(hudManuallyVisible
-                        ? R.drawable.icon_fps_monitor  // HUD aktif → "X" / off icon
-                        : R.drawable.icon_fps_monitor);                       // HUD mati  → icon normal
+    private void loadHUDSettings() {
+        if (container == null) return;
+        String json = container.getExtra("hudSettings");
+        if (json != null && !json.isEmpty()) {
+            try {
+                JSONObject obj = new JSONObject(json);
+                hudTransparency = (float) obj.optDouble("transparency", 1.0);
+                hudScale        = (float) obj.optDouble("scale", 1.0);
+                hudElements[0]  = obj.optBoolean("showFPS", true);
+                hudElements[1]  = obj.optBoolean("showRenderer", true);
+                hudElements[2]  = obj.optBoolean("showGPU", true);
+                hudElements[3]  = obj.optBoolean("showCPU", true);
+                hudElements[4]  = obj.optBoolean("showBattTemp", true);
+                hudElements[5]  = obj.optBoolean("showGraph", true);
+            } catch (JSONException e) {
+                Log.e("XServerDisplayActivity", "Failed to load HUD settings", e);
             }
+        }
+    }
+
+    private void saveHUDSettings() {
+        if (container == null) return;
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("transparency", hudTransparency);
+            obj.put("scale",        hudScale);
+            obj.put("showFPS",      hudElements[0]);
+            obj.put("showRenderer", hudElements[1]);
+            obj.put("showGPU",      hudElements[2]);
+            obj.put("showCPU",      hudElements[3]);
+            obj.put("showBattTemp", hudElements[4]);
+            obj.put("showGraph",    hudElements[5]);
+            container.putExtra("hudSettings", obj.toString());
+            container.saveData();
+        } catch (JSONException e) {
+            Log.e("XServerDisplayActivity", "Failed to save HUD settings", e);
+        }
+    }
+
+    private void applyHUDSettings() {
+        if (frameRating == null) return;
+        frameRating.setHudAlpha(hudTransparency);
+        frameRating.setHudScale(hudScale);
+        frameRating.setIsNative(xServerView != null
+                && xServerView.getRenderer() != null
+                && xServerView.getRenderer().isNativeMode());
+        for (int i = 0; i < hudElements.length; i++) {
+            frameRating.toggleElement(i, hudElements[i]);
+        }
+    }
+
+    private void syncFrameRatingWithExistingWindows() {
+        if (xServer == null || frameRating == null) return;
+        Window bestWindow = null;
+        String bestRenderer = null;
+        String bestGpu = null;
+        int bestScore = -1;
+
+        java.util.Deque<Window> stack = new java.util.ArrayDeque<>();
+        if (xServer.windowManager.rootWindow != null) {
+            stack.push(xServer.windowManager.rootWindow);
+        }
+        while (!stack.isEmpty()) {
+            Window window = stack.pop();
+            if (xServer.windowManager.rootWindow != null
+                    && window.id == xServer.windowManager.rootWindow.id) {
+                for (Window child : window.getChildren()) stack.push(child);
+                continue;
+            }
+
+            Property prop = window.getProperty(Atom.getId("_MESA_DRV_ENGINE_NAME"));
+            if (prop == null) prop = window.getProperty(Atom.getId("_MESA_DRV_RENDERER"));
+            if (prop == null) prop = window.getProperty(Atom.getId("_UTIL_LAYER"));
+
+            if (prop != null) {
+                boolean isApp    = window.isApplicationWindow();
+                boolean isMapped = window.attributes.isMapped();
+                int area = window.getWidth() * window.getHeight();
+
+                int score = 0;
+                if (isApp)    score += 100000000;
+                if (isMapped) score += 10000000;
+
+                String rName = prop.toString().toLowerCase();
+                if (rName.contains("vkd3d"))                                   score += 6000000;
+                else if (rName.contains("dxvk"))                               score += 5000000;
+                else if (rName.contains("vulkan") || rName.contains("turnip")) score += 4000000;
+                score += Math.min(area, 3000000);
+
+                if (score > bestScore) {
+                    bestScore    = score;
+                    bestWindow   = window;
+                    bestRenderer = prop.toString();
+                    Property gpuProp = window.getProperty(Atom.getId("_MESA_DRV_GPU_NAME"));
+                    bestGpu = gpuProp != null ? gpuProp.toString() : null;
+                }
+            }
+            for (Window child : window.getChildren()) stack.push(child);
+        }
+
+        if (bestWindow != null) {
+            lastRendererName    = bestRenderer;
+            lastGpuName         = bestGpu;
+            frameRatingWindowId = bestWindow.id;
+        } else {
+            // Fallback untuk Native Rendering: Wine tidak set _MESA_DRV_* property
+            // di mode native/DRI3. Gunakan window aplikasi terbesar yang sedang mapped.
+            Window fallbackWindow = null;
+            int fallbackArea = 0;
+            java.util.Deque<Window> fallbackStack = new java.util.ArrayDeque<>();
+            if (xServer.windowManager.rootWindow != null)
+                fallbackStack.push(xServer.windowManager.rootWindow);
+            while (!fallbackStack.isEmpty()) {
+                Window w = fallbackStack.pop();
+                if (xServer.windowManager.rootWindow != null
+                        && w.id == xServer.windowManager.rootWindow.id) {
+                    for (Window c : w.getChildren()) fallbackStack.push(c);
+                    continue;
+                }
+                if (w.isApplicationWindow() && w.attributes.isMapped()) {
+                    int area = w.getWidth() * w.getHeight();
+                    if (area > fallbackArea) { fallbackArea = area; fallbackWindow = w; }
+                }
+                for (Window c : w.getChildren()) fallbackStack.push(c);
+            }
+            if (fallbackWindow != null) {
+                boolean isNative = xServerView != null
+                        && xServerView.getRenderer() != null
+                        && xServerView.getRenderer().isNativeMode();
+                lastRendererName    = isNative ? "OpenGL" : lastRendererName;
+                lastGpuName         = null;
+                frameRatingWindowId = fallbackWindow.id;
+            } else {
+                lastRendererName    = "OpenGL";
+                lastGpuName         = null;
+                frameRatingWindowId = -1;
+            }
+        }
+
+        final String finalRenderer = lastRendererName;
+        final String finalGpu      = lastGpuName;
+        runOnUiThread(() -> {
+            frameRating.setRenderer(finalRenderer);
+            frameRating.setGpuName(finalGpu);
+            frameRating.setIsNative(xServerView != null
+                    && xServerView.getRenderer() != null
+                    && xServerView.getRenderer().isNativeMode());
+            updateHUDRenderMode();
         });
+    }
+
+    private void updateHUDRenderMode() {
+        // Render mode is always CONTINUOUSLY for best game performance
     }
 
     public String getScreenEffectProfile() {

@@ -210,9 +210,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         // per-shortcut yang dimuat.
 
         // ── Multiplier: 3 CheckBox horizontal (2x / 3x / 4x) ────────────────
-        // Pola visual sama seperti CPUListView — checkbox horizontal yang
-        // saling eksklusif (radio behavior). Dibangun programatik karena
-        // jumlah pilihan tetap (2x, 3x, 4x).
         final LinearLayout llLsfgMultiplier = findViewById(R.id.LLLsfgMultiplier);
         final int[] multiplierValues = {2, 3, 4};
         final String[] multiplierLabels = {"2x", "3x", "4x"};
@@ -228,14 +225,11 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 final int idx = i;
                 cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
                     if (isChecked) {
-                        // Radio behavior: uncheck semua yang lain
                         for (int j = 0; j < cbMultiplier.length; j++) {
                             if (j != idx && cbMultiplier[j] != null)
                                 cbMultiplier[j].setChecked(false);
                         }
                     } else {
-                        // Cegah semua ter-uncheck: kembalikan jika user mencoba
-                        // uncheck yang sedang aktif
                         boolean anyChecked = false;
                         for (CheckBox c : cbMultiplier) {
                             if (c != null && c.isChecked()) { anyChecked = true; break; }
@@ -252,8 +246,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
             }
         }
 
-        // ── Present Mode: Spinner (FIFO / Mailbox / Immediate) ───────────────
-        // Pola identik dengan sControlsProfile dan sStartupSelection.
+        // ── Present Mode: Spinner ───────────────────────────────────────────
         final Spinner sLsfgPresentMode = findViewById(R.id.SLsfgPresentMode);
         {
             String[] presentModeEntries = {"FIFO", "Mailbox", "Immediate"};
@@ -270,8 +263,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
             sLsfgPresentMode.setSelection(presentModeIdx, false);
         }
 
-        // ── Pacing Mode: Spinner (Disabled / None / Sleep / Busy Wait) ───────
-        // "disabled" → hapus LSFGVK_PACING, yang lain → set nilai ke env var.
+        // ── Pacing Mode: Spinner ─────────────────────────────────────────────
         final Spinner sLsfgPacingMode = findViewById(R.id.SLsfgPacingMode);
         {
             String[] pacingModeEntries = {"Disabled", "None", "Sleep", "Busy Wait"};
@@ -289,9 +281,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
             sLsfgPacingMode.setSelection(pacingModeIdx, false);
         }
 
-        // ── Flow Scale: SeekBar 0.25–1.00 ────────────────────────────────────
-        // SeekBar max=75, progress = round((flowScale - 0.25) * 100)
-        // mis. 0.80 → progress 55, 0.25 → 0, 1.00 → 75
+        // ── Flow Scale: SeekBar ───────────────────────────────────────────────
         final SeekBar sbLsfgFlowScale = findViewById(R.id.SBLsfgFlowScale);
         final TextView tvLsfgFlowScale = findViewById(R.id.TVLsfgFlowScale);
         {
@@ -319,8 +309,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         cbLsfgHdrMode.setChecked(shortcut.getExtra("lsfgHdrMode", "0").equals("1"));
 
         // Native Rendering (Direct Rendering+) checkbox.
-        // Looked up by resource name to match the decompiled logic, so the layout
-        // can keep or remove the view without causing a crash.
         int cbNativeRenderingId = context.getResources().getIdentifier(
                 "CBNativeRendering", "id", context.getPackageName());
         cbNativeRendering = cbNativeRenderingId != 0
@@ -330,31 +318,65 @@ public class ShortcutSettingsDialog extends ContentDialog {
             cbNativeRendering.setChecked(shortcut.getExtra("nativeRendering", "0").equals("1"));
         }
 
-        // ── HUD Elements: Spinner multi-checkbox (bitmask) ──────────────────
-        // Spinner ini menampilkan preset kombinasi elemen HUD yang akan ditampilkan.
-        // ── HUD Elements: checkbox per elemen
-        // Bitmask: bit0=FPS, bit1=API/Renderer, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
-        final CheckBox cbHudFps     = findViewById(R.id.CBHudFps);
-        final CheckBox cbHudApi     = findViewById(R.id.CBHudApi);
-        final CheckBox cbHudGpu     = findViewById(R.id.CBHudGpu);
-        final CheckBox cbHudCpu     = findViewById(R.id.CBHudCpu);
-        final CheckBox cbHudRam     = findViewById(R.id.CBHudRam);
-        final CheckBox cbHudBattery = findViewById(R.id.CBHudBattery);
-        final CheckBox cbHudTemp    = findViewById(R.id.CBHudTemp);
-        final CheckBox cbHudGraph   = findViewById(R.id.CBHudGraph);
+        // ── HUD Overlay: TVHudElements → AlertDialog multi-checkbox ──────────
+        // Elemen HUD sesuai FrameRating.toggleElement():
+        //   bit0=FPS, bit1=Renderer/API, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
+        // Disimpan sebagai shortcut extra "hudElements" berformat bitmask integer.
+        // Nilai 0 = HUD tidak tampil sama sekali.
+        final String[] hudElementLabels = {
+            context.getString(R.string.hud_fps),
+            context.getString(R.string.hud_api),
+            context.getString(R.string.hud_gpu),
+            context.getString(R.string.hud_cpu),
+            context.getString(R.string.hud_ram),
+            context.getString(R.string.hud_battery),
+            context.getString(R.string.hud_temp),
+            context.getString(R.string.hud_graph),
+        };
+        final int HUD_ELEMENT_COUNT = hudElementLabels.length;
+
+        // Load bitmask dari shortcut extra; default 255 = semua aktif
+        final boolean[] hudChecked = new boolean[HUD_ELEMENT_COUNT];
         {
-            int mask = 255; // default: semua aktif (bit0-7 = 0xFF)
-            try { mask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
+            int savedMask = 255;
+            try { savedMask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
             catch (Exception ignored) {}
-            if (cbHudFps     != null) cbHudFps.setChecked((mask & (1 << 0)) != 0);
-            if (cbHudApi     != null) cbHudApi.setChecked((mask & (1 << 1)) != 0);
-            if (cbHudGpu     != null) cbHudGpu.setChecked((mask & (1 << 2)) != 0);
-            if (cbHudCpu     != null) cbHudCpu.setChecked((mask & (1 << 3)) != 0);
-            if (cbHudRam     != null) cbHudRam.setChecked((mask & (1 << 4)) != 0);
-            if (cbHudBattery != null) cbHudBattery.setChecked((mask & (1 << 5)) != 0);
-            if (cbHudTemp    != null) cbHudTemp.setChecked((mask & (1 << 6)) != 0);
-            if (cbHudGraph   != null) cbHudGraph.setChecked((mask & (1 << 7)) != 0);
+            for (int i = 0; i < HUD_ELEMENT_COUNT; i++) {
+                hudChecked[i] = (savedMask & (1 << i)) != 0;
+            }
         }
+
+        final TextView tvHudElements = findViewById(R.id.TVHudElements);
+
+        // Helper: update summary text di TextView
+        final Runnable updateHudSummary = () -> {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < HUD_ELEMENT_COUNT; i++) {
+                if (hudChecked[i]) {
+                    if (sb.length() > 0) sb.append(", ");
+                    sb.append(hudElementLabels[i]);
+                }
+            }
+            tvHudElements.setText(sb.length() > 0
+                    ? sb.toString()
+                    : context.getString(R.string.hud_elements_none));
+        };
+        updateHudSummary.run();
+
+        // Klik → buka AlertDialog multi-checkbox
+        tvHudElements.setOnClickListener(v -> {
+            boolean[] dialogChecked = hudChecked.clone();
+            new android.app.AlertDialog.Builder(context)
+                    .setTitle(R.string.hud_overlay)
+                    .setMultiChoiceItems(hudElementLabels, dialogChecked,
+                            (dialog, which, isChecked) -> dialogChecked[which] = isChecked)
+                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                        System.arraycopy(dialogChecked, 0, hudChecked, 0, HUD_ELEMENT_COUNT);
+                        updateHudSummary.run();
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+        });
 
         final Runnable showInputWarning = () -> ContentDialog.alert(context, R.string.enable_xinput_and_dinput_same_time, null);
         final CheckBox cbEnableXInput = findViewById(R.id.CBEnableXInput);
@@ -395,7 +417,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         loadControlsProfileSpinner(sControlsProfile, shortcut.getExtra("controlsProfile", "0"));
 
         final CheckBox cbDisabledXInput = findViewById(R.id.CBDisabledXInput);
-        // Set the initial value based on the shortcut extras
         boolean isXInputDisabled = shortcut.getExtra("disableXinput", "0").equals("1");
         cbDisabledXInput.setChecked(isXInputDisabled);
 
@@ -490,13 +511,10 @@ public class ShortcutSettingsDialog extends ContentDialog {
             String name = etName.getText().toString().trim();
             boolean nameChanged = !shortcut.name.equals(name) && !name.isEmpty();
 
-            // First, handle renaming if the name has changed
             if (nameChanged) {
                 renameShortcut(name);
             }
 
-
-            // Determine if renaming is needed
             boolean renamingSuccess = !nameChanged || new File(shortcut.file.getParent(), name + ".desktop").exists();
 
             if (renamingSuccess) {
@@ -514,7 +532,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 finalInputType |= cbEnableXInput.isChecked() ? WinHandler.FLAG_INPUT_TYPE_XINPUT : 0;
                 finalInputType |= cbEnableDInput.isChecked() ? WinHandler.FLAG_INPUT_TYPE_DINPUT : 0;
                 finalInputType |= SDInputType.getSelectedItemPosition() == 0 ?  WinHandler.FLAG_DINPUT_MAPPER_STANDARD : WinHandler.FLAG_DINPUT_MAPPER_XINPUT;
-
 
                 shortcut.putExtra("inputType", String.valueOf(finalInputType));
 
@@ -576,10 +593,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 shortcut.putExtra("cpuList", cpuList);
 
                 // Save LSFG render params per-shortcut.
-                // Enable/disable global dan DLL path disimpan di SettingsFragment.
-
-                // Multiplier: cari CheckBox yang di-check, ambil nilai 2/3/4
-                int lsfgMultiplier = 2; // default
+                int lsfgMultiplier = 2;
                 for (int i = 0; i < cbMultiplier.length; i++) {
                     if (cbMultiplier[i] != null && cbMultiplier[i].isChecked()) {
                         lsfgMultiplier = multiplierValues[i];
@@ -588,14 +602,12 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 }
                 shortcut.putExtra("lsfgMultiplier", String.valueOf(lsfgMultiplier));
 
-                // Flow scale: progress 0–75 → nilai 0.25–1.00
                 float lsfgFlowScale = 0.25f + (sbLsfgFlowScale.getProgress() / 100f);
                 shortcut.putExtra("lsfgFlowScale", String.format(java.util.Locale.US, "%.2f", lsfgFlowScale));
 
                 shortcut.putExtra("lsfgPerformanceMode", cbLsfgPerformanceMode.isChecked() ? "1" : "0");
                 shortcut.putExtra("lsfgHdrMode", cbLsfgHdrMode.isChecked() ? "1" : "0");
 
-                // Present mode: index 0→"fifo", 1→"mailbox", 2→"immediate"
                 String lsfgPresentMode;
                 switch (sLsfgPresentMode.getSelectedItemPosition()) {
                     case 1:  lsfgPresentMode = "mailbox";   break;
@@ -604,7 +616,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 }
                 shortcut.putExtra("lsfgPresentMode", lsfgPresentMode);
 
-                // Pacing mode: index 0→"disabled", 1→"none", 2→"sleep", 3→"busy_wait"
                 String lsfgPacingMode;
                 switch (sLsfgPacingMode.getSelectedItemPosition()) {
                     case 1:  lsfgPacingMode = "none";      break;
@@ -614,16 +625,13 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 }
                 shortcut.putExtra("lsfgPacingMode", lsfgPacingMode);
 
-                // Simpan konfigurasi elemen HUD sebagai bitmask dari 6 checkbox
+                // Simpan HUD elements bitmask dari array hudChecked
+                // bit0=FPS, bit1=API, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
                 int hudMask = 0;
-                if (cbHudFps     != null && cbHudFps.isChecked())     hudMask |= (1 << 0);
-                if (cbHudApi     != null && cbHudApi.isChecked())     hudMask |= (1 << 1);
-                if (cbHudGpu     != null && cbHudGpu.isChecked())     hudMask |= (1 << 2);
-                if (cbHudCpu     != null && cbHudCpu.isChecked())     hudMask |= (1 << 3);
-                if (cbHudRam     != null && cbHudRam.isChecked())     hudMask |= (1 << 4);
-                if (cbHudBattery != null && cbHudBattery.isChecked()) hudMask |= (1 << 5);
-                if (cbHudTemp    != null && cbHudTemp.isChecked())    hudMask |= (1 << 6);
-                if (cbHudGraph   != null && cbHudGraph.isChecked())   hudMask |= (1 << 7);
+                for (int i = 0; i < HUD_ELEMENT_COUNT; i++) {
+                    if (hudChecked[i]) hudMask |= (1 << i);
+                }
+                // Simpan bitmask; jika 0 (semua dinonaktifkan) tetap simpan "0"
                 shortcut.putExtra("hudElements", String.valueOf(hudMask));
 
                 // Save all changes to the shortcut
@@ -637,10 +645,9 @@ public class ShortcutSettingsDialog extends ContentDialog {
         for (int i = 0; i < rootView.getChildCount(); i++) {
             View child = rootView.getChildAt(i);
             if (child instanceof ViewGroup) {
-                applyFieldSetLabelStylesDynamically((ViewGroup) child, isDarkMode); // Recursive call for nested ViewGroups
+                applyFieldSetLabelStylesDynamically((ViewGroup) child, isDarkMode);
             } else if (child instanceof TextView) {
                 TextView textView = (TextView) child;
-                // Apply the style based on the content of the TextView
                 if (isFieldSetLabel(textView.getText().toString())) {
                     applyFieldSetLabelStyle(textView, isDarkMode);
                 }
@@ -648,7 +655,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         }
     }
 
-    // Method to check if the text content matches any fieldset label
     private boolean isFieldSetLabel(String text) {
         return text.equalsIgnoreCase("DirectX") ||
                 text.equalsIgnoreCase("General") ||
@@ -659,7 +665,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
     }
 
     public void onWinComponentsViewsAdded(boolean isDarkMode) {
-        // Apply styles to all dynamically added TextViews
         ViewGroup llContent = findViewById(R.id.LLContent);
         applyFieldSetLabelStylesDynamically(llContent, isDarkMode);
     }
@@ -696,11 +701,9 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
     private void applyDynamicStyles(View view, boolean isDarkMode) {
 
-        // Update edit text
         EditText etName = view.findViewById(R.id.ETName);
         applyDarkThemeToEditText(etName, isDarkMode);
 
-        // Update Spinners
         Spinner sGraphicsDriver = view.findViewById(R.id.SGraphicsDriver);
         Spinner sDXWrapper = view.findViewById(R.id.SDXWrapper);
         Spinner sAudioDriver = view.findViewById(R.id.SAudioDriver);
@@ -717,7 +720,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         Spinner sLsfgPacingModeStyle  = view.findViewById(R.id.SLsfgPacingMode);
         
 
-        // Set dark or light mode background for spinners
         sGraphicsDriver.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         sDXWrapper.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
         sAudioDriver.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
@@ -743,13 +745,11 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
     private void applyFieldSetLabelStyle(TextView textView, boolean isDarkMode) {
         if (isDarkMode) {
-            // Apply dark mode-specific attributes
-            textView.setTextColor(Color.parseColor("#cccccc")); // Set text color to #cccccc
-            textView.setBackgroundColor(Color.parseColor("#424242")); // Set dark background color
+            textView.setTextColor(Color.parseColor("#cccccc"));
+            textView.setBackgroundColor(Color.parseColor("#424242"));
         } else {
-            // Apply light mode-specific attributes
-            textView.setTextColor(Color.parseColor("#bdbdbd")); // Set text color to #bdbdbd
-            textView.setBackgroundResource(R.color.window_background_color); // Set light background color
+            textView.setTextColor(Color.parseColor("#bdbdbd"));
+            textView.setBackgroundResource(R.color.window_background_color);
         }
     }
 
@@ -774,19 +774,14 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
     private void renameShortcut(String newName) {
         File parent = shortcut.file.getParentFile();
-        File oldDesktopFile = shortcut.file; // Reference to the old file
+        File oldDesktopFile = shortcut.file;
         File newDesktopFile = new File(parent, newName + ".desktop");
 
-        // Rename the desktop file if the new one doesn't exist
         if (!newDesktopFile.isFile() && oldDesktopFile.renameTo(newDesktopFile)) {
-            // Successfully renamed, update the shortcut's file reference
-            updateShortcutFileReference(newDesktopFile); // New helper method
-
-            // As a precaution, delete any remaining old file
+            updateShortcutFileReference(newDesktopFile);
             deleteOldFileIfExists(oldDesktopFile);
         }
 
-        // Rename link file if applicable
         File linkFile = new File(parent, shortcut.name + ".lnk");
         if (linkFile.isFile()) {
             File newLinkFile = new File(parent, newName + ".lnk");
@@ -798,7 +793,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 Icon.createWithBitmap(shortcut.icon), shortcut.getExtra("uuid"));
     }
 
-    // Method to ensure no old file remains
     private void deleteOldFileIfExists(File oldFile) {
         if (oldFile.exists()) {
             if (!oldFile.delete()) {
@@ -807,7 +801,6 @@ public class ShortcutSettingsDialog extends ContentDialog {
         }
     }
 
-    // Update the shortcut's file reference to ensure saveData() writes to the correct file
     private void updateShortcutFileReference(File newFile) {
         try {
             Field fileField = Shortcut.class.getDeclaredField("file");
@@ -823,18 +816,14 @@ public class ShortcutSettingsDialog extends ContentDialog {
         final View view = getContentView();
         final Context context = view.getContext();
 
-        // Retrieve the existing EnvVarsView
         final EnvVarsView envVarsView = view.findViewById(R.id.EnvVarsView);
 
-        // Update the dark mode setting of the existing instance
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         boolean isDarkMode = prefs.getBoolean("dark_mode", false);
         envVarsView.setDarkMode(isDarkMode);
 
-        // Set the environment variables in the existing EnvVarsView
         envVarsView.setEnvVars(new EnvVars(shortcut.getExtra("envVars")));
 
-        // Set the click listener for adding new environment variables
         view.findViewById(R.id.BTAddEnvVar).setOnClickListener((v) ->
                 new AddEnvVarDialog(context, envVarsView).show()
         );

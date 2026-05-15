@@ -666,15 +666,14 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="lsfg_change_dll">Change</string>
     <string name="lsfg_pacing_mode">Pacing Mode</string>
     <string name="hud_elements">HUD Elements</string>
-    <string name="hud_fps">FPS</string>
-    <string name="hud_api">API / Renderer</string>
-    <string name="hud_gpu">GPU Usage</string>
-    <string name="hud_cpu">CPU</string>
-    <string name="hud_battery">Battery</string>
-    <string name="hud_ram">RAM</string>
-    <string name="hud_temp">Temperature</string>
-    <string name="hud_graph">Frame Graph</string>
     <string name="toggle_hud">FPS Monitor</string>
-    <string name="hud_elements_none">None</string>
+    <!-- HUD Overlay element labels -->
+    <string name="hud_element_fps">FPS</string>
+    <string name="hud_element_renderer">Renderer / API</string>
+    <string name="hud_element_gpu">GPU Load</string>
+    <string name="hud_element_cpu_ram">CPU / RAM</string>
+    <string name="hud_element_batt_temp">Battery / Temp</string>
+    <string name="hud_element_graph">Graph</string>
+    <string name="hud_elements_none">None (HUD disabled)</string>
     <string name="hud_overlay">HUD Overlay</string>
 </resources>

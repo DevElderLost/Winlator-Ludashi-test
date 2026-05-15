@@ -78,6 +78,9 @@ public class FrameRating extends LinearLayout implements Runnable {
     private boolean enableBattTemp  = true;  // mengontrol tvBatt + tvTemp sekaligus
     private boolean enableRenderer  = true;
 
+    /** True = sedang menampilkan layout vertikal (frame_rating_vertical.xml). */
+    private boolean isVerticalLayout = false;
+
     // -------------------------------------------------------------------------
     // FPS / frame timing
     // -------------------------------------------------------------------------
@@ -717,9 +720,8 @@ public class FrameRating extends LinearLayout implements Runnable {
                         boolean withinPos  = Math.abs(upX - lastTapX) <= TAP_SLOP_PX * 3
                                           && Math.abs(upY - lastTapY) <= TAP_SLOP_PX * 3;
                         if (withinTime && withinPos) {
-                            // Double-tap terdeteksi — toggle orientasi horizontal/vertikal
-                            boolean nowHorizontal = getOrientation() == LinearLayout.HORIZONTAL;
-                            setLayoutOrientation(!nowHorizontal);
+                            // Double-tap terdeteksi — ganti layout horizontal ↔ vertikal
+                            switchLayout();
                             lastTapTime = 0; // reset agar triple-tap tidak langsung toggle lagi
                         } else {
                             lastTapTime = now;
@@ -828,32 +830,84 @@ public class FrameRating extends LinearLayout implements Runnable {
         updateSeparators(getOrientation() == LinearLayout.HORIZONTAL);
     }
 
-    public void setLayoutOrientation(boolean horizontal) {
-        setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        updateSeparators(horizontal);
+    /**
+     * Ganti antara layout horizontal (frame_rating) dan vertikal (frame_rating_vertical).
+     * Dipanggil saat double-tap terdeteksi. Inflate ulang layout yang sesuai,
+     * lalu re-bind semua view references dan restore state elemen yang aktif.
+     */
+    public void switchLayout() {
+        isVerticalLayout = !isVerticalLayout;
 
-        // Sesuaikan ukuran graphContainer agar proporsional di kedua orientasi.
-        // Horizontal: graph lebar (120dp) x tinggi penuh (MATCH_PARENT)
-        // Vertikal  : graph lebar penuh (MATCH_PARENT) x tinggi tetap (40dp)
-        if (graphContainer != null) {
-            float dp = getContext().getResources().getDisplayMetrics().density;
-            LinearLayout.LayoutParams lp;
-            if (horizontal) {
-                lp = new LinearLayout.LayoutParams(
-                        (int)(120 * dp), LinearLayout.LayoutParams.MATCH_PARENT);
-            } else {
-                lp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, (int)(40 * dp));
-            }
-            graphContainer.setLayoutParams(lp);
+        // Simpan state elemen aktif sebelum inflate ulang
+        final boolean[] elementStates = new boolean[]{
+            enableFps, enableRenderer, enableGpu, enableCpuRam, enableBattTemp, enableGraph
+        };
+
+        // Hapus semua child view yang lama
+        removeAllViews();
+
+        // Inflate layout baru
+        int layoutRes = isVerticalLayout
+                ? R.layout.frame_rating_vertical
+                : R.layout.frame_rating;
+        View view = LayoutInflater.from(context).inflate(layoutRes, this, true);
+
+        // Re-bind semua view references
+        tvRenderer     = view.findViewById(R.id.TVRenderer);
+        tvGpuLoad      = view.findViewById(R.id.TVGpuLoad);
+        tvCpu          = view.findViewById(R.id.TVCpu);
+        tvRam          = view.findViewById(R.id.TVRam);
+        tvBatt         = view.findViewById(R.id.TVBatt);
+        tvTemp         = view.findViewById(R.id.TVTemp);
+        tvFpsBig       = view.findViewById(R.id.TVFpsBig);
+        // graphContainer di-cast ke FrameLayout — field final perlu diupdate via reflection
+        // karena Java tidak izinkan reassign final field. Gunakan wrapper method di graphContainer.
+        FrameLayout newGraphContainer = view.findViewById(R.id.FLGraphContainer);
+        sep0 = view.findViewById(R.id.Sep0);
+        sep1 = view.findViewById(R.id.Sep1);
+        sep2 = view.findViewById(R.id.Sep2);
+        sep3 = view.findViewById(R.id.Sep3);
+        sep4 = view.findViewById(R.id.Sep4);
+        sep5 = view.findViewById(R.id.Sep5);
+
+        // Re-attach graphView ke container baru
+        if (graphView != null) {
+            if (graphView.getParent() != null)
+                ((android.view.ViewGroup) graphView.getParent()).removeView(graphView);
+            if (newGraphContainer != null) newGraphContainer.addView(graphView);
+        }
+        rebindGraphContainer(newGraphContainer);
+
+        // Restore teks awal
+        if (tvRenderer != null) tvRenderer.setText(rendererName);
+        if (tvFpsBig   != null) tvFpsBig.setText(String.format(Locale.US, "%.0f", lastFPS));
+
+        // Restore element visibility
+        for (int i = 0; i < elementStates.length; i++) {
+            toggleElement(i, elementStates[i]);
         }
 
-        // Visual feedback singkat: scale bounce kecil
-        animate().scaleX(0.95f).scaleY(0.95f).setDuration(80).withEndAction(() ->
+        // Set orientation LinearLayout sesuai layout yang baru di-inflate
+        setOrientation(isVerticalLayout ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        updateSeparators(!isVerticalLayout);
+
+        // Visual bounce feedback
+        animate().scaleX(0.92f).scaleY(0.92f).setDuration(80).withEndAction(() ->
                 animate().scaleX(1f).scaleY(1f).setDuration(80).start()
         ).start();
 
         requestLayout();
+    }
+
+    /** Wrapper untuk update graphContainer setelah inflate ulang. */
+    private void rebindGraphContainer(FrameLayout newContainer) {
+        try {
+            java.lang.reflect.Field f = FrameRating.class.getDeclaredField("graphContainer");
+            f.setAccessible(true);
+            f.set(this, newContainer);
+        } catch (Exception e) {
+            android.util.Log.w("FrameRating", "rebindGraphContainer failed: " + e.getMessage());
+        }
     }
 
     public void setHudScale(float scale) {

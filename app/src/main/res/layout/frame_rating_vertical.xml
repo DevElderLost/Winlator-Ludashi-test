@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Layout vertikal HUD Overlay — diaktifkan via double-tap pada FrameRating -->
+<!-- Tampilan: kartu sempit vertikal, FPS besar di atas, stats kecil di bawah -->
+<LinearLayout
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:background="#CC000000"
+    android:padding="6.0dip"
+    android:focusable="false"
+    android:clickable="false"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Renderer / API — paling atas, sama seperti urutan horizontal -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ffffea00"
+        android:id="@+id/TVRenderer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="API"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep0: antara Renderer dan GPU -->
+    <View
+        android:id="@+id/Sep0"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dip"
+        android:background="#22ffffff"
+        android:layout_marginTop="3.0dip"
+        android:layout_marginBottom="3.0dip" />
+
+    <!-- GPU Load -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ffe040fb"
+        android:id="@+id/TVGpuLoad"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="GPU 0%"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep1: antara GPU dan CPU -->
+    <View
+        android:id="@+id/Sep1"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dip"
+        android:background="#22ffffff"
+        android:layout_marginTop="3.0dip"
+        android:layout_marginBottom="3.0dip" />
+
+    <!-- CPU -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ff4fc3f7"
+        android:id="@+id/TVCpu"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CPU 0%"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep2: antara CPU dan RAM (dalam grup CPU/RAM) -->
+    <View
+        android:id="@+id/Sep2"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dip"
+        android:background="#11ffffff"
+        android:layout_marginTop="2.0dip"
+        android:layout_marginBottom="2.0dip" />
+
+    <!-- RAM -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ff80cbc4"
+        android:id="@+id/TVRam"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RAM 0MB"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep3: antara grup CPU/RAM dan grup Batt/Temp -->
+    <View
+        android:id="@+id/Sep3"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dip"
+        android:background="#22ffffff"
+        android:layout_marginTop="3.0dip"
+        android:layout_marginBottom="3.0dip" />
+
+    <!-- Battery -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ffffa726"
+        android:id="@+id/TVBatt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BAT N/A"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep4: antara Battery dan Temp (dalam grup Batt/Temp) -->
+    <View
+        android:id="@+id/Sep4"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dip"
+        android:background="#11ffffff"
+        android:layout_marginTop="2.0dip"
+        android:layout_marginBottom="2.0dip" />
+
+    <!-- Temperature -->
+    <TextView
+        android:textSize="9.0sp"
+        android:textStyle="bold"
+        android:textColor="#ffef5350"
+        android:id="@+id/TVTemp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TMP N/A"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="monospace" />
+
+    <!-- Sep5: antara grup Batt/Temp dan FPS -->
+    <View
+        android:id="@+id/Sep5"
+        android:layout_width="match_parent"
+        android:layout_height="1.0dip"
+        android:background="#44ffffff"
+        android:layout_marginTop="4.0dip"
+        android:layout_marginBottom="4.0dip" />
+
+    <!-- FPS — ukuran sama seperti horizontal (14sp) -->
+    <TextView
+        android:textSize="14.0sp"
+        android:textStyle="bold"
+        android:textColor="#ff76ff03"
+        android:id="@+id/TVFpsBig"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="60"
+        android:gravity="center"
+        android:shadowColor="#ff000000"
+        android:shadowDx="1.0"
+        android:shadowDy="1.0"
+        android:shadowRadius="1.0"
+        android:fontFamily="sans-serif-condensed" />
+
+    <!-- Frametime graph — paling bawah -->
+    <FrameLayout
+        android:id="@+id/FLGraphContainer"
+        android:background="@android:color/transparent"
+        android:layout_width="56.0dip"
+        android:layout_height="36.0dip" />
+
+</LinearLayout>

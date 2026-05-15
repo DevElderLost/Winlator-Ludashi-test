@@ -51,21 +51,21 @@ public class FrameRating extends LinearLayout implements Runnable {
     // -------------------------------------------------------------------------
     // Views
     // -------------------------------------------------------------------------
-    private final TextView tvRenderer;
-    private final TextView tvGpuLoad;
+    private TextView tvRenderer;
+    private TextView tvGpuLoad;
     // TVHardwareStats dan TVWattsTemp tidak lagi digunakan (dihapus dari frame_rating.xml)
-    private final TextView tvCpu;
-    private final TextView tvRam;
-    private final TextView tvBatt;
-    private final TextView tvTemp;
-    private final TextView tvFpsBig;
-    private final FrameLayout graphContainer;
-    private final View sep0;
-    private final View sep1;
-    private final View sep2;
-    private final View sep3;
-    private final View sep4;
-    private final View sep5;
+    private TextView tvCpu;
+    private TextView tvRam;
+    private TextView tvBatt;
+    private TextView tvTemp;
+    private TextView tvFpsBig;
+    private FrameLayout graphContainer;
+    private View sep0;
+    private View sep1;
+    private View sep2;
+    private View sep3;
+    private View sep4;
+    private View sep5;
     private FrametimeGraphView graphView;
 
     // -------------------------------------------------------------------------
@@ -860,8 +860,6 @@ public class FrameRating extends LinearLayout implements Runnable {
         tvBatt         = view.findViewById(R.id.TVBatt);
         tvTemp         = view.findViewById(R.id.TVTemp);
         tvFpsBig       = view.findViewById(R.id.TVFpsBig);
-        // graphContainer di-cast ke FrameLayout — field final perlu diupdate via reflection
-        // karena Java tidak izinkan reassign final field. Gunakan wrapper method di graphContainer.
         FrameLayout newGraphContainer = view.findViewById(R.id.FLGraphContainer);
         sep0 = view.findViewById(R.id.Sep0);
         sep1 = view.findViewById(R.id.Sep1);
@@ -876,7 +874,7 @@ public class FrameRating extends LinearLayout implements Runnable {
                 ((android.view.ViewGroup) graphView.getParent()).removeView(graphView);
             if (newGraphContainer != null) newGraphContainer.addView(graphView);
         }
-        rebindGraphContainer(newGraphContainer);
+        graphContainer = newGraphContainer;
 
         // Restore teks awal
         if (tvRenderer != null) tvRenderer.setText(rendererName);
@@ -897,17 +895,6 @@ public class FrameRating extends LinearLayout implements Runnable {
         ).start();
 
         requestLayout();
-    }
-
-    /** Wrapper untuk update graphContainer setelah inflate ulang. */
-    private void rebindGraphContainer(FrameLayout newContainer) {
-        try {
-            java.lang.reflect.Field f = FrameRating.class.getDeclaredField("graphContainer");
-            f.setAccessible(true);
-            f.set(this, newContainer);
-        } catch (Exception e) {
-            android.util.Log.w("FrameRating", "rebindGraphContainer failed: " + e.getMessage());
-        }
     }
 
     public void setHudScale(float scale) {

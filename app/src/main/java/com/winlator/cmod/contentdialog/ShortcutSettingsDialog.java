@@ -320,26 +320,25 @@ public class ShortcutSettingsDialog extends ContentDialog {
 
         // ── HUD Overlay: TVHudElements → AlertDialog multi-checkbox ──────────
         // Elemen HUD sesuai FrameRating.toggleElement():
-        //   bit0=FPS, bit1=Renderer/API, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
-        // Disimpan sebagai shortcut extra "hudElements" berformat bitmask integer.
-        // Nilai 0 = HUD tidak tampil sama sekali.
+        //   0=FPS, 1=Renderer/API, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph
+        // Disimpan sebagai shortcut extra "hudElements" berformat bitmask integer
+        // mis. 0b000111 = 7 → FPS+Renderer+GPU aktif.
+        // Nilai 0 = HUD tidak tampil sama sekali (disabled).
         final String[] hudElementLabels = {
-            context.getString(R.string.hud_fps),
-            context.getString(R.string.hud_api),
-            context.getString(R.string.hud_gpu),
-            context.getString(R.string.hud_cpu),
-            context.getString(R.string.hud_ram),
-            context.getString(R.string.hud_battery),
-            context.getString(R.string.hud_temp),
-            context.getString(R.string.hud_graph),
+            context.getString(R.string.hud_element_fps),
+            context.getString(R.string.hud_element_renderer),
+            context.getString(R.string.hud_element_gpu),
+            context.getString(R.string.hud_element_cpu_ram),
+            context.getString(R.string.hud_element_batt_temp),
+            context.getString(R.string.hud_element_graph),
         };
         final int HUD_ELEMENT_COUNT = hudElementLabels.length;
 
-        // Load bitmask dari shortcut extra; default 255 = semua aktif
+        // Load bitmask dari shortcut extra; default 0 = HUD tidak tampil
         final boolean[] hudChecked = new boolean[HUD_ELEMENT_COUNT];
         {
-            int savedMask = 255;
-            try { savedMask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
+            int savedMask = 0;
+            try { savedMask = Integer.parseInt(shortcut.getExtra("hudElements", "0")); }
             catch (Exception ignored) {}
             for (int i = 0; i < HUD_ELEMENT_COUNT; i++) {
                 hudChecked[i] = (savedMask & (1 << i)) != 0;
@@ -626,13 +625,13 @@ public class ShortcutSettingsDialog extends ContentDialog {
                 shortcut.putExtra("lsfgPacingMode", lsfgPacingMode);
 
                 // Simpan HUD elements bitmask dari array hudChecked
-                // bit0=FPS, bit1=API, bit2=GPU, bit3=CPU, bit4=RAM, bit5=Battery, bit6=Temp, bit7=Graph
+                // 0=FPS, 1=Renderer/API, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph
                 int hudMask = 0;
                 for (int i = 0; i < HUD_ELEMENT_COUNT; i++) {
                     if (hudChecked[i]) hudMask |= (1 << i);
                 }
-                // Simpan bitmask; jika 0 (semua dinonaktifkan) tetap simpan "0"
-                shortcut.putExtra("hudElements", String.valueOf(hudMask));
+                // Simpan bitmask; hapus key jika 0 (HUD dinonaktifkan)
+                shortcut.putExtra("hudElements", hudMask > 0 ? String.valueOf(hudMask) : null);
 
                 // Save all changes to the shortcut
                 shortcut.saveData();

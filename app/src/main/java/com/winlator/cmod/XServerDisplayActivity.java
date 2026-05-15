@@ -399,12 +399,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         Menu menu = navigationView.getMenu();
         menu.findItem(R.id.main_menu_logs).setVisible(enableLogs);
         if (XrActivity.isEnabled(this)) menu.findItem(R.id.main_menu_magnifier).setVisible(false);
-        // Simpan reference hudMenuItem; sembunyikan jika container tidak mengaktifkan HUD
+        // Simpan reference hudMenuItem; visibility akan diupdate di setupUI() setelah
+        // shortcut dan hudElements mask diketahui
         hudMenuItem = menu.findItem(R.id.main_menu_toggle_hud);
-        if (hudMenuItem != null) {
-            boolean hudEnabled = container != null && container.isShowFPS();
-            hudMenuItem.setVisible(hudEnabled);
-        }
+        // Sembunyikan dulu; akan ditampilkan di setupUI() jika hudMask > 0
+        hudMenuItem.setVisible(true);
         navigationView.setNavigationItemSelectedListener(this);
         navigationView.setPointerIcon(PointerIcon.getSystemIcon(this, PointerIcon.TYPE_ARROW));
         navigationView.setOnFocusChangeListener((v, hasFocus) -> navigationFocused = hasFocus);
@@ -1449,13 +1448,28 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         if (container != null && container.isShowFPS()) {
-            frameRating = new FrameRating(this, graphicsDriverConfig);
-            frameRating.setVisibility(View.GONE);
-            rootView.addView(frameRating);
-            // Hubungkan ke renderer agar setIsNative() dipanggil setiap frame
-            renderer.setFrameRating(frameRating);
-            // Terapkan konfigurasi elemen HUD dari shortcut langsung saat startup
-            applyHudElementsFromShortcut();
+            // Baca bitmask hudElements dari shortcut. Default 255 = semua aktif.
+            // Jika mask = 0, user menonaktifkan semua elemen → HUD tidak dibuat sama sekali.
+            int hudMask = 255;
+            if (shortcut != null) {
+                try { hudMask = Integer.parseInt(shortcut.getExtra("hudElements", "255")); }
+                catch (Exception ignored) {}
+            }
+            if (hudMask > 0) {
+                frameRating = new FrameRating(this, graphicsDriverConfig);
+                frameRating.setVisibility(View.GONE);
+                rootView.addView(frameRating);
+                // Hubungkan ke renderer agar setIsNative() dipanggil setiap frame
+                renderer.setFrameRating(frameRating);
+                // Terapkan elemen HUD dari bitmask shortcut
+                for (int i = 0; i < 8; i++) {
+                    frameRating.toggleElement(i, (hudMask & (1 << i)) != 0);
+                }
+            }
+            // Update visibility menu item: tampilkan hanya jika HUD aktif
+            if (hudMenuItem != null) {
+                hudMenuItem.setVisible(hudMask > 0);
+            }
         }
 
         // Get the fullscreen stretched extra from the shortcut if available
@@ -2194,33 +2208,6 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 frameRating.reset();
                 if (hudMenuItem != null) hudMenuItem.setIcon(R.drawable.icon_fps_monitor);
             });
-        }
-    }
-
-    /**
-     * Membaca konfigurasi elemen HUD dari shortcut extra "hudElements" (bitmask int)
-     * dan menerapkannya ke FrameRating tanpa perlu menekan menu.
-     *
-     * Bit mapping (sesuai FrameRating.toggleElement):
-     *   bit 0 = FPS         (element 0)
-     *   bit 1 = Renderer    (element 1)
-     *   bit 2 = GPU         (element 2)
-     *   bit 3 = CPU         (element 3)
-     *   bit 4 = RAM         (element 4)
-     *   bit 5 = Battery     (element 5)
-     *   bit 6 = Temp        (element 6)
-     *   bit 7 = Graph       (element 7)
-     * Default: semua aktif → 0b11111111 = 255
-     */
-    private void applyHudElementsFromShortcut() {
-        if (frameRating == null) return;
-        int mask = 255; // default: semua elemen aktif
-        if (shortcut != null) {
-            String raw = shortcut.getExtra("hudElements", "255");
-            try { mask = Integer.parseInt(raw); } catch (Exception ignored) {}
-        }
-        for (int i = 0; i < 8; i++) {
-            frameRating.toggleElement(i, (mask & (1 << i)) != 0);
         }
     }
 

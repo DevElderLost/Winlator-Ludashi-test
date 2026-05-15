@@ -605,7 +605,27 @@
                         android:layout_height="wrap_content"
                         android:text="@string/native_rendering" />
 
-                    <!-- HUD Overlay: Spinner-like Button yang membuka AlertDialog multi-checkbox -->
+                </LinearLayout>
+
+                <TextView
+                    style="@style/FieldSetLabel"
+                    android:background="#ffffff"
+                    android:text="@string/system" />
+            </FrameLayout>
+
+            <!-- ══ HUD Overlay ══ -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout style="@style/FieldSet">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/hud_elements_label" />
+
                     <TextView
                         android:id="@+id/TVHudElements"
                         style="@style/ComboBox"
@@ -619,8 +639,9 @@
                 <TextView
                     style="@style/FieldSetLabel"
                     android:background="#ffffff"
-                    android:text="@string/system" />
+                    android:text="@string/hud_overlay" />
             </FrameLayout>
+            <!-- ══ end HUD Overlay ══ -->
 
             <FrameLayout
                 android:layout_width="match_parent"

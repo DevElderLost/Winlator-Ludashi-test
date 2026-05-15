@@ -1032,19 +1032,22 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case R.id.main_menu_toggle_hud:
                 if (frameRating == null) {
+                    // Lazy-init: buat FrameRating hanya saat pertama toggle
                     frameRating = new FrameRating(this, graphicsDriverConfig);
                     frameRating.setRenderer(lastRendererName);
                     if (lastGpuName != null) frameRating.setGpuName(lastGpuName);
                     frameRating.setVisibility(View.GONE);
+                    // Terapkan bitmask elemen dari shortcut — HARUS sebelum applyHUDStyleSettings
+                    int mask = 0;
                     if (shortcut != null) {
-                        int mask = 0;
                         try { mask = Integer.parseInt(shortcut.getExtra("hudElements", "0")); }
                         catch (Exception ignored) {}
-                        for (int i = 0; i < 6; i++) {
-                            frameRating.toggleElement(i, (mask & (1 << i)) != 0);
-                        }
                     }
-                    applyHUDSettings();
+                    for (int i = 0; i < 6; i++) {
+                        frameRating.toggleElement(i, (mask & (1 << i)) != 0);
+                    }
+                    // Terapkan hanya alpha/scale — tidak override element visibility
+                    applyHUDStyleSettings();
                     FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
                     rootView.addView(frameRating);
                 }
@@ -1053,7 +1056,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 frameRating.setVisibility(becomingVisible ? View.VISIBLE : View.GONE);
                 if (becomingVisible) {
                     syncFrameRatingWithExistingWindows();
-                    applyHUDSettings();
+                    // Hanya terapkan alpha/scale saat toggle visible — elemen sudah di-set saat init
+                    applyHUDStyleSettings();
                 }
                 updateHUDRenderMode();
                 effectiveShowFPS = becomingVisible;
@@ -1490,12 +1494,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (lastGpuName != null) frameRating.setGpuName(lastGpuName);
                 frameRating.setIsNative(renderer != null && renderer.isNativeMode());
                 frameRating.setVisibility(View.VISIBLE);
+                // Terapkan elemen dari bitmask shortcut
                 for (int i = 0; i < 6; i++) {
                     frameRating.toggleElement(i, (hudMask & (1 << i)) != 0);
                 }
-                applyHUDSettings();
+                // Terapkan hanya alpha/scale — jangan override elemen yang baru di-set
+                applyHUDStyleSettings();
                 updateHUDRenderMode();
                 rootView.addView(frameRating);
+                // Sync ke X window agar frameRatingWindowId terisi dan update() berjalan
+                // Dipanggil post agar layout sudah selesai inflate
+                rootView.post(this::syncFrameRatingWithExistingWindows);
             }
         }
 
@@ -2275,14 +2284,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private void applyHUDSettings() {
         if (frameRating == null) return;
+        applyHUDStyleSettings();
+        for (int i = 0; i < hudElements.length; i++) {
+            frameRating.toggleElement(i, hudElements[i]);
+        }
+    }
+
+    /** Hanya terapkan alpha dan scale — tidak mengubah element visibility. */
+    private void applyHUDStyleSettings() {
+        if (frameRating == null) return;
         frameRating.setHudAlpha(hudTransparency);
         frameRating.setHudScale(hudScale);
         frameRating.setIsNative(xServerView != null
                 && xServerView.getRenderer() != null
                 && xServerView.getRenderer().isNativeMode());
-        for (int i = 0; i < hudElements.length; i++) {
-            frameRating.toggleElement(i, hudElements[i]);
-        }
     }
 
     private void syncFrameRatingWithExistingWindows() {

@@ -675,4 +675,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="hud_temp">Temperature</string>
     <string name="hud_graph">Frame Graph</string>
     <string name="toggle_hud">FPS Monitor</string>
+    <string name="hud_elements_none">None</string>
 </resources>

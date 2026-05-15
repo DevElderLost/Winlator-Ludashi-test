@@ -69,15 +69,13 @@ public class FrameRating extends LinearLayout implements Runnable {
     private FrametimeGraphView graphView;
 
     // -------------------------------------------------------------------------
-    // Enable flags
+    // Enable flags (6 elemen: 0=FPS, 1=Renderer, 2=GPU, 3=CPU/RAM, 4=Battery/Temp, 5=Graph)
     // -------------------------------------------------------------------------
     private boolean enableFps       = true;
     private boolean enableGraph     = true;
     private boolean enableGpu       = true;
-    private boolean enableCpu     = true;
-    private boolean enableRam     = true;
-    private boolean enableBatt    = true;
-    private boolean enableTemp    = true;
+    private boolean enableCpuRam    = true;  // mengontrol tvCpu + tvRam sekaligus
+    private boolean enableBattTemp  = true;  // mengontrol tvBatt + tvTemp sekaligus
     private boolean enableRenderer  = true;
 
     // -------------------------------------------------------------------------
@@ -243,32 +241,31 @@ public class FrameRating extends LinearLayout implements Runnable {
             tvGpuLoad.setText(sb);
         }
 
-        // CPU + RAM
-        // CPU
+        // CPU + RAM (dikontrol bersama oleh enableCpuRam)
         if (tvCpu != null) {
-            if (enableCpu) {
+            if (enableCpuRam) {
                 SpannableStringBuilder sb = new SpannableStringBuilder();
                 append(sb, "CPU ", C_CPU);
                 append(sb, cpuPercent >= 0 ? cpuPercent + "%" : "N/A", C_VALUE);
                 tvCpu.setText(sb);
             }
-            tvCpu.setVisibility(enableCpu ? View.VISIBLE : View.GONE);
+            tvCpu.setVisibility(enableCpuRam ? View.VISIBLE : View.GONE);
         }
 
         // RAM
         if (tvRam != null) {
-            if (enableRam) {
+            if (enableCpuRam) {
                 SpannableStringBuilder sb = new SpannableStringBuilder();
                 append(sb, "RAM ", C_RAM);
                 append(sb, ramText, C_VALUE);
                 tvRam.setText(sb);
             }
-            tvRam.setVisibility(enableRam ? View.VISIBLE : View.GONE);
+            tvRam.setVisibility(enableCpuRam ? View.VISIBLE : View.GONE);
         }
 
-        // Battery
+        // Battery (dikontrol bersama oleh enableBattTemp)
         if (tvBatt != null) {
-            if (enableBatt) {
+            if (enableBattTemp) {
                 SpannableStringBuilder sb = new SpannableStringBuilder();
                 append(sb, "BAT ", C_BAT);
                 String wattsStr = batteryWatts >= 0.0f
@@ -277,18 +274,18 @@ public class FrameRating extends LinearLayout implements Runnable {
                 append(sb, wattsStr, C_VALUE);
                 tvBatt.setText(sb);
             }
-            tvBatt.setVisibility(enableBatt ? View.VISIBLE : View.GONE);
+            tvBatt.setVisibility(enableBattTemp ? View.VISIBLE : View.GONE);
         }
 
         // Temperature
         if (tvTemp != null) {
-            if (enableTemp) {
+            if (enableBattTemp) {
                 SpannableStringBuilder sb = new SpannableStringBuilder();
                 append(sb, "TMP ", C_TEMP);
                 append(sb, cpuTemp >= 0 ? cpuTemp + "°C" : na, C_VALUE);
                 tvTemp.setText(sb);
             }
-            tvTemp.setVisibility(enableTemp ? View.VISIBLE : View.GONE);
+            tvTemp.setVisibility(enableBattTemp ? View.VISIBLE : View.GONE);
         }
 
         // FPS
@@ -397,7 +394,7 @@ public class FrameRating extends LinearLayout implements Runnable {
         }
 
         // --- CPU % + RAM ---
-        if (enableCpu || enableRam) {
+        if (enableCpuRam) {
             if (canReadCpu) {
                 try {
                     short[] clocks = CPUStatus.getCurrentClockSpeeds();
@@ -436,7 +433,7 @@ public class FrameRating extends LinearLayout implements Runnable {
         }
 
         // --- Battery watts + temperature ---
-        if ((enableBatt || enableTemp) && canReadBatt) {
+        if (enableBattTemp && canReadBatt) {
             try {
                 float amps = getBatteryCurrentAmps();
                 if (amps < 0.0f) throw new Exception("No battery access");
@@ -629,25 +626,29 @@ public class FrameRating extends LinearLayout implements Runnable {
 
     private void updateSeparators(boolean horizontal) {
         if (horizontal) {
-            boolean vFps  = tvFpsBig  != null && tvFpsBig.getVisibility()  == View.VISIBLE;
-            boolean vRen  = tvRenderer != null && tvRenderer.getVisibility() == View.VISIBLE;
-            boolean vGpu  = tvGpuLoad  != null && tvGpuLoad.getVisibility()  == View.VISIBLE;
-            boolean vCpu  = tvCpu      != null && tvCpu.getVisibility()       == View.VISIBLE;
-            boolean vRam  = tvRam      != null && tvRam.getVisibility()       == View.VISIBLE;
-            boolean vBatt = tvBatt     != null && tvBatt.getVisibility()      == View.VISIBLE;
-            boolean vTemp = tvTemp     != null && tvTemp.getVisibility()      == View.VISIBLE;
-            // sep0: Renderer | GPU | CPU | RAM | BAT | TMP | FPS
-            // sep1: GPU | CPU | ...
-            // sep2: CPU | RAM | ...
-            // sep3: RAM | BAT | ...
-            // sep4: BAT | TMP | ...
-            // sep5: TMP | FPS | Graph
+            boolean vFps      = tvFpsBig  != null && tvFpsBig.getVisibility()  == View.VISIBLE;
+            boolean vRen      = tvRenderer != null && tvRenderer.getVisibility() == View.VISIBLE;
+            boolean vGpu      = tvGpuLoad  != null && tvGpuLoad.getVisibility()  == View.VISIBLE;
+            // CPU dan RAM selalu bersamaan (enableCpuRam)
+            boolean vCpu      = tvCpu != null && tvCpu.getVisibility() == View.VISIBLE;
+            boolean vRam      = tvRam != null && tvRam.getVisibility() == View.VISIBLE;
+            // Battery dan Temp selalu bersamaan (enableBattTemp)
+            boolean vBatt     = tvBatt != null && tvBatt.getVisibility() == View.VISIBLE;
+            boolean vTemp     = tvTemp != null && tvTemp.getVisibility() == View.VISIBLE;
+
+            // Urutan tampil: Renderer | GPU | CPU | RAM | BAT | TMP | FPS | Graph
+            // sep0: antara Renderer dan elemen berikutnya
             setVisibility(sep0, vRen  && (vGpu || vCpu || vRam || vBatt || vTemp || vFps));
+            // sep1: antara GPU dan elemen berikutnya
             setVisibility(sep1, vGpu  && (vCpu || vRam || vBatt || vTemp || vFps));
-            setVisibility(sep2, vCpu  && (vRam || vBatt || vTemp || vFps));
+            // sep2: antara CPU dan RAM (selalu bersamaan, jadi selalu tampil jika keduanya visible)
+            setVisibility(sep2, vCpu  && vRam);
+            // sep3: antara RAM dan Battery/Temp
             setVisibility(sep3, vRam  && (vBatt || vTemp || vFps));
-            setVisibility(sep4, vBatt && (vTemp || vFps));
-            setVisibility(sep5, vTemp && vFps);
+            // sep4: antara Battery dan Temp (selalu bersamaan, jadi selalu tampil jika keduanya visible)
+            setVisibility(sep4, vBatt && vTemp);
+            // sep5: antara Temp dan FPS
+            setVisibility(sep5, (vBatt || vTemp) && vFps);
         } else {
             // Vertical layout — sembunyikan semua separator
             setVisibility(sep0, false);
@@ -806,22 +807,18 @@ public class FrameRating extends LinearLayout implements Runnable {
                 if (tvGpuLoad != null) tvGpuLoad.setVisibility(v);
                 break;
             case 3:
-                enableCpu = visible;
+                // CPU dan RAM dikontrol bersama
+                enableCpuRam = visible;
                 if (tvCpu != null) tvCpu.setVisibility(v);
-                break;
-            case 4:
-                enableRam = visible;
                 if (tvRam != null) tvRam.setVisibility(v);
                 break;
-            case 5:
-                enableBatt = visible;
+            case 4:
+                // Battery dan Temp dikontrol bersama
+                enableBattTemp = visible;
                 if (tvBatt != null) tvBatt.setVisibility(v);
-                break;
-            case 6:
-                enableTemp = visible;
                 if (tvTemp != null) tvTemp.setVisibility(v);
                 break;
-            case 7:
+            case 5:
                 enableGraph = visible;
                 if (graphContainer != null) graphContainer.setVisibility(v);
                 break;

@@ -605,68 +605,14 @@
                         android:layout_height="wrap_content"
                         android:text="@string/native_rendering" />
 
-                    <!-- HUD Elements: checkbox per elemen -->
+                    <!-- HUD Overlay: Spinner-like Button yang membuka AlertDialog multi-checkbox -->
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/hud_elements" />
-
-                    <LinearLayout
+                        android:id="@+id/TVHudElements"
+                        style="@style/ComboBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:paddingStart="4dp">
-
-                        <CheckBox
-                            android:id="@+id/CBHudFps"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_fps" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudApi"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_api" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudGpu"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_gpu" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudCpu"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_cpu" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudRam"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_ram" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudBattery"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_battery" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudTemp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_temp" />
-
-                        <CheckBox
-                            android:id="@+id/CBHudGraph"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/hud_graph" />
-
-                    </LinearLayout>
+                        android:gravity="center_vertical"
+                        android:text="@string/hud_elements_none" />
 
                 </LinearLayout>
 

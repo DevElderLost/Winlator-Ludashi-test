@@ -767,39 +767,56 @@ public class XServerDisplayActivity extends AppCompatActivity
     private void exit() {
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         preloaderDialog.showOnUiThread(R.string.shutdown);
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                savePlaytimeData(); // Save on destroy
-                handler.removeCallbacks(savePlaytimeRunnable);
-                if (midiHandler != null)
-                    midiHandler.stop();
-                // Unregister sensor listener to avoid memory leaks
-                if (environment != null)
-                    environment.stopEnvironmentComponents();
-                if (preloaderDialog != null && preloaderDialog.isShowing())
-                    preloaderDialog.closeOnUiThread();
-                if (winHandler != null)
-                    winHandler.stop();
-                if (wineRequestHandler != null)
-                    wineRequestHandler.stop();
-                /* Gracefully terminate all running wine processes */
-                ProcessHelper.terminateAllWineProcesses();
-                /*
-                 * Wait until all processes have gracefully terminated, forcefully killing them
-                 * only after a certain amount of time
-                 */
-                long start = System.currentTimeMillis();
-                while (!ProcessHelper.listRunningWineProcesses().isEmpty()) {
-                    long elapsed = System.currentTimeMillis() - start;
-                    if (elapsed >= 1500) {
-                        break;
+
+        // Immediately tear down the native renderer and hide scanout surfaces.
+        // forceCleanup() explicitly hides the hardware-composed SurfaceControl
+        // layers via a transaction so the game image disappears instantly,
+        // then destroys the native Vulkan handle and releases all surfaces.
+        if (xServerView != null) {
+            xServerView.getRenderer().forceCleanup();
+            xServerView.setVisibility(View.GONE);
+        }
+
+        savePlaytimeData();
+        handler.removeCallbacks(savePlaytimeRunnable);
+
+        if (midiHandler != null)
+            midiHandler.stop();
+        // Unregister sensor listener to avoid memory leaks
+        if (environment != null)
+            environment.stopEnvironmentComponents();
+        if (winHandler != null)
+            winHandler.stop();
+        if (wineRequestHandler != null)
+            wineRequestHandler.stop();
+
+        // Run process termination on a background thread to avoid blocking the UI
+        Executors.newSingleThreadExecutor().execute(() -> {
+            /* Gracefully terminate all running wine processes */
+            ProcessHelper.terminateAllWineProcesses();
+            /*
+             * Wait until all processes have gracefully terminated, forcefully killing them
+             * only after a certain amount of time
+             */
+            long start = System.currentTimeMillis();
+            while (!ProcessHelper.listRunningWineProcesses().isEmpty()) {
+                long elapsed = System.currentTimeMillis() - start;
+                if (elapsed >= 1500) {
+                    // Force kill any remaining processes that didn't terminate gracefully
+                    for (String pid : ProcessHelper.listRunningWineProcesses()) {
+                        ProcessHelper.killProcess(Integer.parseInt(pid));
                     }
+                    break;
                 }
-                preloaderDialog.closeOnUiThread();
-                AppUtils.restartApplication(getApplicationContext());
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException ignored) {
+                    break;
+                }
             }
-        }, 1000);
+            preloaderDialog.closeOnUiThread();
+            AppUtils.restartApplication(getApplicationContext());
+        });
     }
 
     @Override

@@ -236,6 +236,21 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
 
                 if (element.getType() == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
                     element.setSelected(elementJSONObject.optBoolean("selected", false));
+                    if (elementJSONObject.has("touchscreenGestures")) {
+                        JSONObject gesturesObject = elementJSONObject.optJSONObject("touchscreenGestures");
+                        if (gesturesObject != null) {
+                            for (ControlElement.TouchscreenGesture gesture : ControlElement.TouchscreenGesture.values()) {
+                                JSONArray gestureArray = gesturesObject.optJSONArray(gesture.name());
+                                if (gestureArray != null) {
+                                    element.setTouchscreenGestureBindingCount(gesture, gestureArray.length());
+                                    for (int k = 0; k < gestureArray.length(); k++) {
+                                        element.setTouchscreenGestureBindingAt(gesture, k,
+                                                Binding.fromString(gestureArray.getString(k)));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // MULTIPLE_BUTTON: load data sub-button

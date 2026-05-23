@@ -605,8 +605,8 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             return;
         }
 
-        // Hanya BUTTON yang boleh pakai tombol Add dan multiple binding
-        if (type == ControlElement.Type.BUTTON || type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
+        // BUTTON boleh pakai tombol Add dan multiple binding.
+        if (type == ControlElement.Type.BUTTON) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.VISIBLE);
 
@@ -630,7 +630,11 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             for (int i = 0; i < element.getBindingCount(); i++) {
                 addNewBindingRow(element, container, i);
             }
-        } 
+        } else if (type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
+            ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
+            btnAddBinding.setVisibility(View.GONE);
+            addTouchscreenGestureSections(element, container);
+        }
         else if (type == ControlElement.Type.D_PAD || 
                  type == ControlElement.Type.STICK || 
                  type == ControlElement.Type.TRACKPAD ||
@@ -712,6 +716,146 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             btnRemove.setVisibility(View.VISIBLE);
             btnRemove.setOnClickListener(v -> {
                 element.removeBinding(index);
+                profile.save();
+                container.removeView(row);
+                inputControlsView.invalidate();
+            });
+        } else {
+            btnRemove.setVisibility(View.GONE);
+        }
+
+        container.addView(row);
+    }
+
+    private void addTouchscreenGestureSections(final ControlElement element, final LinearLayout container) {
+        for (ControlElement.TouchscreenGesture gesture : ControlElement.TouchscreenGesture.values()) {
+            addTouchscreenGestureGroup(element, container, gesture);
+        }
+    }
+
+    private void addTouchscreenGestureGroup(final ControlElement element, final LinearLayout container, final ControlElement.TouchscreenGesture gesture) {
+        Context context = this;
+
+        LinearLayout groupLayout = new LinearLayout(context);
+        groupLayout.setOrientation(LinearLayout.VERTICAL);
+        groupLayout.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        groupLayout.setPadding(0, (int) UnitUtils.dpToPx(8), 0, 0);
+
+        LinearLayout header = new LinearLayout(context);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView title = new TextView(context);
+        title.setText(gesture.getLabel());
+        title.setTextColor(ContextCompat.getColor(context, isDarkMode ? R.color.white : R.color.colorPrimaryDark));
+        title.setTextSize(14f);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        title.setLayoutParams(titleParams);
+        header.addView(title);
+
+        ImageButton btnAddGesture = new ImageButton(context);
+        btnAddGesture.setImageResource(R.drawable.icon_add_24dp);
+        btnAddGesture.setBackgroundResource(android.R.color.transparent);
+        btnAddGesture.setAdjustViewBounds(true);
+        header.addView(btnAddGesture);
+
+        groupLayout.addView(header);
+
+        LinearLayout gestureBindingsContainer = new LinearLayout(context);
+        gestureBindingsContainer.setOrientation(LinearLayout.VERTICAL);
+        gestureBindingsContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        groupLayout.addView(gestureBindingsContainer);
+
+        List<Binding> gestureBindings = element.getTouchscreenGestureBindings(gesture);
+        if (gestureBindings.isEmpty()) {
+            element.addTouchscreenGestureBinding(gesture, Binding.NONE);
+            profile.save();
+            gestureBindings = element.getTouchscreenGestureBindings(gesture);
+        }
+        for (int i = 0; i < gestureBindings.size(); i++) {
+            addTouchscreenGestureBindingRow(element, gestureBindingsContainer, gesture, i);
+        }
+
+        btnAddGesture.setOnClickListener(v -> {
+            if (element.getTouchscreenGestureBindingCount(gesture) >= 8) {
+                AppUtils.showToast(this, "Maksimal 8 binding diperbolehkan");
+                return;
+            }
+            element.addTouchscreenGestureBinding(gesture, Binding.NONE);
+            profile.save();
+            addTouchscreenGestureBindingRow(element, gestureBindingsContainer, gesture, element.getTouchscreenGestureBindingCount(gesture) - 1);
+            inputControlsView.invalidate();
+        });
+
+        container.addView(groupLayout);
+    }
+
+    private void addTouchscreenGestureBindingRow(final ControlElement element, final LinearLayout container,
+                                                final ControlElement.TouchscreenGesture gesture, final int index) {
+        View row = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
+
+        TextView title = row.findViewById(R.id.TVTitle);
+        title.setVisibility(View.GONE);
+
+        Spinner sBindingType = row.findViewById(R.id.SBindingType);
+        Spinner sBinding = row.findViewById(R.id.SBinding);
+        ImageButton btnRemove = row.findViewById(R.id.btnRemoveBinding);
+
+        Runnable updateBindingSpinner = () -> {
+            String[] bindingEntries = null;
+            switch (sBindingType.getSelectedItemPosition()) {
+                case 0: bindingEntries = Binding.keyboardBindingLabels(); break;
+                case 1: bindingEntries = Binding.mouseBindingLabels(); break;
+                case 2: bindingEntries = Binding.gamepadBindingLabels(); break;
+            }
+            if (bindingEntries != null) {
+                sBinding.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bindingEntries));
+                AppUtils.setSpinnerSelectionFromValue(sBinding, element.getTouchscreenGestureBindingAt(gesture, index).toString());
+            }
+        };
+
+        sBindingType.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                updateBindingSpinner.run();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        Binding current = element.getTouchscreenGestureBindingAt(gesture, index);
+        if (current.isKeyboard()) sBindingType.setSelection(0, false);
+        else if (current.isMouse()) sBindingType.setSelection(1, false);
+        else if (current.isGamepad()) sBindingType.setSelection(2, false);
+
+        sBinding.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                Binding newBinding = Binding.NONE;
+                switch (sBindingType.getSelectedItemPosition()) {
+                    case 0: newBinding = Binding.keyboardBindingValues()[position]; break;
+                    case 1: newBinding = Binding.mouseBindingValues()[position]; break;
+                    case 2: newBinding = Binding.gamepadBindingValues()[position]; break;
+                }
+                element.setTouchscreenGestureBindingAt(gesture, index, newBinding);
+                profile.save();
+                inputControlsView.invalidate();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        updateBindingSpinner.run();
+
+        if (index >= 1) {
+            btnRemove.setVisibility(View.VISIBLE);
+            btnRemove.setOnClickListener(v -> {
+                element.removeTouchscreenGestureBinding(gesture, index);
                 profile.save();
                 container.removeView(row);
                 inputControlsView.invalidate();

@@ -550,7 +550,17 @@ public class TouchpadView extends View {
         float deltaAngle = normalizeAngle(currentAngle - gesturePrevAngle);
         float deltaCentroid = (float) Math.hypot(centroidX - gesturePrevCentroidX, centroidY - gesturePrevCentroidY);
 
-        TwoFingerGestureType gesture = determineTwoFingerGesture(deltaDistance, deltaAngle, deltaCentroid);
+        if (twoFingerGestureLeftHeld) {
+            float[] prevTrans = XForm.transformPoint(xform, gesturePrevCentroidX, gesturePrevCentroidY);
+            float[] currTrans = XForm.transformPoint(xform, centroidX, centroidY);
+            if (xServer.isRelativeMouseMovement()) {
+                xServer.injectPointerMoveDelta((int) (currTrans[0] - prevTrans[0]), (int) (currTrans[1] - prevTrans[1]));
+            } else {
+                xServer.injectPointerMove((int) currTrans[0], (int) currTrans[1]);
+            }
+        }
+
+        TwoFingerGestureType gesture = determineTwoFingerGesture(activeTwoFingerGesture, deltaDistance, deltaAngle, deltaCentroid);
         if (gesture != activeTwoFingerGesture) {
             if (activeTwoFingerGesture != null) {
                 if ((activeTwoFingerGesture == TwoFingerGestureType.ROTATE || activeTwoFingerGesture == TwoFingerGestureType.PAN) && twoFingerGestureLeftHeld) {
@@ -578,19 +588,36 @@ public class TouchpadView extends View {
         gesturePrevCentroidY = centroidY;
     }
 
-    private TwoFingerGestureType determineTwoFingerGesture(float deltaDistance, float deltaAngle, float deltaCentroid) {
+    private TwoFingerGestureType determineTwoFingerGesture(TwoFingerGestureType currentGesture, float deltaDistance, float deltaAngle, float deltaCentroid) {
         float absDistance = Math.abs(deltaDistance);
         float absAngle = Math.abs(deltaAngle);
 
-        if (absDistance > 10f && absDistance > absAngle * 4 && absDistance > deltaCentroid) {
+        if (absDistance > 10f && absDistance > absAngle * 4 && absDistance > deltaCentroid * 1.5f) {
             return deltaDistance > 0 ? TwoFingerGestureType.ZOOM_IN : TwoFingerGestureType.ZOOM_OUT;
         }
-        if (absAngle > 5f && absAngle > absDistance * 0.4f && absAngle > deltaCentroid) {
+        if (absAngle > 5f && absAngle > absDistance * 0.5f && absAngle > deltaCentroid * 1.2f) {
             return TwoFingerGestureType.ROTATE;
         }
-        if (deltaCentroid > 8f) {
+        if (deltaCentroid > 8f && deltaCentroid > absDistance * 0.5f && deltaCentroid > absAngle * 0.5f) {
             return TwoFingerGestureType.PAN;
         }
+
+        if (currentGesture == TwoFingerGestureType.ZOOM_IN || currentGesture == TwoFingerGestureType.ZOOM_OUT) {
+            if (absDistance > 6f && absDistance > absAngle * 2 && absDistance > deltaCentroid * 1.2f) {
+                return currentGesture;
+            }
+        }
+        if (currentGesture == TwoFingerGestureType.ROTATE) {
+            if (absAngle > 3f && absAngle > absDistance * 0.25f && absAngle > deltaCentroid * 0.6f) {
+                return TwoFingerGestureType.ROTATE;
+            }
+        }
+        if (currentGesture == TwoFingerGestureType.PAN) {
+            if (deltaCentroid > 5f && deltaCentroid > absDistance * 0.4f && deltaCentroid > absAngle * 0.4f) {
+                return TwoFingerGestureType.PAN;
+            }
+        }
+
         return null;
     }
 

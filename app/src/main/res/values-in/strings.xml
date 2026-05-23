@@ -1,647 +1,1807 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [
-    <!ENTITY TERMUX_PACKAGE_NAME "com.winlator">
-    <!ENTITY TERMUX_X11_APP_NAME "Winlator:X11">
-    ]>
 <resources>
+    
+    
     <string name="app_name">Winlator</string>
+    
+    
     <string name="run">Jalankan</string>
+    
+    
     <string name="edit">Edit</string>
+    
+    
     <string name="remove">Hapus</string>
+    
+    
     <string name="add">Tambah</string>
+    
+    
     <string name="shortcuts">Pintasan</string>
+    
+    
     <string name="containers">Kontainer</string>
+    
+    
     <string name="input_controls">Kontrol Input</string>
+    
+    
     <string name="no_items_to_display">Tidak ada item untuk ditampilkan</string>
+    
+    
     <string name="new_container">Kontainer Baru</string>
+    
+    
     <string name="edit_container">Edit Kontainer</string>
+    
+    
     <string name="creating_container">Membuat Kontainer…</string>
+    
+    
     <string name="removing_container">Menghapus Kontainer…</string>
+    
+    
     <string name="duplicating_container">Menduplikasi Kontainer…</string>
+    
+    
     <string name="installing_system_files">Menginstal File Sistem…</string>
+    
+    
     <string name="updating_system_files">Memperbarui File Sistem…</string>
+    
+    
     <string name="starting_up">Memulai…</string>
+    
+    
     <string name="unable_to_install_system_files">Tidak dapat menginstal file sistem</string>
+    
+    
     <string name="keyboard">Keyboard</string>
+    
+    
     <string name="toggle_fullscreen">Beralih Layar Penuh</string>
+    
+    
     <string name="exit">Keluar</string>
+    
+    
     <string name="no_control_element_selected">Tidak ada elemen kontrol yang dipilih</string>
+    
+    
     <string name="scale">Skala</string>
+    
+    
     <string name="shape">Bentuk</string>
+    
+    
     <string name="type">Tipe</string>
+    
+    
     <string name="binding">Binding</string>
+    
+    
     <string name="binding_up">Binding Atas</string>
+    
+    
     <string name="binding_right">Binding Kanan</string>
+    
+    
     <string name="binding_down">Binding Bawah</string>
+    
+    
     <string name="binding_left">Binding Kiri</string>
+    
+    
     <string name="overlay_opacity">Opasitas Overlay</string>
+    
+    
     <string name="profile">Profil</string>
+    
+    
     <string name="select_profile">Pilih Profil</string>
+    
+    
     <string name="profile_name">Nama Profil</string>
+    
+    
     <string name="name">Nama</string>
+    
+    
     <string name="ok">OK</string>
+    
+    
     <string name="cancel">Batal</string>
+    
+    
     <string name="untitled">Tanpa Judul</string>
+    
+    
     <string name="no_profile_selected">Tidak ada profil yang dipilih</string>
+    
+    
     <string name="no_profile_found">Tidak ada profil yang ditemukan</string>
+    
+    
     <string name="do_you_want_to_remove_this_profile">Apakah Anda ingin menghapus profil ini?</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_profile">Apakah Anda ingin menduplikasi profil ini?</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_preset">Apakah Anda ingin menduplikasi preset ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_container">Apakah Anda ingin menghapus kontainer ini?</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_container">Apakah Anda ingin menduplikasi kontainer ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_shortcut">Apakah Anda ingin menghapus pintasan ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_controller">Apakah Anda ingin menghapus kontroler ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_wine_version">Apakah Anda ingin menghapus versi Wine ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_preset">Apakah Anda ingin menghapus preset ini?</string>
+    
+    
     <string name="do_you_want_to_end_this_process">Apakah Anda ingin mengakhiri proses ini?</string>
+    
+    
     <string name="controls_editor">Editor Kontrol</string>
+    
+    
     <string name="enabled">Diaktifkan</string>
+    
+    
     <string name="disabled">Dinonaktifkan</string>
+    
+    
     <string name="container">Kontainer</string>
+    
+    
     <string name="screen_size">Ukuran Layar</string>
+    
+    
     <string name="new_environment_variable">Variabel Lingkungan Baru</string>
+    
+    
     <string name="environment_variables">Variabel Lingkungan</string>
+    
+    
     <string name="value">Nilai</string>
+    
+    
     <string name="processor_affinity">Afinitas Prosesor</string>
+    
+    
     <string name="processor_affinity_32_bit_apps">Afinitas Prosesor (aplikasi 32-bit)</string>
+    
+    
     <string name="cursor_speed">Kecepatan Kursor</string>
+    
+    
     <string name="relative_mouse_movement">Pergerakan Mouse Relatif</string>
+    
+    
     <string name="toggle_switch">Tombol Sakelar</string>
+    
+    
     <string name="profile_exported_to">Profil diekspor ke</string>
+    
+    
     <string name="unable_to_import_profile">Tidak dapat mengimpor profil</string>
+    
+    
     <string name="wine_configuration">Konfigurasi Wine</string>
+    
+    
     <string name="registry_keys">Kunci Registri</string>
+    
+    
     <string name="csmt">CSMT (Command Stream Multi-Thread)</string>
+    
+    
     <string name="gpu_name">Nama GPU</string>
+    
+    
     <string name="offscreen_rendering_mode">Mode Rendering Offscreen</string>
+    
+    
     <string name="strict_shader_math">Matematika Shader Ketat</string>
+    
+    
     <string name="video_memory_size">Ukuran Memori Video</string>
+    
+    
     <string name="show_fps">Tampilkan FPS</string>
+    
+    
     <string name="none">Tidak Ada</string>
+    
+    
     <string name="custom_text">Teks Kustom</string>
+    
+    
     <string name="icon">Ikon</string>
+    
+    
     <string name="import_profile">Impor Profil</string>
+    
+    
     <string name="export_profile">Ekspor Profil</string>
+    
+    
     <string name="touchpad_help">Bantuan Touchpad</string>
+    
+    
     <string name="touchpad_help_mouse_left_click_title">Klik Kiri Mouse</string>
+    
+    
     <string name="touchpad_help_mouse_left_click_description">Ketuk singkat dengan satu jari</string>
+    
+    
     <string name="touchpad_help_mouse_right_click_title">Klik Kanan Mouse</string>
+    
+    
     <string name="touchpad_help_mouse_right_click_description">Ketuk dengan satu jari dan ketuk singkat dengan jari lain</string>
+    
+    
     <string name="touchpad_help_mouse_scroll_wheel_title">Roda Gulir Mouse</string>
+    
+    
     <string name="touchpad_help_mouse_scroll_wheel_description">Ketuk dua jari dan gerakkan</string>
+    
+    
     <string name="touchpad_help_main_menu_title">Menu Utama</string>
+    
+    
     <string name="touchpad_help_main_menu_description">Ketuk empat jari</string>
+    
+    
     <string name="duplicate">Duplikat</string>
+    
+    
     <string name="about">Tentang</string>
+    
+    
     <string name="credits_and_third_party_apps">Kredit dan Aplikasi Pihak Ketiga</string>
+    
+    
     <string name="external_controllers">Kontroler Eksternal</string>
+    
+    
     <string name="graphics_driver">Driver Grafis</string>
+    
+    
     <string name="audio_driver">Driver Audio</string>
+    
+    
     <string name="loading">Memuat…</string>
+    
+    
     <string name="press_any_button_on_your_controller">Tekan tombol apa saja pada kontroler Anda</string>
+    
+    
     <string name="bindings">binding</string>
+    
+    
     <string name="show_touchscreen_controls">Tampilkan Kontrol Layar Sentuh</string>
+    
+    
     <string name="dxwrapper">DX Wrapper</string>
+    
+    
     <string name="mouse_warp_override">Override Warp Mouse</string>
+    
+    
     <string name="direct3d">Direct3D</string>
+    
+    
     <string name="directsound">DirectSound</string>
+    
+    
     <string name="directmusic">DirectMusic</string>
+    
+    
     <string name="directplay">DirectPlay</string>
+    
+    
     <string name="directshow">DirectShow</string>
+    
+    
     <string name="directx">DirectX</string>
+    
+    
     <string name="xaudio">XAudio</string>
+    
+    
     <string name="vcrun2010">Visual C++ 2010</string>
+    
+    
     <string name="opengl">OpenGL</string>
+    
+    
     <string name="settings">Pengaturan</string>
+    
+    
     <string name="exec_arguments">Argumen Eksekusi</string>
+    
+    
     <string name="win_components">Komponen Win</string>
+    
+    
     <string name="drives">Drive</string>
+    
+    
     <string name="range">Rentang</string>
+    
+    
     <string name="enable">Aktifkan</string>
+    
+    
     <string name="disable">Nonaktifkan</string>
+    
+    
     <string name="force">Paksa</string>
+    
+    
     <string name="installed_wine">Wine Terinstal</string>
+    
+    
     <string name="install_wine">Instal Wine</string>
+    
+    
     <string name="arch">Arsitektur</string>
+    
+    
     <string name="version">Versi</string>
+    
+    
     <string name="dxvk_version">Versi DXVK</string>
+    
+    
     <string name="vkd3d_version">Versi VKD3D</string>
+    
+    
     <string name="unable_to_install_wine">Tidak dapat menginstal Wine</string>
+    
+    
     <string name="unable_to_remove_this_wine_version">Tidak dapat menghapus versi Wine ini</string>
+    
+    
     <string name="wine_version">Versi Wine</string>
+    
+    
     <string name="removing_wine">Menghapus Wine…</string>
+    
+    
     <string name="preparing_installation">Mempersiapkan instalasi…</string>
+    
+    
     <string name="finishing_installation">Menyelesaikan instalasi…</string>
+    
+    
     <string name="storage_info">Info Penyimpanan</string>
+    
+    
     <string name="drive_c">Drive C:</string>
+    
+    
     <string name="cache">Cache</string>
+    
+    
     <string name="total">Total</string>
+    
+    
     <string name="clear_cache">Bersihkan Cache</string>
+    
+    
     <string name="estimated_used_space">Estimasi Ruang Terpakai</string>
+    
+    
     <string name="advanced">Lanjutan</string>
+    
+    
     <string name="box64">Box64</string>
+    
+    
     <string name="system">Sistem</string>
+    
+    
     <string name="box64_preset">Preset Box64</string>
+    
+    
     <string name="box64_version">Versi Box64</string>
+    
+    
     <string name="letter">Huruf</string>
+    
+    
     <string name="target_path">Jalur Target</string>
+    
+    
     <string name="xserver">XServer</string>
+    
+    
     <string name="use_dri3_extension">Gunakan ekstensi DRI3</string>
+    
+    
     <string name="width">Lebar</string>
+    
+    
     <string name="height">Tinggi</string>
+    
+    
     <string name="old">lama</string>
+    
+    
     <string name="_new">baru</string>
+    
+    
     <string name="task_manager">Pengelola Tugas</string>
+    
+    
     <string name="process_name">Nama Proses</string>
+    
+    
     <string name="pid">PID</string>
+    
+    
     <string name="memory">Memori</string>
+    
+    
     <string name="end_process">Akhiri Proses</string>
+    
+    
     <string name="new_task">Tugas Baru</string>
+    
+    
     <string name="processes">Proses</string>
+    
+    
     <string name="orientation">Orientasi</string>
+    
+    
     <string name="horizontal">Horizontal</string>
+    
+    
     <string name="vertical">Vertikal</string>
+    
+    
     <string name="open_file">Buka File</string>
+    
+    
     <string name="download_file">Unduh File</string>
+    
+    
     <string name="do_you_want_to_download_the_selected_profiles">Apakah Anda ingin mengunduh profil yang dipilih?</string>
+    
+    
     <string name="downloading_file">Mengunduh File...</string>
+    
+    
     <string name="unable_to_load_profile_list">Tidak dapat memuat daftar profil</string>
+    
+    
     <string name="copy">Salin</string>
+    
+    
     <string name="installed_version">Versi Terinstal</string>
+    
+    
     <string name="unable_to_download_file">Tidak dapat mengunduh file</string>
+    
+    
     <string name="stability">Stabilitas</string>
+    
+    
     <string name="compatibility">Kompatibilitas</string>
+    
+    
     <string name="intermediate">Menengah</string>
+    
+    
     <string name="performance">Performa</string>
+    
+    
     <string name="preset">Preset</string>
+    
+    
     <string name="you_cannot_remove_this_preset">Anda tidak dapat menghapus preset ini</string>
-    <string name="dxwrapper_help_content"><![CDATA[
-        <i><b>WineD3D</b></i> adalah lapisan terjemahan untuk DirectX 1-11 ke OpenGL.<br /><br />
-        <i><b>DXVK</b></i> adalah lapisan terjemahan untuk Direct3D 9-11 ke Vulkan.<br /><br />
-        <i><b>VKD3D</b></i> adalah lapisan terjemahan untuk Direct3D 12 API ke Vulkan.<br /><br />
-        <i><b>CNC DDraw</b></i> adalah implementasi DirectDraw untuk kompatibilitas yang lebih baik dengan game klasik.
-    ]]></string>
-    <string name="box64_env_var_help__dynarec_safeflags"><![CDATA[
-        Penanganan flag pada opcode CALL/RET<br /><br />
-        <b>0</b> : Memperlakukan CALL/RET seolah tidak pernah membutuhkan flag (lebih cepat, tidak stabil)<br />
-        <b>1</b> : Sebagian besar RET akan membutuhkan flag, sebagian besar CALL tidak<br />
-        <b>2</b> : Semua CALL/RET akan membutuhkan flag (lebih lambat)
-    ]]></string>
+    
+    
+    <string name="dxwrapper_help_content">
+        &lt;i&gt;&lt;b&gt;WineD3D&lt;/b&gt;&lt;/i&gt; adalah lapisan terjemahan untuk DirectX 1-11 ke OpenGL.&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;DXVK&lt;/b&gt;&lt;/i&gt; adalah lapisan terjemahan untuk Direct3D 9-11 ke Vulkan.&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;VKD3D&lt;/b&gt;&lt;/i&gt; adalah lapisan terjemahan untuk Direct3D 12 API ke Vulkan.&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;CNC DDraw&lt;/b&gt;&lt;/i&gt; adalah implementasi DirectDraw untuk kompatibilitas yang lebih baik dengan game klasik.
+    </string>
+    
+    
+    <string name="box64_env_var_help__dynarec_safeflags">
+        Penanganan flag pada opcode CALL/RET&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Memperlakukan CALL/RET seolah tidak pernah membutuhkan flag (lebih cepat, tidak stabil)&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Sebagian besar RET akan membutuhkan flag, sebagian besar CALL tidak&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Semua CALL/RET akan membutuhkan flag (lebih lambat)
+    </string>
+    
+    
     <string name="box64_env_var_help__dynarec_fastnan">Pembangkitan -NAN seperti pada x86</string>
+    
+    
     <string name="box64_env_var_help__dynarec_fastround">Pembangkitan pembulatan x86 yang presisi</string>
+    
+    
     <string name="box64_env_var_help__dynarec_x87double">Penggunaan Float/Double untuk emulasi x87</string>
-    <string name="box64_env_var_help__dynarec_bigblock"><![CDATA[
-        Dynarec membangun BigBlock<br /><br />
-        <b>0</b> : Jangan mencoba membangun blok sebesar mungkin<br />
-        <b>1</b> : Bangun blok Dynarec sebesar mungkin<br />
-        <b>2</b> : Bangun blok Dynarec lebih besar (lanjutkan ketika blok tumpang tindih, tetapi hanya untuk blok di memori elf)<br />
-        <b>3</b> : Bangun blok Dynarec lebih besar (lanjutkan ketika blok tumpang tindih, untuk semua jenis memori)
-    ]]></string>
-    <string name="box64_env_var_help__dynarec_strongmem"><![CDATA[
-        Simulasi model Memori Kuat<br /><br />
-        <b>0</b> : Jangan mencoba sesuatu yang khusus<br />
-        <b>1</b> : Aktifkan beberapa Memory Barrier saat menulis ke memori (pada beberapa opcode MOV)<br />
-        <b>2</b> : Semua 1 ditambah Memory Barrier pada setiap penulisan ke memori menggunakan MOV<br />
-        <b>3</b> : Semua 2 ditambah Memory Barrier saat membaca dari memori dan pada beberapa opcode SSE/SSE2
-    ]]></string>
+    
+    
+    <string name="box64_env_var_help__dynarec_bigblock">
+        Dynarec membangun BigBlock&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Jangan mencoba membangun blok sebesar mungkin&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Bangun blok Dynarec sebesar mungkin&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Bangun blok Dynarec lebih besar (lanjutkan ketika blok tumpang tindih, tetapi hanya untuk blok di memori elf)&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : Bangun blok Dynarec lebih besar (lanjutkan ketika blok tumpang tindih, untuk semua jenis memori)
+    </string>
+    
+    
+    <string name="box64_env_var_help__dynarec_strongmem">
+        Simulasi model Memori Kuat&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Jangan mencoba sesuatu yang khusus&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Aktifkan beberapa Memory Barrier saat menulis ke memori (pada beberapa opcode MOV)&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Semua 1 ditambah Memory Barrier pada setiap penulisan ke memori menggunakan MOV&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : Semua 2 ditambah Memory Barrier saat membaca dari memori dan pada beberapa opcode SSE/SSE2
+    </string>
+    
+    
     <string name="box64_env_var_help__dynarec_forward">Mendefinisikan nilai forward maksimum yang diizinkan saat membangun Blok</string>
+    
+    
     <string name="box64_env_var_help__dynarec_callret">Optimasi opcode CALL/RET</string>
+    
+    
     <string name="box64_env_var_help__dynarec_wait">Mendefinisikan apakah Dynarec akan menunggu FillBlock siap atau tidak</string>
-    <string name="box64_env_var_help__dynarec_weakbarrier"><![CDATA[
-        Sesuaikan memory barrier untuk mengurangi dampak performa dari emulasi memori kuat<br /><br />
-        <b>0</b> : Gunakan barrier aman biasa<br />
-        <b>1</b> : Gunakan weak barrier untuk peningkatan performa ringan<br />
-        <b>2</b> : Gunakan weak barrier, selain itu nonaktifkan barrier tulis terakhir]]></string>
-    <string name="box64_env_var_help__dynarec_aligned_atomics"><![CDATA[
-        Hasilkan hanya atomik yang selaras (hanya tersedia pada Arm64 untuk saat ini).<br /><br />
-        <b>0</b> : Hasilkan kode penanganan atomik yang tidak selaras.<br />
-        <b>1</b> : Hasilkan hanya atomik yang selaras, yang lebih cepat dan ukuran kode lebih kecil, tetapi akan menyebabkan SIGBUS untuk opcode dengan awalan LOCK yang beroperasi pada alamat data yang selaras.]]></string>
-    <string name="box64_env_var_help__dynarec_df"><![CDATA[
-        Aktifkan atau nonaktifkan penggunaan flag yang ditangguhkan.<br /><br />
-        <b>0</b> : Nonaktifkan penggunaan flag yang ditangguhkan.<br />
-        <b>1</b> : Aktifkan penggunaan flag yang ditangguhkan.]]></string>
-    <string name="box64_env_var_help__dynarec_dirty"><![CDATA[
-        Izinkan melanjutkan menjalankan blok yang tidak dilindungi dan berpotensi kotor.<br /><br />
-        <b>0</b> : Jangan izinkan melanjutkan menjalankan blok yang tidak dilindungi dan berpotensi kotor.<br />
-        <b>1</b> : Izinkan melanjutkan menjalankan dynablock yang menulis data di halaman yang sama dengan kode. Ini dapat mempercepat waktu loading beberapa game tetapi juga dapat menyebabkan crash yang tidak terduga.<br />
-        <b>2</b> : Juga, ketika mendeteksi HotPage, tandai halaman tersebut sebagai NEVERCLEAN, sehingga tidak akan dilindungi penulisan tetapi Blok yang dibangun dari halaman tersebut akan selalu diuji. Cara ini bisa lebih cepat (tetapi beberapa kasus SMC mungkin tidak terdeteksi).]]></string>
-    <string name="box64_env_var_help__dynarec_nativeflags"><![CDATA[
-        Aktifkan atau nonaktifkan penggunaan flag native.<br /><br />
-        <b>0</b> : Jangan gunakan flag native.<br />
-        <b>1</b> : Gunakan flag native jika memungkinkan.]]></string>
-    <string name="box64_env_var_help__dynarec_pause"><![CDATA[
-        Aktifkan emulasi x86 PAUSE, dapat membantu performa spinlock.<br /><br />
-        <b>0</b> : Abaikan instruksi x86 PAUSE.<br />
-        <b>1</b> : Gunakan YIELD untuk mengemulasi instruksi x86 PAUSE.<br />
-        <b>2</b> : Gunakan WFI untuk mengemulasi instruksi x86 PAUSE.<br />
-        <b>3</b> : Gunakan SEVL+WFE untuk mengemulasi instruksi x86 PAUSE.
-    ]]></string>
-    <string name="box64_env_var_help__avx"><![CDATA[
-        AVX dan AVX2 diimplementasikan, bersama dengan ekstensi BMI1, BMI2, ADX, FMA, F16C dan RDANDR!<br /><br />
-        <b>0</b> : Nonaktifkan ekstensi AVX<br />
-        <b>1</b> : Aktifkan ekstensi AVX, BMI1, F16C dan VAES.<br />
-        <b>2</b> : Semua 1 ditambah aktifkan AVX2, BMI2, FMA, ADX, VPCLMULQDQ dan RDRAND.<br />\
-    ]]></string>
+    
+    
+    <string name="box64_env_var_help__dynarec_weakbarrier">
+        Sesuaikan memory barrier untuk mengurangi dampak performa dari emulasi memori kuat&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Gunakan barrier aman biasa&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Gunakan weak barrier untuk peningkatan performa ringan&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Gunakan weak barrier, selain itu nonaktifkan barrier tulis terakhir</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_aligned_atomics">
+        Hasilkan hanya atomik yang selaras (hanya tersedia pada Arm64 untuk saat ini).&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Hasilkan kode penanganan atomik yang tidak selaras.&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Hasilkan hanya atomik yang selaras, yang lebih cepat dan ukuran kode lebih kecil, tetapi akan menyebabkan SIGBUS untuk opcode dengan awalan LOCK yang beroperasi pada alamat data yang selaras.</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_df">
+        Aktifkan atau nonaktifkan penggunaan flag yang ditangguhkan.&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Nonaktifkan penggunaan flag yang ditangguhkan.&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Aktifkan penggunaan flag yang ditangguhkan.</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_dirty">
+        Izinkan melanjutkan menjalankan blok yang tidak dilindungi dan berpotensi kotor.&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Jangan izinkan melanjutkan menjalankan blok yang tidak dilindungi dan berpotensi kotor.&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Izinkan melanjutkan menjalankan dynablock yang menulis data di halaman yang sama dengan kode. Ini dapat mempercepat waktu loading beberapa game tetapi juga dapat menyebabkan crash yang tidak terduga.&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Juga, ketika mendeteksi HotPage, tandai halaman tersebut sebagai NEVERCLEAN, sehingga tidak akan dilindungi penulisan tetapi Blok yang dibangun dari halaman tersebut akan selalu diuji. Cara ini bisa lebih cepat (tetapi beberapa kasus SMC mungkin tidak terdeteksi).</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_nativeflags">
+        Aktifkan atau nonaktifkan penggunaan flag native.&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Jangan gunakan flag native.&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Gunakan flag native jika memungkinkan.</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_pause">
+        Aktifkan emulasi x86 PAUSE, dapat membantu performa spinlock.&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Abaikan instruksi x86 PAUSE.&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Gunakan YIELD untuk mengemulasi instruksi x86 PAUSE.&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Gunakan WFI untuk mengemulasi instruksi x86 PAUSE.&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : Gunakan SEVL+WFE untuk mengemulasi instruksi x86 PAUSE.
+    </string>
+    
+    
+    <string name="box64_env_var_help__avx">
+        AVX dan AVX2 diimplementasikan, bersama dengan ekstensi BMI1, BMI2, ADX, FMA, F16C dan RDANDR!&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : Nonaktifkan ekstensi AVX&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : Aktifkan ekstensi AVX, BMI1, F16C dan VAES.&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : Semua 1 ditambah aktifkan AVX2, BMI2, FMA, ADX, VPCLMULQDQ dan RDRAND.&lt;br /&gt;\
+    </string>
+    
+    
     <string name="box64_env_var_help__maxcpu">Jumlah maksimum CPU yang disajikan ke program oleh Box64</string>
+    
+    
     <string name="box64_env_var_help__unityplayer">Deteksi UnityPlayer.dll dan terapkan pengaturan strongmem</string>
+    
+    
     <string name="box64_env_var_help__mmap32">Paksa setiap alokasi memori di ruang alamat 32bit</string>
+    
+    
     <string name="fexcore_env_var_help__tsoenabled">Mengaktifkan operasi IR TSO (diperlukan untuk aplikasi multi-thread).</string>
+    
+    
     <string name="fexcore_env_var_help__vectortsoenabled">Membuat load/store vektor bersifat atomik ketika TSO diaktifkan.</string>
+    
+    
     <string name="fexcore_env_var_help__halfbarriertsoenabled">Menggunakan half-barrier atomics untuk load/store yang tidak selaras di bawah TSO.</string>
+    
+    
     <string name="fexcore_env_var_help__memcpysettsoenabled">Membuat REP MOVS / REP STOS bersifat atomik di bawah TSO.</string>
+    
+    
     <string name="fexcore_env_var_help__multiblock">Mengaktifkan kompilasi kode multiblok. Dapat menyebabkan kompilasi JIT yang lebih lama dan stutter.</string>
+    
+    
     <string name="fexcore_env_var_help__hostfeatures">Mengontrol pemaksaan fitur CPU.</string>
+    
+    
     <string name="fexcore_env_var_help__smalltscscale">Menskalakan TSC pada sistem berfrekuensi rendah.</string>
+    
+    
     <string name="fexcore_env_var_help__smc_checks">Pemeriksaan Self-Modifying Code.</string>
+    
+    
     <string name="fexcore_env_var_help__volatilemetadata">Menggunakan metadata volatile dari file PE untuk TSO jika tersedia.</string>
+    
+    
     <string name="fexcore_env_var_help__monohacks">Hack SMC + blok JIT khusus untuk deteksi Mono.</string>
+    
+    
     <string name="fexcore_env_var_help__hidehypervisorbit">Menyembunyikan bit hypervisor CPUID (berguna untuk aplikasi yang crash dengan bit tersebut).</string>
+    
+    
     <string name="fexcore_env_var_help__disablel2cache">Menonaktifkan pencarian cache L2 JIT FEXCore, menghemat memori tetapi menyebabkan stutter.</string>
+    
+    
     <string name="fexcore_env_var_help__dynamicl1cache">Mengalihkan cache L1 JIT FEXCore ke ukuran dinamis, menghemat memori tetapi menyebabkan stutter.</string>
+    
+    
     <string name="fexcore_env_var_help__x87reducedprecision">Mengemulasi floating point X87 menggunakan presisi 64-bit. Ini mengurangi akurasi emulasi dan dapat mengakibatkan bug rendering.</string>
+    
+    
     <string name="columns">Kolom</string>
+    
+    
     <string name="directinput_mapper_type">Tipe Mapper DirectInput</string>
+    
+    
     <string name="desktop">Desktop</string>
+    
+    
     <string name="theme">Tema</string>
+    
+    
     <string name="background">Latar Belakang</string>
+    
+    
     <string name="max_device_memory">Memori Perangkat Maksimum</string>
+    
+    
     <string name="frame_rate">Frame Rate</string>
+    
+    
     <string name="configuration">Konfigurasi</string>
+    
+    
     <string name="browse">Jelajahi</string>
+    
+    
     <string name="magnifier">Kaca Pembesar</string>
+    
+    
     <string name="bring_to_front">Bawa ke Depan</string>
+    
+    
     <string name="options">Opsi</string>
+    
+    
     <string name="enable_experimental_wow64_mode">Aktifkan mode WoW64 eksperimental</string>
+    
+    
     <string name="logs">Log</string>
+    
+    
     <string name="enable_wine_debug">Aktifkan debug Wine</string>
+    
+    
     <string name="enable_box64_logs">Aktifkan log Box64</string>
+    
+    
     <string name="export">Ekspor</string>
+    
+    
     <string name="logs_exported_to">Log diekspor ke</string>
+    
+    
     <string name="general">Umum</string>
+    
+    
     <string name="msg_warning_install_wine">Peringatan: Menginstal versi Wine baru disarankan hanya untuk tujuan pengujian.</string>
+    
+    
     <string name="startup_selection">Pilihan Startup</string>
+    
+    
     <string name="wine_debug_channel">Saluran Debug Wine</string>
+    
+    
     <string name="game_controller">Kontroler Game</string>
+    
+    
     <string name="as_button">Adalah Tombol</string>
+    
+    
     <string name="as_axis">Adalah Sumbu</string>
+    
+    
     <string name="both">Keduanya</string>
+    
+    
     <string name="trigger_type">Tipe</string>
+    
+    
     <string name="experimental">Eksperimental</string>
+    
+    
     <string name="glibc_exp_edition">Berdasarkan</string>
+    
+    
     <string name="enabled_async">Aktifkan Async</string>
+    
+    
     <string name="enabled_async_cache">Aktifkan Cache Async</string>
+    
+    
     <string name="vkd3d_feature_level">Level Fitur VKD3D</string>
+    
+    
     <string name="filter">Filter</string>
+    
+    
     <string name="all">Semua</string>
+    
+    
     <string name="group">Grup</string>
+    
+    
     <string name="new_group">Grup Baru</string>
+    
+    
     <string name="import_group">Impor Grup</string>
+    
+    
     <string name="new_file">File Baru</string>
+    
+    
     <string name="new_item">Item Baru</string>
+    
+    
     <string name="group_edit">Edit Grup</string>
+    
+    
     <string name="group_name">Nama Grup</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_group">Apakah Anda ingin menduplikasi grup ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_group">Apakah Anda ingin menghapus grup ini?</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_process">Apakah Anda ingin menduplikasi proses ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_process">Apakah Anda ingin menghapus proses ini?</string>
+    
+    
     <string name="do_you_want_to_remove_this_variable">Apakah Anda ingin menghapus variabel ini?</string>
+    
+    
     <string name="variable_name">Nama Variabel</string>
+    
+    
     <string name="variable_already_exists">Variabel sudah ada</string>
+    
+    
     <string name="cannot_remove_default_profile">Tidak dapat menghapus profil default.</string>
+    
+    
     <string name="cannot_edit_default_profile">Tidak dapat mengedit profil default.</string>
+    
+    
     <string name="do_you_want_to_restore_default_profile">Apakah Anda ingin memulihkan profil default?</string>
+    
+    
     <string name="simulate_touch_screen">Simulasikan layar sentuh</string>
+    
+    
     <string name="install_content">Instal Konten</string>
+    
+    
     <string name="content_type">Tipe Konten</string>
+    
+    
     <string name="contents">Konten</string>
+    
+    
     <string name="do_you_want_to_install_content">Apakah Anda ingin menginstal konten tambahan?</string>
+    
+    
     <string name="pls_make_sure_content_trustworthy">Konten berisi file yang dapat dieksekusi. File yang dapat dieksekusi yang tidak aman dapat membahayakan data atau keamanan perangkat Anda. Sebelum menginstal, PASTIKAN bahwa konten tambahan yang Anda instal dapat dipercaya.</string>
+    
+    
     <string name="content_suffix_is_wcp_packed_xz_zst">File konten memiliki ekstensi .wcp dan dikompresi menggunakan format xz atau zst.</string>
+    
+    
     <string name="installing_content">Menginstal Konten…</string>
+    
+    
     <string name="unable_to_install_content">Tidak dapat menginstal konten.</string>
+    
+    
     <string name="install_failed">Instalasi Gagal</string>
+    
+    
     <string name="file_cannot_be_recognied">File tidak dapat dikenali.</string>
+    
+    
     <string name="profile_not_found_in_content">Profil tidak ditemukan dalam konten.</string>
+    
+    
     <string name="profile_cannot_be_recognized">Profil tidak dapat dikenali</string>
+    
+    
     <string name="content_already_exist">Konten yang ingin Anda instal sudah ada.</string>
+    
+    
     <string name="content_info">Info Konten</string>
+    
+    
     <string name="version_code">Kode Versi</string>
+    
+    
     <string name="description">Deskripsi</string>
+    
+    
     <string name="file_list">Daftar File</string>
+    
+    
     <string name="_continue">Lanjutkan</string>
+    
+    
     <string name="content_installed_success">Konten berhasil diinstal!</string>
+    
+    
     <string name="content_cannot_be_trusted">Konten tidak dapat dipercaya.</string>
+    
+    
     <string name="content_is_incomplete">Konten tidak lengkap.</string>
+    
+    
     <string name="warning_content_has_untrusted_files">Peringatan: Konten tambahan mengandung file yang tidak tepercaya. Umumnya, file-file berikut tidak boleh dimodifikasi. Harap tentukan apakah akan melanjutkan instalasi.</string>
+    
+    
     <string name="warning">Peringatan</string>
+    
+    
     <string name="do_you_want_to_remove_this_content">Apakah Anda ingin menghapus konten ini?</string>
+    
+    
     <string name="add_to_home_screen">Tambahkan ke Layar Beranda</string>
+    
+    
     <string name="shortcut_not_available">Pintasan ini tidak lagi tersedia. Harap hapus atau buat ulang.</string>
+    
+    
     <string name="enable_file_provider">Aktifkan File Provider</string>
+    
+    
     <string name="take_effect_next_startup">Opsi ini akan berlaku pada startup berikutnya.</string>
+    
+    
     <string name="imagefs">Imagefs</string>
+    
+    
     <string name="reinstall_imagefs">Instal Ulang Imagefs</string>
+    
+    
     <string name="do_you_want_to_reinstall_imagefs">Apakah Anda ingin menginstal ulang imagefs? Operasi ini akan memulihkan file sistem, kontainer Anda tidak akan berubah.</string>
+    
+    
     <string name="unable_to_remove_content_since_container_using">Tidak dapat menghapus konten ini, karena sebuah kontainer sedang menggunakan Wine ini.</string>
+    
+    
     <string name="get_more_contents_form_github">Anda dapat mengakses https://github.com/longjunyu2/winlator/releases untuk mendapatkan lebih banyak konten.</string>
+    
+    
     <string name="setup_failed">Pengaturan gagal</string>
+    
+    
     <string name="graphics_driver_configuration">Konfigurasi Driver Grafis</string>
+    
+    
     <string name="select_graphics_driver_version">Pilih Versi Driver Grafis:</string>
+    
+    
     <string name="graphics_driver_version">Versi Driver Grafis</string>
+    
+    
     <string name="graphics_driver_available_extensions">Ekstensi yang Tersedia</string>
+    
+    
     <string name="add_to_homescreen">Tambahkan ke Homescreen</string>
+    
+    
     <string name="add_save">Tambah Simpanan</string>
+    
+    
     <string name="saves">Pengelola Data Simpanan</string>
+    
+    
     <string name="import_save">Impor Simpanan</string>
+    
+    
     <string name="transfer">Transfer</string>
+    
+    
     <string name="share">Bagikan</string>
+    
+    
     <string name="unregister">Batalkan Pendaftaran</string>
+    
+    
     <string name="no_saves_to_display">Tidak ada simpanan untuk ditampilkan</string>
+    
+    
     <string name="new_save">Daftarkan Simpanan</string>
+    
+    
     <string name="save_path">Jalur Simpanan</string>
+    
+    
     <string name="save_title">Nama Simpanan</string>
+    
+    
     <string name="save_container">Kontainer yang Dipilih</string>
+    
+    
     <string name="select_save_path">Temukan Folder Simpanan</string>
+    
+    
     <string name="select_container_first">Harap pilih kontainer yang berisi simpanan Anda.</string>
+    
+    
     <string name="fill_all_fields">Jalur dan Nama Simpanan diperlukan</string>
+    
+    
     <string name="invalid_path">Bukan jalur direktori simpanan yang valid</string>
+    
+    
     <string name="confirm_selection">Konfirmasi Pilihan</string>
+    
+    
     <string name="select_directory">Pilih direktori simpanan Anda</string>
+    
+    
     <string name="invalid_container">Jalur Tidak Valid</string>
+    
+    
     <string name="up_directory">Direktori Atas</string>
+    
+    
     <string name="edit_save_title">Perbarui judul Simpanan</string>
+    
+    
     <string name="edit_save">Edit Simpanan</string>
+    
+    
     <string name="original_save_path">Jalur simpanan yang terdaftar</string>
+    
+    
     <string name="updated_save_path">Jalur simpanan yang diperbarui</string>
+    
+    
     <string name="confirmation">Konfirmasi</string>
+    
+    
     <string name="yes">Ya</string>
+    
+    
     <string name="no">Tidak</string>
+    
+    
     <string name="path_not_changed_prompt">Jalur tidak berubah. Apakah Anda ingin melanjutkan?</string>
+    
+    
     <string name="save_transfer">Transfer Simpanan</string>
+    
+    
     <string name="select_container">Kontainer Target:</string>
+    
+    
     <string name="transfer_complete">Transfer selesai</string>
+    
+    
     <string name="transfer_failed">Transfer gagal</string>
+    
+    
     <string name="unable_to_transfer_save">Tidak dapat mentransfer simpanan</string>
+    
+    
     <string name="spinner_container_selection">Mentransfer...</string>
+    
+    
     <string name="name_required">Nama diperlukan</string>
+    
+    
     <string name="exporting_save">Mengekspor simpanan...</string>
+    
+    
     <string name="importing_save">Mengimpor simpanan...</string>
+    
+    
     <string name="_copy">salin</string>
+    
+    
     <string name="backing_up_data">Mencadangkan data...</string>
+    
+    
     <string name="restoring_data">Memulihkan data...</string>
+    
+    
     <string name="midi_sound_font">MIDI SoundFont</string>
+    
+    
     <string name="sound">Suara</string>
+    
+    
     <string name="do_you_want_to_remove_this_sound_font">Apakah Anda ingin menghapus soundfont ini?</string>
+    
+    
     <string name="sound_font_removed_success">Soundfont berhasil dihapus!</string>
+    
+    
     <string name="sound_font_removed_failed">Penghapusan soundfont gagal!</string>
+    
+    
     <string name="sound_font_installed_success">Soundfont berhasil diinstal!</string>
+    
+    
     <string name="sound_font_installed_failed">Instalasi soundfont gagal!</string>
+    
+    
     <string name="sound_font_already_exist">Soundfont yang ingin Anda instal sudah ada.</string>
+    
+    
     <string name="unable_to_install_soundfont">Tidak dapat menginstal soundfont</string>
+    
+    
     <string name="installing_soundfont">Menginstal SoundFont…</string>
+    
+    
     <string name="sound_font_bad_format">Format SoundFont Buruk.</string>
+    
+    
     <string name="cannot_remove_default_sound_font">Tidak dapat menghapus soundfont default</string>
+    
+    
     <string name="enable_dinput_for_wine_game">Aktifkan DInput untuk Game di Wine</string>
+    
+    
     <string name="enable_xinput_for_wine_game">Aktifkan XInput untuk Game di Wine</string>
+    
+    
     <string name="dinput_legacy">Legacy (Gamepad Lama)</string>
+    
+    
     <string name="dinput_modern">Modern (Seperti Xinput)</string>
+    
+    
     <string name="mixed">Campuran</string>
-    <string name="help_xinput"><![CDATA[
-        Jika game Anda menggunakan <i><b>XInput API</b></i> untuk dukungan kontroler game, harap aktifkan opsi ini.<br/><br/>
-        Opsi ini akan mempengaruhi kontroler game <i><b>virtual</b></i> (disediakan oleh Kontrol Input) maupun <i><b>fisik</b></i>.
-    ]]></string>
-    <string name="help_dinput"><![CDATA[
-        Jika game Anda menggunakan <i><b>DInput API</b></i> untuk dukungan kontroler game, harap aktifkan opsi ini.<br/><br/>
-        Opsi ini akan mempengaruhi kontroler game <i><b>virtual</b></i> (disediakan oleh Kontrol Input) maupun <i><b>fisik</b></i>.
-    ]]></string>
+    
+    
+    <string name="help_xinput">
+        Jika game Anda menggunakan &lt;i&gt;&lt;b&gt;XInput API&lt;/b&gt;&lt;/i&gt; untuk dukungan kontroler game, harap aktifkan opsi ini.&lt;br/&gt;&lt;br/&gt;
+        Opsi ini akan mempengaruhi kontroler game &lt;i&gt;&lt;b&gt;virtual&lt;/b&gt;&lt;/i&gt; (disediakan oleh Kontrol Input) maupun &lt;i&gt;&lt;b&gt;fisik&lt;/b&gt;&lt;/i&gt;.
+    </string>
+    
+    
+    <string name="help_dinput">
+        Jika game Anda menggunakan &lt;i&gt;&lt;b&gt;DInput API&lt;/b&gt;&lt;/i&gt; untuk dukungan kontroler game, harap aktifkan opsi ini.&lt;br/&gt;&lt;br/&gt;
+        Opsi ini akan mempengaruhi kontroler game &lt;i&gt;&lt;b&gt;virtual&lt;/b&gt;&lt;/i&gt; (disediakan oleh Kontrol Input) maupun &lt;i&gt;&lt;b&gt;fisik&lt;/b&gt;&lt;/i&gt;.
+    </string>
+    
+    
     <string name="enable_xinput_and_dinput_same_time">Beberapa game mungkin mendukung kedua API. Mengaktifkan XInput dan DInput secara bersamaan dalam game tersebut dapat menyebabkan masalah kontrol, seperti yang terlihat pada judul seperti The Binding of Isaac dan seri Resident Evil.</string>
+    
+    
     <string name="startup_normal">Normal (Muat semua layanan)</string>
+    
+    
     <string name="startup_essential">Esensial (Hanya muat layanan esensial)</string>
+    
+    
     <string name="startup_aggressive">Agresif (Hentikan layanan saat startup)</string>
+    
+    
     <string name="lc_all" translatable="false">LC_ALL</string>
-    <string name="help_trigger_mode"><![CDATA[
-        Opsi ini bergantung pada <i><b>Kontroler Fisik</b></i> yang Anda gunakan.<br/><br/>
-        <i><b>Adalah Sumbu</b></i>: Centang ini jika trigger pada kontroler Anda bersifat linier (dengan rentang gerakan).<br/><br/>
-        <i><b>Adalah Tombol</b></i>: Centang ini jika trigger pada kontroler Anda adalah tombol (mirip sakelar).<br/><br/>
-        <i><b>Catatan</b></i>: Untuk trigger linier, menggunakan <i><b>Adalah Tombol</b></i> akan mengakibatkan hilangnya data linier saat pemetaan.<br/>
-    ]]></string>
+    
+    
+    <string name="help_trigger_mode">
+        Opsi ini bergantung pada &lt;i&gt;&lt;b&gt;Kontroler Fisik&lt;/b&gt;&lt;/i&gt; yang Anda gunakan.&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;Adalah Sumbu&lt;/b&gt;&lt;/i&gt;: Centang ini jika trigger pada kontroler Anda bersifat linier (dengan rentang gerakan).&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;Adalah Tombol&lt;/b&gt;&lt;/i&gt;: Centang ini jika trigger pada kontroler Anda adalah tombol (mirip sakelar).&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;Catatan&lt;/b&gt;&lt;/i&gt;: Untuk trigger linier, menggunakan &lt;i&gt;&lt;b&gt;Adalah Tombol&lt;/b&gt;&lt;/i&gt; akan mengakibatkan hilangnya data linier saat pemetaan.&lt;br/&gt;
+    </string>
+    
+    
     <string name="toggle_orientation">Beralih Orientasi</string>
-    <string name="help_file_provider"><![CDATA[
-        <i><b>File Provider</b></i> memungkinkan akses ke data internal Winlator melalui pengelola file Android.<br/><br/>
-    ]]></string>
+    
+    
+    <string name="help_file_provider">
+        &lt;i&gt;&lt;b&gt;File Provider&lt;/b&gt;&lt;/i&gt; memungkinkan akses ke data internal Winlator melalui pengelola file Android.&lt;br/&gt;&lt;br/&gt;
+    </string>
+    
+    
     <string name="reconfigure">Konfigurasi Ulang</string>
+    
+    
     <string name="do_you_want_to_reconfigure_wine">Apakah Anda ingin mengkonfigurasi ulang kontainer ini pada startup berikutnya? Ini akan menghapus timestamp untuk memicu Konfigurasi Wine.</string>
+    
 
-    <!-- OpenXR specific text -->
+    
+    
     <string name="xr" translatable="false">XR</string>
+    
+    
     <string name="primary_controller">Kontroler utama</string>
+    
+    
     <string name="left_controller">Kontroler kiri</string>
+    
+    
     <string name="right_controller">Kontroler kanan</string>
+    
+    
     <string name="button_a">Tombol A</string>
+    
+    
     <string name="button_b">Tombol B</string>
+    
+    
     <string name="button_x">Tombol X</string>
+    
+    
     <string name="button_y">Tombol Y</string>
+    
+    
     <string name="button_grip">Tombol Grip</string>
+    
+    
     <string name="button_trigger">Tombol Trigger</string>
+    
+    
     <string name="thumbstick_left">Thumbstick kiri</string>
+    
+    
     <string name="thumbstick_right">Thumbstick kanan</string>
+    
+    
     <string name="thumbstick_up">Thumbstick atas</string>
+    
+    
     <string name="thumbstick_down">Thumbstick bawah</string>
+    
+    
     <string name="secondary_executable">Jalur:</string>
-    <string name="enter_secondary_exec_path"> mis: "D:/Games/My Game/My Game.exe"</string>
+    
+    
+    <string name="enter_secondary_exec_path"> mis: &quot;D:/Games/My Game/My Game.exe&quot;</string>
+    
+    
     <string name="exec_delay">Eksekusi Tertunda (detik):</string>
+    
+    
     <string name="enter_delay_seconds">Masukkan penundaan dalam detik:</string>
+    
+    
     <string name="use_secondary_executable">Gunakan executable sekunder?</string>
+    
+    
     <string name="secondary_exec">Executable Sekunder</string>
+    
+    
     <string name="secondary_exe_path_subtext">(Spasi dalam jalur harus dibungkus dalam tanda kutip)</string>
+    
+    
     <string name="pip_mode">Mode PiP</string>
+    
+    
     <string name="configure">Konfigurasi</string>
+    
+    
     <string name="enable_sendinput_mode">Gunakan Mode Windows SendInput</string>
+    
+    
     <string name="enable_touchscreen_timeout">Timeout Layar Sentuh (Memerlukan Restart)</string>
+    
+    
     <string name="enable_touchscreen_haptics">Aktifkan Umpan Balik Haptic Layar Sentuh</string>
+    
+    
     <string name="help_steamgrid">Kunci API SteamGrid</string>
+    
+    
     <string name="disable_xinput_for_shortcut">Nonaktifkan Xinput (Untuk Kontrol M/KB Eksklusif)</string>
+    
+    
     <string name="fullscreen_stretched">Aktifkan Layar Penuh (Diregangkan)</string>
+    
+    
     <string name="export_container">Ekspor Kontainer</string>
+    
+    
     <string name="exporting_container">Mengekspor Kontainer...</string>
+    
 
+    
     <string name="brightness">Kecerahan</string>
+    
+    
     <string name="contrast">Kontras</string>
+    
+    
     <string name="gamma">Gamma</string>
+    
+    
     <string name="color_adjustment">Penyesuaian Warna</string>
+    
+    
     <string name="enable_fxaa">Aktifkan FXAA</string>
+    
+    
     <string name="enable_crt_shader">Aktifkan CRT Shader</string>
+    
 
+    
     <string name="do_you_want_to_add_a_new_profile">Apakah Anda ingin menambahkan profil baru?</string>
+    
 
+    
     <string name="default_profile">Profil Default</string>
+    
 
+    
     <string name="reset">Reset</string>
+    
 
+    
     <string name="screen_effect">Efek Layar</string>
+    
 
+    
     <string name="enable_toon_shader">Aktifkan Toon Shader</string>
+    
+    
     <string name="enable_ntsc_effect">Aktifkan Efek NTSC</string>
+    
+    
     <string name="enter_profile_name">Masukkan Nama Profil</string>
+    
 
+    
     <string name="configure_analog_sticks">Konfigurasi Analog Stick</string>
+    
+    
     <string name="analog_stick_settings">Pengaturan Analog Stick</string>
+    
+    
     <string name="left_analog_stick_settings">Pengaturan Analog Stick Kiri</string>
+    
+    
     <string name="right_analog_stick_settings">Pengaturan Analog Stick Kanan</string>
+    
+    
     <string name="deadzone">Deadzone: %1$d%%</string>
+    
+    
     <string name="sensitivity">Sensitivitas: %1$d%%</string>
+    
+    
     <string name="invert_x_axis_left">Balikkan Sumbu X (Stick Kiri)</string>
+    
+    
     <string name="invert_y_axis_left">Balikkan Sumbu Y (Stick Kiri)</string>
+    
+    
     <string name="invert_x_axis_right">Balikkan Sumbu X (Stick Kanan)</string>
+    
+    
     <string name="invert_y_axis_right">Balikkan Sumbu Y (Stick Kanan)</string>
+    
+    
     <string name="save">Simpan</string>
+    
+    
     <string name="use_xr">Gunakan integrasi OpenXR</string>
+    
 
+    
     <string name="not_connected">Tidak terhubung</string>
+    
+    
     <string name="preferences_button_text">   PREFERENSI   </string>
+    
+    
     <string name="help_button_text">   BANTUAN   </string>
+    
+    
     <string name="exit_button_text">   KELUAR   </string>
-    <string name="extra_keys_config_desc">Di sini Anda dapat mengatur nilai variabel extra-keys seperti di aplikasi Termux (baca <a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">ini</a>) dan lainnya \n
-E.g. <b>META</b> untuk <i>tombol META</i>, \n
-<b>KEYBOARD</b> untuk <i>tombol toggle soft keyboard</i>, \n
-<b>PREFERENCES</b> untuk <i>tombol pembuka preferensi</i>, \n
-<b>MOUSE_HELPER</b> untuk <i>tombol toggle mouse helper</i>, \n
-<b>STYLUS_HELPER</b> untuk <i>tombol toggle overlay stylus click override</i>, \n
-<b>EXIT</b> untuk <i>tombol keluar aplikasi</i>.</string>
+    
+    
+    <string name="extra_keys_config_desc">
+        Di sini Anda dapat mengatur nilai variabel extra-keys seperti di aplikasi Termux (baca 
+        <a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">ini</a>
+        ) dan lainnya \n
+E.g. 
+        <b>META</b>
+         untuk 
+        <i>tombol META</i>
+        , \n
+
+        <b>KEYBOARD</b>
+         untuk 
+        <i>tombol toggle soft keyboard</i>
+        , \n
+
+        <b>PREFERENCES</b>
+         untuk 
+        <i>tombol pembuka preferensi</i>
+        , \n
+
+        <b>MOUSE_HELPER</b>
+         untuk 
+        <i>tombol toggle mouse helper</i>
+        , \n
+
+        <b>STYLUS_HELPER</b>
+         untuk 
+        <i>tombol toggle overlay stylus click override</i>
+        , \n
+
+        <b>EXIT</b>
+         untuk 
+        <i>tombol keluar aplikasi</i>
+        .
+    </string>
+    
+    
     <string name="notification_content_text">Tarik ke bawah untuk menampilkan opsi</string>
+    
+    
     <string name="notification_open_preferences">Preferensi</string>
+    
+    
     <string name="notification_exit">Keluar</string>
+    
+    
     <string name="notification_restart_activity">Mulai Ulang</string>
+    
+    
     <string name="notification_toggle_soft_keyboard">Toggle IME</string>
+    
+    
     <string name="notification_toggle_additional_key_bar">Toggle keyboard tambahan</string>
+    
+    
     <string name="notification_release_pointer_and_keyboard_capture">Lepaskan tangkapan</string>
+    
+    
     <string name="notification_toggle_fullscreen">Toggle layar penuh</string>
+    
 
+    
     <string name="pref_main">Preferensi</string>
+    
+    
     <string name="pref_output">Output</string>
+    
+    
     <string name="pref_pointer">Pointer</string>
+    
+    
     <string name="pref_kbd">Keyboard</string>
+    
+    
     <string name="pref_other">Lainnya</string>
+    
+    
     <string name="pref_version">Versi</string>
+    
+    
     <string name="pref_ekbar">Preferensi bilah tombol ekstra</string>
+    
+    
     <string name="pref_userActions">Respons terhadap tindakan pengguna</string>
+    
 
+    
     <string name="pref_displayResolutionMode">Mode resolusi tampilan</string>
+    
+    
     <string name="pref_displayScale">Skala tampilan, %</string>
+    
+    
     <string name="pref_displayResolutionExact">Resolusi tampilan</string>
+    
+    
     <string name="pref_displayResolutionCustom">Resolusi tampilan</string>
+    
+    
     <string name="pref_adjustResolution">Sesuaikan resolusi yang ditetapkan agar sesuai dengan orientasi layar</string>
+    
+    
     <string name="pref_displayStretch">Regangkan agar sesuai tampilan</string>
+    
+    
     <string name="pref_Reseed">Segarkan ulang layar saat soft keyboard terbuka</string>
+    
+    
     <string name="pref_Reseed_summary">Ukuran layar akan disesuaikan saat Soft Keyboard terbuka.</string>
+    
+    
     <string name="pref_PIP">Mode PIP</string>
+    
+    
     <string name="pref_PIP_summary">Tampilkan aplikasi dalam mode picture-in-picture saat tombol home atau tombol recents ditekan</string>
+    
+    
     <string name="pref_fullscreen">Layar Penuh</string>
+    
+    
     <string name="pref_fullscreen_summary">Beralih mode imersif di tampilan perangkat Anda</string>
+    
+    
     <string name="pref_forceOrientation">Orientasi layar</string>
+    
+    
     <string name="pref_hideCutout">Sembunyikan potongan tampilan (jika ada)</string>
+    
+    
     <string name="pref_keepScreenOn">Jaga Layar Tetap Menyala</string>
+    
 
+    
     <string name="pref_touchMode">Mode input layar sentuh</string>
+    
+    
     <string name="pref_scaleTouchpad">Terapkan faktor skala tampilan ke touchpad</string>
+    
+    
     <string name="pref_showStylusClickOverride">Tampilkan opsi klik stylus</string>
+    
+    
     <string name="pref_showStylusClickOverride_summary">Override sentuhan stylus, klik kiri, tengah, atau kanan (hanya stylus)</string>
+    
+    
     <string name="pref_stylusIsMouse">Aktifkan mode mouse stylus</string>
+    
+    
     <string name="pref_stylusIsMouse_summary">Buat stylus Anda bekerja seperti mouse. Ketika diaktifkan, stylus hanya akan memindahkan kursor dan mengirim klik mouse, mengabaikan tekanan, sudut, dan kemiringan.</string>
+    
+    
     <string name="pref_stylusButtonContactModifierMode">Mode modifier kontak tombol stylus</string>
+    
+    
     <string name="pref_stylusButtonContactModifierMode_summary">Aktifkan opsi ini untuk mengirim tombol mouse kanan atau tengah hanya saat stylus menyentuh layar sementara tombol ditekan.</string>
+    
+    
     <string name="pref_showMouseHelper">Tampilkan overlay pembantu klik mouse</string>
+    
+    
     <string name="pref_showMouseHelper_summary">Tombol mouse di layar yang dapat digunakan dengan touchpad</string>
+    
+    
     <string name="pref_pointerCapture">Tangkap perangkat pointer eksternal jika memungkinkan</string>
+    
+    
     <string name="pref_pointerCapture_summary">Cegah semua event hardware pointer. Pointer kembali ke Android setelah menekan tombol Escape.</string>
+    
+    
     <string name="pref_transformCapturedPointer">Transformasi pergerakan pointer yang ditangkap</string>
+    
+    
     <string name="pref_capturedPointerSpeedFactor">Faktor kecepatan pointer yang ditangkap, %</string>
+    
+    
     <string name="pref_tapToMove">Aktifkan tap-to-move untuk touchpad</string>
+    
 
+    
     <string name="pref_showAdditionalKbd">Tampilkan keyboard tambahan</string>
+    
+    
     <string name="pref_showAdditionalKbd_summary">Tampilkan keyboard dengan tombol tambahan.</string>
+    
+    
     <string name="pref_showIMEWhileExternalConnected">Tampilkan IME dengan keyboard eksternal</string>
+    
+    
     <string name="pref_showIMEWhileExternalConnected_summary">Tampilkan keyboard lunak saat keyboard hardware terhubung.</string>
+    
+    
     <string name="pref_preferScancodes">Utamakan scancode jika memungkinkan</string>
+    
+    
     <string name="pref_preferScancodes_summary">Biarkan X server menangani tata letak keyboard hardware (dengan pengaturan DE atau setxkbmap).</string>
+    
+    
     <string name="pref_hardwareKbdScancodesWorkaround">Solusi sementara scancode keyboard hardware</string>
+    
+    
     <string name="pref_hardwareKbdScancodesWorkaround_summary">Memperbaiki scancode pada beberapa perangkat. Mungkin menyebabkan masalah dengan beberapa tata letak.</string>
+    
+    
     <string name="pref_dexMetaKeyCapture">Cegat pintasan sistem</string>
+    
+    
     <string name="pref_dexMetaKeyCapture_summary">Hanya Samsung Dex. Memungkinkan pencegatan &quot;Alt+F4&quot;, &quot;Meta+D&quot;, &quot;Meta+E&quot;, dll.</string>
+    
+    
     <string name="pref_enableAccessibilityService">Aktifkan layanan Aksesibilitas untuk mencegat pintasan sistem secara manual.</string>
+    
+    
     <string name="pref_enableAccessibilityService_summary">Buka pengaturan Aksesibilitas.</string>
+    
+    
     <string name="pref_enableAccessibilityServiceAutomatically">Aktifkan layanan Aksesibilitas untuk mencegat pintasan sistem secara otomatis.</string>
+    
+    
     <string name="pref_enableAccessibilityServiceAutomatically_summary">Memerlukan izin WRITE_SECURE_SETTINGS.</string>
+    
+    
     <string name="pref_pauseKeyInterceptingWithEsc">Jeda pencegatan tombol dengan tombol Esc</string>
+    
+    
     <string name="pref_filterOutWinkey">Filter keluar tombol Win (Meta/Mod4) yang dicegat.</string>
+    
+    
     <string name="pref_filterOutWinkey_summary">Memungkinkan Anda menggunakan pintasan Dex saat pencegatan. Memerlukan layanan Aksesibilitas untuk bekerja.</string>
+    
+    
     <string name="pref_enableGboardCJK">Solusi untuk mengaktifkan CJK Gboard</string>
+    
+    
     <string name="pref_enableGboardCJK_summary">Mungkin memerlukan Android 14 dan Gboard 14</string>
+    
 
+    
     <string name="pref_clipboardEnable">Berbagi clipboard</string>
+    
+    
     <string name="pref_requestNotificationPermission">Minta izin notifikasi</string>
+    
+    
     <string name="pref_xrMode">Mode Meta Oculus XR</string>
+    
+    
     <string name="pref_configureResponseToUserActions">Konfigurasi respons terhadap tindakan pengguna</string>
+    
+    
     <string name="pref_storeSecondaryDisplayPreferencesSeparately">Simpan preferensi untuk tampilan sekunder secara terpisah</string>
+    
+    
     <string name="pref_storeSecondaryDisplayPreferencesSeparately_summary">Buka layar ini pada tampilan yang ingin Anda konfigurasi</string>
+    
 
+    
     <string name="pref_adjustHeightForEK">Sesuaikan tinggi tampilan untuk bilah tombol ekstra</string>
+    
+    
     <string name="pref_adjustHeightForEK_summary">Dapat menyebabkan layar berkedip saat toggle bilah EK.</string>
+    
+    
     <string name="pref_useTermuxEKBarBehaviour">Nonaktifkan tombol khusus pada bilah tombol tambahan setelah setiap penekanan tombol</string>
+    
+    
     <string name="pref_useTermuxEKBarBehaviour_summary">Gunakan long-tap untuk mengunci tombol khusus</string>
+    
+    
     <string name="pref_opacityEKBar">Opasitas bilah tombol ekstra, %</string>
+    
+    
     <string name="pref_extra_keys_config">Konfigurasi tombol ekstra</string>
+    
 
+    
     <string name="pref_swipeUpAction">Geser tiga jari ke atas</string>
+    
+    
     <string name="pref_swipeDownAction">Geser tiga jari ke bawah</string>
+    
+    
     <string name="pref_volumeUpAction">Volume naik</string>
+    
+    
     <string name="pref_volumeDownAction">Volume turun</string>
+    
+    
     <string name="pref_backButtonAction">Tombol kembali</string>
+    
+    
     <string name="pref_notificationTapAction">Ketuk notifikasi</string>
+    
+    
     <string name="pref_notificationButton0Action">Tombol pertama notifikasi</string>
+    
+    
     <string name="pref_notificationButton1Action">Tombol kedua notifikasi</string>
+    
+    
     <string name="pref_mediaKeysAction">Tombol media</string>
+    
 
-    <string name="pref_summary_requiresExactOrCustom">Memerlukan "mode resolusi tampilan" menjadi "exact" atau "custom"</string>
+    
+    <string name="pref_summary_requiresExactOrCustom">Memerlukan &quot;mode resolusi tampilan&quot; menjadi &quot;exact&quot; atau &quot;custom&quot;</string>
+    
+    
     <string name="pref_summary_requiresIntercepting">Memerlukan pencegatan pintasan sistem dengan mode Dex atau layanan Aksesibilitas</string>
-    <string name="pref_summary_requiresTrackpadAndNative">Memerlukan "Mode input layar sentuh" menjadi "Trackpad" dan "Mode resolusi tampilan" bukan "native"</string>
+    
+    
+    <string name="pref_summary_requiresTrackpadAndNative">Memerlukan &quot;Mode input layar sentuh&quot; menjadi &quot;Trackpad&quot; dan &quot;Mode resolusi tampilan&quot; bukan &quot;native&quot;</string>
+    
+    
     <string name="fexcore_config">FEXCore</string>
+    
+    
     <string name="fexcore_preset">Preset FEXCore</string>
+    
+    
     <string name="adrenotools_gpu_drivers">Driver GPU Adrenotools</string>
+    
+    
     <string name="install_drivers">Instal Driver</string>
+    
+    
     <string name="install_drivers_message">Anda akan diminta untuk memilih driver. Ini harus sama dengan yang digunakan di emulator lain seperti Yuzu, Dolphin, Citra, dll.</string>
+    
+    
     <string name="install_drivers_warning">Perlu diketahui bahwa karena keterbatasan emulator PC saat ini, Driver Qualcomm mungkin tidak berfungsi pada chipset di bawah 8 Gen2 tanpa dipatch.</string>
+    
+    
     <string name="enable_vulkan_api_dump">Aktifkan dump panggilan Vulkan api ke file.</string>
+    
+    
     <string name="dll_emulator">Emulator 32bit</string>
+    
+    
     <string name="open_with_android_browser">Buka Browser Android di Wine</string>
+    
+    
     <string name="share_android_clipboard">Bagikan Clipboard Android dengan Wine</string>
+    
+    
     <string name="ddraw_wrapper">DDraw Wrapper</string>
+    
+    
     <string name="fexcore_version">Versi FEXCore</string>
+    
+    
     <string name="graphics_driver_max_device_memory">Memori Perangkat Maksimum</string>
+    
+    
     <string name="graphics_driver_sync_frame">Sinkronisasi Setiap Frame</string>
+    
+    
     <string name="graphics_driver_disable_present_wait">Nonaktifkan KHR_present_wait</string>
+    
+    
     <string name="graphics_driver_present_modes">Mode Present</string>
+    
+    
     <string name="graphics_driver_resource_type">Tipe Sumber Daya Memori</string>
+    
+    
     <string name="graphics_driver_vulkan_version">Versi Vulkan</string>
+    
+    
     <string name="graphics_driver_bcn_emulation">Emulasi BCn</string>
+    
+    
     <string name="graphics_driver_bcn_emulation_type">Tipe Emulasi BCn</string>
+    
+    
     <string name="graphics_driver_bcn_emulation_cache">Cache Emulasi BCn</string>
+    
+    
     <string name="vkbasalt">vkBasalt</string>
+    
+    
     <string name="vkbasalt_sharpness_effects">Efek Ketajaman</string>
+    
+    
     <string name="vkbasalt_sharpness_level">Tingkat Ketajaman</string>
+    
+    
     <string name="vkbasalt_sharpness_denoise">Noise Reduction Ketajaman</string>
+    
+    
     <string name="shutdown">Matikan</string>
+    
+    
     <string name="no_items_to_display_saves">Data Simpanan Kosong</string>
+    
+    
     <string name="select_folder">Pilih Lokasi File</string>
+    
+    
     <string name="no_containers_available">Kontainer Tidak Ditemukan</string>
+    
+    
     <string name="binding_additional">Kombo Binding</string>
+    
+    
     <string name="force_fullscreen">Paksa Layar Penuh</string>
+    
+    
     <string name="import_icons">Impor Ikon</string>
+    
+    
     <string name="language">Bahasa</string>
+    
+    
     <string name="native_rendering">Aktifkan Rendering Native</string>
+    
+    
     <string name="all_files_access_dialog_title">Akses Semua File Diperlukan</string>
+    
+    
     <string name="all_files_access_dialog_message">Untuk memberikan akses ke perangkat penyimpanan tambahan seperti perangkat penyimpanan USB, izin Akses Semua File harus diberikan. Tekan Okay untuk memberikan Akses Semua File di Pengaturan Android Anda.</string>
+    
+    
     <string name="help_import_icons">Kompres ikon Anda dalam arsip ZIP dan impor dengan menekan tombol ini.</string>
+    
+    
     <string name="cursor_hotspot_offset">Posisi Tengah Cursor</string>
+    
+    
     <string name="hide_stroke_fill">Sembunyikan Garis</string>
+    
+
+    <string name="visible_slots">Visible Slot</string>
+    <string name="mouse_speed">Cursor Sensitivity</string>
+    <string name="offset_scale">Offset Scale</string>
+    <string name="lsfg_section_label">LSFG</string>
+    <string name="lsfg_multiplier">Multiplier</string>
+    <string name="lsfg_present_mode">Present Mode</string>
+    <string name="lsfg_performance_mode">Performance Mode</string>
+    <string name="lsfg_hdr_mode">HDR Mode</string>
+    <string name="lsfg_enable_global">Enable LSFG</string>
+    <string name="lsfg_dll_label">Lossless.dll</string>
+    <string name="lsfg_import_dll">Import DLL</string>
+    <string name="lsfg_clear_dll">Clear DLL</string>
+    <string name="settings_lsfg_select_valid_dll">Please select a valid .dll file</string>
+    <string name="settings_lsfg_import_failed">Failed to import DLL file</string>
+    <string name="lsfg_flow_scale">Flow Scale</string>
+    <string name="lsfg_change_dll">Change</string>
+    <string name="lsfg_pacing_mode">Pacing Mode</string>
+    <string name="hud_elements">HUD Elements</string>
+    <string name="toggle_hud">FPS Monitor</string>
+    <string name="hud_element_fps">FPS</string>
+    <string name="hud_element_renderer">Renderer / API</string>
+    <string name="hud_element_gpu">GPU Load</string>
+    <string name="hud_element_cpu_ram">CPU / RAM</string>
+    <string name="hud_element_batt_temp">Battery / Temp</string>
+    <string name="hud_element_graph">Graph</string>
+    <string name="hud_elements_none">None (HUD disabled)</string>
+    <string name="hud_overlay">HUD Overlay</string>
+    <string name="hud_elements_label">HUD Active elements</string>
 </resources>

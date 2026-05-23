@@ -1,645 +1,1803 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE resources [
-    <!ENTITY TERMUX_PACKAGE_NAME "com.winlator">
-    <!ENTITY TERMUX_X11_APP_NAME "Winlator:X11">
-    ]>
 <resources>
+    
+    
     <string name="app_name">Winlator</string>
+    
+    
     <string name="run">実行</string>
+    
+    
     <string name="edit">編集</string>
+    
+    
     <string name="remove">削除</string>
+    
+    
     <string name="add">追加</string>
+    
+    
     <string name="shortcuts">ショートカット</string>
+    
+    
     <string name="containers">コンテナ</string>
+    
+    
     <string name="input_controls">入力コントロール</string>
+    
+    
     <string name="no_items_to_display">表示するアイテムがありません</string>
+    
+    
     <string name="new_container">新しいコンテナ</string>
+    
+    
     <string name="edit_container">コンテナを編集</string>
+    
+    
     <string name="creating_container">コンテナを作成中…</string>
+    
+    
     <string name="removing_container">コンテナを削除中…</string>
+    
+    
     <string name="duplicating_container">コンテナを複製中…</string>
+    
+    
     <string name="installing_system_files">システムファイルをインストール中…</string>
+    
+    
     <string name="updating_system_files">システムファイルを更新中…</string>
+    
+    
     <string name="starting_up">起動中…</string>
+    
+    
     <string name="unable_to_install_system_files">システムファイルをインストールできません</string>
+    
+    
     <string name="keyboard">キーボード</string>
+    
+    
     <string name="toggle_fullscreen">全画面表示を切り替え</string>
+    
+    
     <string name="exit">終了</string>
+    
+    
     <string name="no_control_element_selected">コントロール要素が選択されていません</string>
+    
+    
     <string name="scale">スケール</string>
+    
+    
     <string name="shape">形状</string>
+    
+    
     <string name="type">タイプ</string>
+    
+    
     <string name="binding">バインディング</string>
+    
+    
     <string name="binding_up">バインディング（上）</string>
+    
+    
     <string name="binding_right">バインディング（右）</string>
+    
+    
     <string name="binding_down">バインディング（下）</string>
+    
+    
     <string name="binding_left">バインディング（左）</string>
+    
+    
     <string name="overlay_opacity">オーバーレイの不透明度</string>
+    
+    
     <string name="profile">プロファイル</string>
+    
+    
     <string name="select_profile">プロファイルを選択</string>
+    
+    
     <string name="profile_name">プロファイル名</string>
+    
+    
     <string name="name">名前</string>
+    
+    
     <string name="ok">OK</string>
+    
+    
     <string name="cancel">キャンセル</string>
+    
+    
     <string name="untitled">無題</string>
+    
+    
     <string name="no_profile_selected">プロファイルが選択されていません</string>
+    
+    
     <string name="no_profile_found">プロファイルが見つかりません</string>
+    
+    
     <string name="do_you_want_to_remove_this_profile">このプロファイルを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_profile">このプロファイルを複製しますか？</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_preset">このプリセットを複製しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_container">このコンテナを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_container">このコンテナを複製しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_shortcut">このショートカットを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_controller">このコントローラーを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_wine_version">このWineバージョンを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_preset">このプリセットを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_end_this_process">このプロセスを終了しますか？</string>
+    
+    
     <string name="controls_editor">コントロールエディター</string>
+    
+    
     <string name="enabled">有効</string>
+    
+    
     <string name="disabled">無効</string>
+    
+    
     <string name="container">コンテナ</string>
+    
+    
     <string name="screen_size">画面サイズ</string>
+    
+    
     <string name="new_environment_variable">新しい環境変数</string>
+    
+    
     <string name="environment_variables">環境変数</string>
+    
+    
     <string name="value">値</string>
+    
+    
     <string name="processor_affinity">プロセッサアフィニティ</string>
+    
+    
     <string name="processor_affinity_32_bit_apps">プロセッサアフィニティ（32ビットアプリ）</string>
+    
+    
     <string name="cursor_speed">カーソル速度</string>
+    
+    
     <string name="relative_mouse_movement">相対マウス移動</string>
+    
+    
     <string name="toggle_switch">トグルスイッチ</string>
+    
+    
     <string name="profile_exported_to">プロファイルのエクスポート先</string>
+    
+    
     <string name="unable_to_import_profile">プロファイルをインポートできません</string>
+    
+    
     <string name="wine_configuration">Wine設定</string>
+    
+    
     <string name="registry_keys">レジストリキー</string>
+    
+    
     <string name="csmt">CSMT（コマンドストリームマルチスレッド）</string>
+    
+    
     <string name="gpu_name">GPU名</string>
+    
+    
     <string name="offscreen_rendering_mode">オフスクリーンレンダリングモード</string>
+    
+    
     <string name="strict_shader_math">厳密なシェーダー数学</string>
+    
+    
     <string name="video_memory_size">ビデオメモリサイズ</string>
+    
+    
     <string name="show_fps">FPSを表示</string>
+    
+    
     <string name="none">なし</string>
+    
+    
     <string name="custom_text">カスタムテキスト</string>
+    
+    
     <string name="icon">アイコン</string>
+    
+    
     <string name="import_profile">プロファイルをインポート</string>
+    
+    
     <string name="export_profile">プロファイルをエクスポート</string>
+    
+    
     <string name="touchpad_help">タッチパッドのヘルプ</string>
+    
+    
     <string name="touchpad_help_mouse_left_click_title">マウス左クリック</string>
+    
+    
     <string name="touchpad_help_mouse_left_click_description">1本指で短くタップ</string>
+    
+    
     <string name="touchpad_help_mouse_right_click_title">マウス右クリック</string>
+    
+    
     <string name="touchpad_help_mouse_right_click_description">1本指でタップし、別の指で短くタップ</string>
+    
+    
     <string name="touchpad_help_mouse_scroll_wheel_title">マウススクロールホイール</string>
+    
+    
     <string name="touchpad_help_mouse_scroll_wheel_description">2本指でタップして移動</string>
+    
+    
     <string name="touchpad_help_main_menu_title">メインメニュー</string>
+    
+    
     <string name="touchpad_help_main_menu_description">4本指でタップ</string>
+    
+    
     <string name="duplicate">複製</string>
+    
+    
     <string name="about">アプリについて</string>
+    
+    
     <string name="credits_and_third_party_apps">クレジットとサードパーティアプリ</string>
+    
+    
     <string name="external_controllers">外部コントローラー</string>
+    
+    
     <string name="graphics_driver">グラフィックスドライバー</string>
+    
+    
     <string name="audio_driver">オーディオドライバー</string>
+    
+    
     <string name="loading">読み込み中…</string>
+    
+    
     <string name="press_any_button_on_your_controller">コントローラーの任意のボタンを押してください</string>
+    
+    
     <string name="bindings">バインディング</string>
+    
+    
     <string name="show_touchscreen_controls">タッチスクリーンコントロールを表示</string>
+    
+    
     <string name="dxwrapper">DXラッパー</string>
+    
+    
     <string name="mouse_warp_override">マウスワープオーバーライド</string>
+    
+    
     <string name="direct3d">Direct3D</string>
+    
+    
     <string name="directsound">DirectSound</string>
+    
+    
     <string name="directmusic">DirectMusic</string>
+    
+    
     <string name="directplay">DirectPlay</string>
+    
+    
     <string name="directshow">DirectShow</string>
+    
+    
     <string name="directx">DirectX</string>
+    
+    
     <string name="xaudio">XAudio</string>
+    
+    
     <string name="vcrun2010">Visual C++ 2010</string>
+    
+    
     <string name="opengl">OpenGL</string>
+    
+    
     <string name="settings">設定</string>
+    
+    
     <string name="exec_arguments">実行引数</string>
+    
+    
     <string name="win_components">Winコンポーネント</string>
+    
+    
     <string name="drives">ドライブ</string>
+    
+    
     <string name="range">範囲</string>
+    
+    
     <string name="enable">有効化</string>
+    
+    
     <string name="disable">無効化</string>
+    
+    
     <string name="force">強制</string>
+    
+    
     <string name="installed_wine">インストール済みWine</string>
+    
+    
     <string name="install_wine">Wineをインストール</string>
+    
+    
     <string name="arch">アーキテクチャ</string>
+    
+    
     <string name="version">バージョン</string>
+    
+    
     <string name="dxvk_version">DXVKバージョン</string>
+    
+    
     <string name="vkd3d_version">VKD3Dバージョン</string>
+    
+    
     <string name="unable_to_install_wine">Wineをインストールできません</string>
+    
+    
     <string name="unable_to_remove_this_wine_version">このWineバージョンを削除できません</string>
+    
+    
     <string name="wine_version">Wineバージョン</string>
+    
+    
     <string name="removing_wine">Wineを削除中…</string>
+    
+    
     <string name="preparing_installation">インストールを準備中…</string>
+    
+    
     <string name="finishing_installation">インストールを完了中…</string>
+    
+    
     <string name="storage_info">ストレージ情報</string>
+    
+    
     <string name="drive_c">ドライブC:</string>
+    
+    
     <string name="cache">キャッシュ</string>
+    
+    
     <string name="total">合計</string>
+    
+    
     <string name="clear_cache">キャッシュをクリア</string>
+    
+    
     <string name="estimated_used_space">推定使用容量</string>
+    
+    
     <string name="advanced">詳細設定</string>
+    
+    
     <string name="box64">Box64</string>
+    
+    
     <string name="system">システム</string>
+    
+    
     <string name="box64_preset">Box64プリセット</string>
+    
+    
     <string name="box64_version">Box64バージョン</string>
+    
+    
     <string name="letter">レター</string>
+    
+    
     <string name="target_path">ターゲットパス</string>
+    
+    
     <string name="xserver">XServer</string>
+    
+    
     <string name="use_dri3_extension">DRI3拡張を使用</string>
+    
+    
     <string name="width">幅</string>
+    
+    
     <string name="height">高さ</string>
+    
+    
     <string name="old">旧</string>
+    
+    
     <string name="_new">新</string>
+    
+    
     <string name="task_manager">タスクマネージャー</string>
+    
+    
     <string name="process_name">プロセス名</string>
+    
+    
     <string name="pid">PID</string>
+    
+    
     <string name="memory">メモリ</string>
+    
+    
     <string name="end_process">プロセスを終了</string>
+    
+    
     <string name="new_task">新しいタスク</string>
+    
+    
     <string name="processes">プロセス</string>
+    
+    
     <string name="orientation">向き</string>
+    
+    
     <string name="horizontal">横向き</string>
+    
+    
     <string name="vertical">縦向き</string>
+    
+    
     <string name="open_file">ファイルを開く</string>
+    
+    
     <string name="download_file">ファイルをダウンロード</string>
+    
+    
     <string name="do_you_want_to_download_the_selected_profiles">選択したプロファイルをダウンロードしますか？</string>
+    
+    
     <string name="downloading_file">ファイルをダウンロード中...</string>
+    
+    
     <string name="unable_to_load_profile_list">プロファイルリストを読み込めません</string>
+    
+    
     <string name="copy">コピー</string>
+    
+    
     <string name="installed_version">インストール済みバージョン</string>
+    
+    
     <string name="unable_to_download_file">ファイルをダウンロードできません</string>
+    
+    
     <string name="stability">安定性</string>
+    
+    
     <string name="compatibility">互換性</string>
+    
+    
     <string name="intermediate">中級</string>
+    
+    
     <string name="performance">パフォーマンス</string>
+    
+    
     <string name="preset">プリセット</string>
+    
+    
     <string name="you_cannot_remove_this_preset">このプリセットは削除できません</string>
-    <string name="dxwrapper_help_content"><![CDATA[
-        <i><b>WineD3D</b></i> はDirectX 1-11をOpenGLに変換するトランスレーションレイヤーです。<br /><br />
-        <i><b>DXVK</b></i> はDirect3D 9-11をVulkanに変換するトランスレーションレイヤーです。<br /><br />
-        <i><b>VKD3D</b></i> はDirect3D 12 APIをVulkanに変換するトランスレーションレイヤーです。<br /><br />
-        <i><b>CNC DDraw</b></i> はクラシックゲームとの互換性を高めるためのDirectDrawの実装です。
-    ]]></string>
-    <string name="box64_env_var_help__dynarec_safeflags"><![CDATA[
-        CALL/RETオペコードでのフラグの処理<br /><br />
-        <b>0</b> : CALL/RETがフラグを必要としないものとして扱う（高速、不安定）<br />
-        <b>1</b> : ほとんどのRETはフラグが必要、ほとんどのCALLSは不要<br />
-        <b>2</b> : すべてのCALL/RETがフラグを必要とする（低速）
-    ]]></string>
+    
+    
+    <string name="dxwrapper_help_content">
+        &lt;i&gt;&lt;b&gt;WineD3D&lt;/b&gt;&lt;/i&gt; はDirectX 1-11をOpenGLに変換するトランスレーションレイヤーです。&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;DXVK&lt;/b&gt;&lt;/i&gt; はDirect3D 9-11をVulkanに変換するトランスレーションレイヤーです。&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;VKD3D&lt;/b&gt;&lt;/i&gt; はDirect3D 12 APIをVulkanに変換するトランスレーションレイヤーです。&lt;br /&gt;&lt;br /&gt;
+        &lt;i&gt;&lt;b&gt;CNC DDraw&lt;/b&gt;&lt;/i&gt; はクラシックゲームとの互換性を高めるためのDirectDrawの実装です。
+    </string>
+    
+    
+    <string name="box64_env_var_help__dynarec_safeflags">
+        CALL/RETオペコードでのフラグの処理&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : CALL/RETがフラグを必要としないものとして扱う（高速、不安定）&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : ほとんどのRETはフラグが必要、ほとんどのCALLSは不要&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : すべてのCALL/RETがフラグを必要とする（低速）
+    </string>
+    
+    
     <string name="box64_env_var_help__dynarec_fastnan">x86のような-NAN生成</string>
+    
+    
     <string name="box64_env_var_help__dynarec_fastround">精密なx86丸め処理の生成</string>
+    
+    
     <string name="box64_env_var_help__dynarec_x87double">x87エミュレーションへのFloat/Doubleの使用</string>
-    <string name="box64_env_var_help__dynarec_bigblock"><![CDATA[
-        DynarecによるBigBlockの構築<br /><br />
-        <b>0</b> : できるだけ大きなブロックを構築しない<br />
-        <b>1</b> : できるだけ大きなDynarecブロックを構築する<br />
-        <b>2</b> : より大きなDynarecブロックを構築する（ブロックが重なる場合も続行するが、elfメモリ内のブロックのみ）<br />
-        <b>3</b> : より大きなDynarecブロックを構築する（ブロックが重なる場合も続行、すべてのメモリタイプ対応）
-    ]]></string>
-    <string name="box64_env_var_help__dynarec_strongmem"><![CDATA[
-        強力なメモリモデルのシミュレーション<br /><br />
-        <b>0</b> : 特別な処理をしない<br />
-        <b>1</b> : メモリへの書き込み時にメモリバリアを有効にする（一部のMOVオペコードで）<br />
-        <b>2</b> : 1の設定に加え、MOVを使ったメモリへのすべての書き込みにメモリバリアを設定<br />
-        <b>3</b> : 2の設定に加え、メモリからの読み取り時および一部のSSE/SSE2オペコードでメモリバリアを設定
-    ]]></string>
+    
+    
+    <string name="box64_env_var_help__dynarec_bigblock">
+        DynarecによるBigBlockの構築&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : できるだけ大きなブロックを構築しない&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : できるだけ大きなDynarecブロックを構築する&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : より大きなDynarecブロックを構築する（ブロックが重なる場合も続行するが、elfメモリ内のブロックのみ）&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : より大きなDynarecブロックを構築する（ブロックが重なる場合も続行、すべてのメモリタイプ対応）
+    </string>
+    
+    
+    <string name="box64_env_var_help__dynarec_strongmem">
+        強力なメモリモデルのシミュレーション&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : 特別な処理をしない&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : メモリへの書き込み時にメモリバリアを有効にする（一部のMOVオペコードで）&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : 1の設定に加え、MOVを使ったメモリへのすべての書き込みにメモリバリアを設定&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : 2の設定に加え、メモリからの読み取り時および一部のSSE/SSE2オペコードでメモリバリアを設定
+    </string>
+    
+    
     <string name="box64_env_var_help__dynarec_forward">ブロック構築時に許可される最大前進値を定義</string>
+    
+    
     <string name="box64_env_var_help__dynarec_callret">CALL/RETオペコードの最適化</string>
+    
+    
     <string name="box64_env_var_help__dynarec_wait">DynarecがFillBlockの準備を待つかどうかを定義</string>
-    <string name="box64_env_var_help__dynarec_weakbarrier"><![CDATA[
-        強力なメモリエミュレーションのパフォーマンスへの影響を軽減するためにメモリバリアを調整<br /><br />
-        <b>0</b> : 通常の安全なバリアを使用<br />
-        <b>1</b> : パフォーマンス向上のためにウィークバリアを使用<br />
-        <b>2</b> : ウィークバリアを使用し、さらに最終書き込みバリアを無効化]]></string>
-    <string name="box64_env_var_help__dynarec_aligned_atomics"><![CDATA[
-        アライメントされたアトミックのみを生成（現在Arm64のみ対応）。<br /><br />
-        <b>0</b> : アライメントされていないアトミック処理コードを生成。<br />
-        <b>1</b> : アライメントされたアトミックのみを生成。より高速で小さいコードサイズだが、アライメントされたデータアドレスで操作するLOCKプレフィックス付きオペコードでSIGBUSが発生することがある。]]></string>
-    <string name="box64_env_var_help__dynarec_df"><![CDATA[
-        遅延フラグの使用を有効または無効にする。<br /><br />
-        <b>0</b> : 遅延フラグの使用を無効にする。<br />
-        <b>1</b> : 遅延フラグの使用を有効にする。]]></string>
-    <string name="box64_env_var_help__dynarec_dirty"><![CDATA[
-        保護されておらず潜在的にダーティなブロックの実行を続行できるようにする。<br /><br />
-        <b>0</b> : 保護されておらず潜在的にダーティなブロックの実行続行を許可しない。<br />
-        <b>1</b> : コードと同じページにデータを書き込むダイナブロックの実行続行を許可する。一部のゲームのロード時間を短縮できるが、予期しないクラッシュが発生することもある。<br />
-        <b>2</b> : さらに、HotPageが検出された場合、そのページをNEVERCLEANとしてマークするため、書き込み保護されないが、そのページから構築されたブロックは常にテストされる。高速化できることもあるが（一部のSMCケースがトラップされない場合がある）。]]></string>
-    <string name="box64_env_var_help__dynarec_nativeflags"><![CDATA[
-        ネイティブフラグの使用を有効または無効にする。<br /><br />
-        <b>0</b> : ネイティブフラグを使用しない。<br />
-        <b>1</b> : 可能な場合にネイティブフラグを使用する。]]></string>
-    <string name="box64_env_var_help__dynarec_pause"><![CDATA[
-        x86 PAUSEエミュレーションを有効化。スピンロックのパフォーマンス向上に役立つ場合がある。<br /><br />
-        <b>0</b> : x86 PAUSE命令を無視する。<br />
-        <b>1</b> : YIELDを使用してx86 PAUSE命令をエミュレートする。<br />
-        <b>2</b> : WFIを使用してx86 PAUSE命令をエミュレートする。<br />
-        <b>3</b> : SEVL+WFEを使用してx86 PAUSE命令をエミュレートする。
-    ]]></string>
-    <string name="box64_env_var_help__avx"><![CDATA[
-        AVXとAVX2、およびBMI1、BMI2、ADX、FMA、F16C、RDANDR拡張が実装されました！<br /><br />
-        <b>0</b> : AVX拡張を無効にする<br />
-        <b>1</b> : AVX、BMI1、F16C、VAES拡張を有効にする。<br />
-        <b>2</b> : 1の設定に加えAVX2、BMI2、FMA、ADX、VPCLMULQDQ、RDRANDを有効にする。<br />\
-    ]]></string>
+    
+    
+    <string name="box64_env_var_help__dynarec_weakbarrier">
+        強力なメモリエミュレーションのパフォーマンスへの影響を軽減するためにメモリバリアを調整&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : 通常の安全なバリアを使用&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : パフォーマンス向上のためにウィークバリアを使用&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : ウィークバリアを使用し、さらに最終書き込みバリアを無効化</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_aligned_atomics">
+        アライメントされたアトミックのみを生成（現在Arm64のみ対応）。&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : アライメントされていないアトミック処理コードを生成。&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : アライメントされたアトミックのみを生成。より高速で小さいコードサイズだが、アライメントされたデータアドレスで操作するLOCKプレフィックス付きオペコードでSIGBUSが発生することがある。</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_df">
+        遅延フラグの使用を有効または無効にする。&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : 遅延フラグの使用を無効にする。&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : 遅延フラグの使用を有効にする。</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_dirty">
+        保護されておらず潜在的にダーティなブロックの実行を続行できるようにする。&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : 保護されておらず潜在的にダーティなブロックの実行続行を許可しない。&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : コードと同じページにデータを書き込むダイナブロックの実行続行を許可する。一部のゲームのロード時間を短縮できるが、予期しないクラッシュが発生することもある。&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : さらに、HotPageが検出された場合、そのページをNEVERCLEANとしてマークするため、書き込み保護されないが、そのページから構築されたブロックは常にテストされる。高速化できることもあるが（一部のSMCケースがトラップされない場合がある）。</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_nativeflags">
+        ネイティブフラグの使用を有効または無効にする。&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : ネイティブフラグを使用しない。&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : 可能な場合にネイティブフラグを使用する。</string>
+    
+    
+    <string name="box64_env_var_help__dynarec_pause">
+        x86 PAUSEエミュレーションを有効化。スピンロックのパフォーマンス向上に役立つ場合がある。&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : x86 PAUSE命令を無視する。&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : YIELDを使用してx86 PAUSE命令をエミュレートする。&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : WFIを使用してx86 PAUSE命令をエミュレートする。&lt;br /&gt;
+        &lt;b&gt;3&lt;/b&gt; : SEVL+WFEを使用してx86 PAUSE命令をエミュレートする。
+    </string>
+    
+    
+    <string name="box64_env_var_help__avx">
+        AVXとAVX2、およびBMI1、BMI2、ADX、FMA、F16C、RDANDR拡張が実装されました！&lt;br /&gt;&lt;br /&gt;
+        &lt;b&gt;0&lt;/b&gt; : AVX拡張を無効にする&lt;br /&gt;
+        &lt;b&gt;1&lt;/b&gt; : AVX、BMI1、F16C、VAES拡張を有効にする。&lt;br /&gt;
+        &lt;b&gt;2&lt;/b&gt; : 1の設定に加えAVX2、BMI2、FMA、ADX、VPCLMULQDQ、RDRANDを有効にする。&lt;br /&gt;\
+    </string>
+    
+    
     <string name="box64_env_var_help__maxcpu">Box64がプログラムに提示するCPUの最大数</string>
+    
+    
     <string name="box64_env_var_help__unityplayer">UnityPlayer.dllを検出してstrongmem設定を適用する</string>
+    
+    
     <string name="box64_env_var_help__mmap32">32ビットアドレス空間にすべてのメモリ割り当てを強制する</string>
+    
+    
     <string name="fexcore_env_var_help__tsoenabled">TSO IR操作を有効化（マルチスレッドアプリに必要）。</string>
+    
+    
     <string name="fexcore_env_var_help__vectortsoenabled">TSOが有効な場合、ベクターload/storeをアトミックにする。</string>
+    
+    
     <string name="fexcore_env_var_help__halfbarriertsoenabled">TSOでアライメントされていないload/storeにハーフバリアアトミックを使用する。</string>
+    
+    
     <string name="fexcore_env_var_help__memcpysettsoenabled">TSO下でREP MOVS / REP STOSをアトミックにする。</string>
+    
+    
     <string name="fexcore_env_var_help__multiblock">マルチブロックコードコンパイルを有効化。JITコンパイル時間が長くなりスタッターが発生する場合がある。</string>
+    
+    
     <string name="fexcore_env_var_help__hostfeatures">CPU機能の強制を制御する。</string>
+    
+    
     <string name="fexcore_env_var_help__smalltscscale">低周波数システムでTSCをスケールする。</string>
+    
+    
     <string name="fexcore_env_var_help__smc_checks">自己変更コードのチェック。</string>
+    
+    
     <string name="fexcore_env_var_help__volatilemetadata">利用可能な場合、PEファイルからの揮発性メタデータをTSOに使用する。</string>
+    
+    
     <string name="fexcore_env_var_help__monohacks">Mono検出のための特別なSMC + JITブロックハック。</string>
+    
+    
     <string name="fexcore_env_var_help__hidehypervisorbit">CPUIDハイパーバイザービットを非表示にする（それによってクラッシュするアプリに有用）。</string>
+    
+    
     <string name="fexcore_env_var_help__disablel2cache">FEXCore JIT L2キャッシュルックアップを無効化し、メモリを節約するがスタッターが発生する。</string>
+    
+    
     <string name="fexcore_env_var_help__dynamicl1cache">FEXCore JIT L1キャッシュを動的サイズに切り替え、メモリを節約するがスタッターが発生する。</string>
+    
+    
     <string name="fexcore_env_var_help__x87reducedprecision">64ビット精度を使用してX87浮動小数点をエミュレートする。これによりエミュレーション精度が低下し、レンダリングバグが発生する可能性がある。</string>
+    
+    
     <string name="columns">列</string>
+    
+    
     <string name="directinput_mapper_type">DirectInputマッパータイプ</string>
+    
+    
     <string name="desktop">デスクトップ</string>
+    
+    
     <string name="theme">テーマ</string>
+    
+    
     <string name="background">背景</string>
+    
+    
     <string name="max_device_memory">デバイスの最大メモリ</string>
+    
+    
     <string name="frame_rate">フレームレート</string>
+    
+    
     <string name="configuration">設定</string>
+    
+    
     <string name="browse">ブラウズ</string>
+    
+    
     <string name="magnifier">拡大鏡</string>
+    
+    
     <string name="bring_to_front">前面に移動</string>
+    
+    
     <string name="options">オプション</string>
+    
+    
     <string name="enable_experimental_wow64_mode">実験的なWoW64モードを有効化</string>
+    
+    
     <string name="logs">ログ</string>
+    
+    
     <string name="enable_wine_debug">Wineデバッグを有効化</string>
+    
+    
     <string name="enable_box64_logs">Box64ログを有効化</string>
+    
+    
     <string name="export">エクスポート</string>
+    
+    
     <string name="logs_exported_to">ログのエクスポート先</string>
+    
+    
     <string name="general">一般</string>
+    
+    
     <string name="msg_warning_install_wine">警告: 新しいバージョンのWineのインストールはテスト目的のみ推奨されます。</string>
+    
+    
     <string name="startup_selection">起動選択</string>
+    
+    
     <string name="wine_debug_channel">Wineデバッグチャンネル</string>
+    
+    
     <string name="game_controller">ゲームコントローラー</string>
+    
+    
     <string name="as_button">ボタンとして</string>
+    
+    
     <string name="as_axis">軸として</string>
+    
+    
     <string name="both">両方</string>
+    
+    
     <string name="trigger_type">タイプ</string>
+    
+    
     <string name="experimental">実験的</string>
+    
+    
     <string name="glibc_exp_edition">ベース</string>
+    
+    
     <string name="enabled_async">非同期を有効化</string>
+    
+    
     <string name="enabled_async_cache">非同期キャッシュを有効化</string>
+    
+    
     <string name="vkd3d_feature_level">VKD3D機能レベル</string>
+    
+    
     <string name="filter">フィルター</string>
+    
+    
     <string name="all">すべて</string>
+    
+    
     <string name="group">グループ</string>
+    
+    
     <string name="new_group">新しいグループ</string>
+    
+    
     <string name="import_group">グループをインポート</string>
+    
+    
     <string name="new_file">新しいファイル</string>
+    
+    
     <string name="new_item">新しいアイテム</string>
+    
+    
     <string name="group_edit">グループを編集</string>
+    
+    
     <string name="group_name">グループ名</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_group">このグループを複製しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_group">このグループを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_duplicate_this_process">このプロセスを複製しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_process">このプロセスを削除しますか？</string>
+    
+    
     <string name="do_you_want_to_remove_this_variable">この変数を削除しますか？</string>
+    
+    
     <string name="variable_name">変数名</string>
+    
+    
     <string name="variable_already_exists">変数は既に存在します</string>
+    
+    
     <string name="cannot_remove_default_profile">デフォルトプロファイルは削除できません。</string>
+    
+    
     <string name="cannot_edit_default_profile">デフォルトプロファイルは編集できません。</string>
+    
+    
     <string name="do_you_want_to_restore_default_profile">デフォルトプロファイルを復元しますか？</string>
+    
+    
     <string name="simulate_touch_screen">タッチスクリーンをシミュレート</string>
+    
+    
     <string name="install_content">コンテンツをインストール</string>
+    
+    
     <string name="content_type">コンテンツタイプ</string>
+    
+    
     <string name="contents">コンテンツ</string>
+    
+    
     <string name="do_you_want_to_install_content">追加コンテンツをインストールしますか？</string>
+    
+    
     <string name="pls_make_sure_content_trustworthy">コンテンツには実行可能ファイルが含まれています。安全でない実行可能ファイルはデータやデバイスのセキュリティを脅かす可能性があります。インストール前に、インストールしようとしている追加コンテンツが信頼できるものであることを必ず確認してください。</string>
+    
+    
     <string name="content_suffix_is_wcp_packed_xz_zst">コンテンツファイルは.wcp拡張子を持ち、xzまたはzst形式で圧縮されています。</string>
+    
+    
     <string name="installing_content">コンテンツをインストール中…</string>
+    
+    
     <string name="unable_to_install_content">コンテンツをインストールできません。</string>
+    
+    
     <string name="install_failed">インストール失敗</string>
+    
+    
     <string name="file_cannot_be_recognied">ファイルを認識できません。</string>
+    
+    
     <string name="profile_not_found_in_content">コンテンツにプロファイルが見つかりません。</string>
+    
+    
     <string name="profile_cannot_be_recognized">プロファイルを認識できません</string>
+    
+    
     <string name="content_already_exist">インストールしようとしているコンテンツは既に存在します。</string>
+    
+    
     <string name="content_info">コンテンツ情報</string>
+    
+    
     <string name="version_code">バージョンコード</string>
+    
+    
     <string name="description">説明</string>
+    
+    
     <string name="file_list">ファイルリスト</string>
+    
+    
     <string name="_continue">続行</string>
+    
+    
     <string name="content_installed_success">コンテンツのインストールが成功しました！</string>
+    
+    
     <string name="content_cannot_be_trusted">コンテンツは信頼できません。</string>
+    
+    
     <string name="content_is_incomplete">コンテンツが不完全です。</string>
+    
+    
     <string name="warning_content_has_untrusted_files">警告: 追加コンテンツに信頼できないファイルが含まれています。一般的に、次のファイルは変更すべきではありません。インストールを続行するかどうかを判断してください。</string>
+    
+    
     <string name="warning">警告</string>
+    
+    
     <string name="do_you_want_to_remove_this_content">このコンテンツを削除しますか？</string>
+    
+    
     <string name="add_to_home_screen">ホーム画面に追加</string>
+    
+    
     <string name="shortcut_not_available">このショートカットはもう利用できません。削除または再作成してください。</string>
+    
+    
     <string name="enable_file_provider">ファイルプロバイダーを有効化</string>
+    
+    
     <string name="take_effect_next_startup">このオプションは次回起動時に有効になります。</string>
+    
+    
     <string name="imagefs">Imagefs</string>
+    
+    
     <string name="reinstall_imagefs">Imagefsを再インストール</string>
+    
+    
     <string name="do_you_want_to_reinstall_imagefs">imagefsを再インストールしますか？この操作によりシステムファイルが復元されますが、コンテナは変更されません。</string>
+    
+    
     <string name="unable_to_remove_content_since_container_using">コンテナが現在このWineを使用しているため、このコンテンツを削除できません。</string>
+    
+    
     <string name="get_more_contents_form_github">https://github.com/longjunyu2/winlator/releases にアクセスしてより多くのコンテンツを入手できます。</string>
+    
+    
     <string name="setup_failed">セットアップ失敗</string>
+    
+    
     <string name="graphics_driver_configuration">グラフィックスドライバー設定</string>
+    
+    
     <string name="select_graphics_driver_version">グラフィックスドライバーのバージョンを選択:</string>
+    
+    
     <string name="graphics_driver_version">グラフィックスドライバーバージョン</string>
+    
+    
     <string name="graphics_driver_available_extensions">利用可能な拡張機能</string>
+    
+    
     <string name="add_to_homescreen">ホーム画面に追加</string>
+    
+    
     <string name="add_save">セーブを追加</string>
+    
+    
     <string name="saves">セーブデータマネージャー</string>
+    
+    
     <string name="import_save">セーブをインポート</string>
+    
+    
     <string name="transfer">転送</string>
+    
+    
     <string name="share">共有</string>
+    
+    
     <string name="unregister">登録解除</string>
+    
+    
     <string name="no_saves_to_display">表示するセーブがありません</string>
+    
+    
     <string name="new_save">セーブを登録</string>
+    
+    
     <string name="save_path">セーブパス</string>
+    
+    
     <string name="save_title">セーブ名</string>
+    
+    
     <string name="save_container">選択したコンテナ</string>
+    
+    
     <string name="select_save_path">セーブフォルダを検索</string>
+    
+    
     <string name="select_container_first">セーブが含まれているコンテナを選択してください。</string>
+    
+    
     <string name="fill_all_fields">パスとセーブ名が必要です</string>
+    
+    
     <string name="invalid_path">有効なセーブディレクトリパスではありません</string>
+    
+    
     <string name="confirm_selection">選択を確認</string>
+    
+    
     <string name="select_directory">セーブディレクトリを選択</string>
+    
+    
     <string name="invalid_container">無効なパス</string>
+    
+    
     <string name="up_directory">上のディレクトリへ</string>
+    
+    
     <string name="edit_save_title">セーブタイトルを更新</string>
+    
+    
     <string name="edit_save">セーブを編集</string>
+    
+    
     <string name="original_save_path">登録済みセーブパス</string>
+    
+    
     <string name="updated_save_path">更新されたセーブパス</string>
+    
+    
     <string name="confirmation">確認</string>
+    
+    
     <string name="yes">はい</string>
+    
+    
     <string name="no">いいえ</string>
+    
+    
     <string name="path_not_changed_prompt">パスが変更されていません。続行しますか？</string>
+    
+    
     <string name="save_transfer">セーブを転送</string>
+    
+    
     <string name="select_container">ターゲットコンテナ:</string>
+    
+    
     <string name="transfer_complete">転送完了</string>
+    
+    
     <string name="transfer_failed">転送失敗</string>
+    
+    
     <string name="unable_to_transfer_save">セーブを転送できません</string>
+    
+    
     <string name="spinner_container_selection">転送中...</string>
+    
+    
     <string name="name_required">名前が必要です</string>
+    
+    
     <string name="exporting_save">セーブをエクスポート中...</string>
+    
+    
     <string name="importing_save">セーブをインポート中...</string>
+    
+    
     <string name="_copy">コピー</string>
+    
+    
     <string name="backing_up_data">データをバックアップ中...</string>
+    
+    
     <string name="restoring_data">データを復元中...</string>
+    
+    
     <string name="midi_sound_font">MIDI サウンドフォント</string>
+    
+    
     <string name="sound">サウンド</string>
+    
+    
     <string name="do_you_want_to_remove_this_sound_font">このサウンドフォントを削除しますか？</string>
+    
+    
     <string name="sound_font_removed_success">サウンドフォントを正常に削除しました！</string>
+    
+    
     <string name="sound_font_removed_failed">サウンドフォントの削除に失敗しました！</string>
+    
+    
     <string name="sound_font_installed_success">サウンドフォントを正常にインストールしました！</string>
+    
+    
     <string name="sound_font_installed_failed">サウンドフォントのインストールに失敗しました！</string>
+    
+    
     <string name="sound_font_already_exist">インストールしようとしているサウンドフォントは既に存在します。</string>
+    
+    
     <string name="unable_to_install_soundfont">サウンドフォントをインストールできません</string>
+    
+    
     <string name="installing_soundfont">サウンドフォントをインストール中…</string>
+    
+    
     <string name="sound_font_bad_format">サウンドフォントの形式が不正です。</string>
+    
+    
     <string name="cannot_remove_default_sound_font">デフォルトのサウンドフォントは削除できません</string>
+    
+    
     <string name="enable_dinput_for_wine_game">WineゲームのDInputを有効化</string>
+    
+    
     <string name="enable_xinput_for_wine_game">WineゲームのXInputを有効化</string>
+    
+    
     <string name="dinput_legacy">レガシー（旧ゲームパッド）</string>
+    
+    
     <string name="dinput_modern">モダン（Xinput風）</string>
+    
+    
     <string name="mixed">混合</string>
-    <string name="help_xinput"><![CDATA[
-        ゲームがゲームコントローラーサポートに<i><b>XInput API</b></i>を使用している場合は、このオプションを有効にしてください。<br/><br/>
-        このオプションは<i><b>仮想</b></i>（入力コントロールで提供）および<i><b>物理</b></i>ゲームコントローラーの両方に影響します。
-    ]]></string>
-    <string name="help_dinput"><![CDATA[
-        ゲームがゲームコントローラーサポートに<i><b>DInput API</b></i>を使用している場合は、このオプションを有効にしてください。<br/><br/>
-        このオプションは<i><b>仮想</b></i>（入力コントロールで提供）および<i><b>物理</b></i>ゲームコントローラーの両方に影響します。
-    ]]></string>
+    
+    
+    <string name="help_xinput">
+        ゲームがゲームコントローラーサポートに&lt;i&gt;&lt;b&gt;XInput API&lt;/b&gt;&lt;/i&gt;を使用している場合は、このオプションを有効にしてください。&lt;br/&gt;&lt;br/&gt;
+        このオプションは&lt;i&gt;&lt;b&gt;仮想&lt;/b&gt;&lt;/i&gt;（入力コントロールで提供）および&lt;i&gt;&lt;b&gt;物理&lt;/b&gt;&lt;/i&gt;ゲームコントローラーの両方に影響します。
+    </string>
+    
+    
+    <string name="help_dinput">
+        ゲームがゲームコントローラーサポートに&lt;i&gt;&lt;b&gt;DInput API&lt;/b&gt;&lt;/i&gt;を使用している場合は、このオプションを有効にしてください。&lt;br/&gt;&lt;br/&gt;
+        このオプションは&lt;i&gt;&lt;b&gt;仮想&lt;/b&gt;&lt;/i&gt;（入力コントロールで提供）および&lt;i&gt;&lt;b&gt;物理&lt;/b&gt;&lt;/i&gt;ゲームコントローラーの両方に影響します。
+    </string>
+    
+    
     <string name="enable_xinput_and_dinput_same_time">一部のゲームは両方のAPIをサポートする場合があります。そのようなゲームでXInputとDInputを同時に有効にすると、The Binding of IsaacやResident Evilシリーズのようなタイトルで見られるように、操作上の問題が発生する可能性があります。</string>
+    
+    
     <string name="startup_normal">通常（すべてのサービスを読み込む）</string>
+    
+    
     <string name="startup_essential">必須（必須サービスのみ読み込む）</string>
+    
+    
     <string name="startup_aggressive">積極的（起動時にサービスを停止）</string>
+    
+    
     <string name="lc_all" translatable="false">LC_ALL</string>
-    <string name="help_trigger_mode"><![CDATA[
-        このオプションは使用している<i><b>物理コントローラー</b></i>によって異なります。<br/><br/>
-        <i><b>軸として</b></i>: コントローラーのトリガーが線形（動作範囲あり）の場合はこれをチェックしてください。<br/><br/>
-        <i><b>ボタンとして</b></i>: コントローラーのトリガーがボタン（スイッチに似ている）の場合はこれをチェックしてください。<br/><br/>
-        <i><b>注記</b></i>: 線形トリガーの場合、<i><b>ボタンとして</b></i>を使用するとマッピング時に線形データが失われます。<br/>
-    ]]></string>
+    
+    
+    <string name="help_trigger_mode">
+        このオプションは使用している&lt;i&gt;&lt;b&gt;物理コントローラー&lt;/b&gt;&lt;/i&gt;によって異なります。&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;軸として&lt;/b&gt;&lt;/i&gt;: コントローラーのトリガーが線形（動作範囲あり）の場合はこれをチェックしてください。&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;ボタンとして&lt;/b&gt;&lt;/i&gt;: コントローラーのトリガーがボタン（スイッチに似ている）の場合はこれをチェックしてください。&lt;br/&gt;&lt;br/&gt;
+        &lt;i&gt;&lt;b&gt;注記&lt;/b&gt;&lt;/i&gt;: 線形トリガーの場合、&lt;i&gt;&lt;b&gt;ボタンとして&lt;/b&gt;&lt;/i&gt;を使用するとマッピング時に線形データが失われます。&lt;br/&gt;
+    </string>
+    
+    
     <string name="toggle_orientation">向きを切り替え</string>
-    <string name="help_file_provider"><![CDATA[
-        <i><b>ファイルプロバイダー</b></i>を使用すると、Androidファイルマネージャーを通じてWinlatorの内部データにアクセスできます。<br/><br/>
-    ]]></string>
+    
+    
+    <string name="help_file_provider">
+        &lt;i&gt;&lt;b&gt;ファイルプロバイダー&lt;/b&gt;&lt;/i&gt;を使用すると、Androidファイルマネージャーを通じてWinlatorの内部データにアクセスできます。&lt;br/&gt;&lt;br/&gt;
+    </string>
+    
+    
     <string name="reconfigure">再設定</string>
+    
+    
     <string name="do_you_want_to_reconfigure_wine">次回起動時にこのコンテナを再設定しますか？これにより、Wine設定を起動するためのタイムスタンプが削除されます。</string>
+    
 
-    <!-- OpenXR specific text -->
+    
+    
     <string name="xr" translatable="false">XR</string>
+    
+    
     <string name="primary_controller">メインコントローラー</string>
+    
+    
     <string name="left_controller">左コントローラー</string>
+    
+    
     <string name="right_controller">右コントローラー</string>
+    
+    
     <string name="button_a">ボタンA</string>
+    
+    
     <string name="button_b">ボタンB</string>
+    
+    
     <string name="button_x">ボタンX</string>
+    
+    
     <string name="button_y">ボタンY</string>
+    
+    
     <string name="button_grip">グリップボタン</string>
+    
+    
     <string name="button_trigger">トリガーボタン</string>
+    
+    
     <string name="thumbstick_left">スティック左</string>
+    
+    
     <string name="thumbstick_right">スティック右</string>
+    
+    
     <string name="thumbstick_up">スティック上</string>
+    
+    
     <string name="thumbstick_down">スティック下</string>
+    
+    
     <string name="secondary_executable">パス:</string>
-    <string name="enter_secondary_exec_path"> 例: "D:/Games/My Game/My Game.exe"</string>
+    
+    
+    <string name="enter_secondary_exec_path"> 例: &quot;D:/Games/My Game/My Game.exe&quot;</string>
+    
+    
     <string name="exec_delay">遅延実行（秒）:</string>
+    
+    
     <string name="enter_delay_seconds">遅延時間（秒）を入力:</string>
+    
+    
     <string name="use_secondary_executable">セカンダリ実行可能ファイルを使用しますか？</string>
+    
+    
     <string name="secondary_exec">セカンダリ実行可能ファイル</string>
+    
+    
     <string name="secondary_exe_path_subtext">（パスにスペースが含まれる場合は引用符で囲む必要があります）</string>
+    
+    
     <string name="pip_mode">PiPモード</string>
+    
+    
     <string name="configure">設定</string>
+    
+    
     <string name="enable_sendinput_mode">Windows SendInputモードを使用</string>
+    
+    
     <string name="enable_touchscreen_timeout">タッチスクリーンタイムアウト（再起動が必要）</string>
+    
+    
     <string name="enable_touchscreen_haptics">タッチスクリーンの触覚フィードバックを有効化</string>
+    
+    
     <string name="help_steamgrid">SteamGrid APIキー</string>
+    
+    
     <string name="disable_xinput_for_shortcut">Xinputを無効化（M/KB排他制御用）</string>
+    
+    
     <string name="fullscreen_stretched">全画面表示を有効化（ストレッチ）</string>
+    
+    
     <string name="export_container">コンテナをエクスポート</string>
+    
+    
     <string name="exporting_container">コンテナをエクスポート中...</string>
+    
 
+    
     <string name="brightness">明るさ</string>
+    
+    
     <string name="contrast">コントラスト</string>
+    
+    
     <string name="gamma">ガンマ</string>
+    
+    
     <string name="color_adjustment">カラー調整</string>
+    
+    
     <string name="enable_fxaa">FXAAを有効化</string>
+    
+    
     <string name="enable_crt_shader">CRTシェーダーを有効化</string>
+    
 
+    
     <string name="do_you_want_to_add_a_new_profile">新しいプロファイルを追加しますか？</string>
+    
 
+    
     <string name="default_profile">デフォルトプロファイル</string>
+    
 
+    
     <string name="reset">リセット</string>
+    
 
+    
     <string name="screen_effect">画面エフェクト</string>
+    
 
+    
     <string name="enable_toon_shader">トゥーンシェーダーを有効化</string>
+    
+    
     <string name="enable_ntsc_effect">NTSCエフェクトを有効化</string>
+    
+    
     <string name="enter_profile_name">プロファイル名を入力</string>
+    
 
+    
     <string name="configure_analog_sticks">アナログスティックを設定</string>
+    
+    
     <string name="analog_stick_settings">アナログスティック設定</string>
+    
+    
     <string name="left_analog_stick_settings">左アナログスティック設定</string>
+    
+    
     <string name="right_analog_stick_settings">右アナログスティック設定</string>
+    
+    
     <string name="deadzone">デッドゾーン: %1$d%%</string>
+    
+    
     <string name="sensitivity">感度: %1$d%%</string>
+    
+    
     <string name="invert_x_axis_left">X軸を反転（左スティック）</string>
+    
+    
     <string name="invert_y_axis_left">Y軸を反転（左スティック）</string>
+    
+    
     <string name="invert_x_axis_right">X軸を反転（右スティック）</string>
+    
+    
     <string name="invert_y_axis_right">Y軸を反転（右スティック）</string>
+    
+    
     <string name="save">保存</string>
+    
+    
     <string name="use_xr">OpenXR統合を使用</string>
+    
 
+    
     <string name="not_connected">未接続</string>
+    
+    
     <string name="preferences_button_text">   設定   </string>
+    
+    
     <string name="help_button_text">   ヘルプ   </string>
+    
+    
     <string name="exit_button_text">   終了   </string>
-    <string name="extra_keys_config_desc">ここでTermuxアプリのようにextra-keys変数の値を設定できます（<a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">こちら</a>を参照）。\n
-例: <b>META</b>は<i>METAキー</i>、\n
-<b>KEYBOARD</b>は<i>ソフトキーボード切り替えキー</i>、\n
-<b>PREFERENCES</b>は<i>設定を開くキー</i>、\n
-<b>MOUSE_HELPER</b>は<i>マウスヘルパー切り替えキー</i>、\n
-<b>STYLUS_HELPER</b>は<i>スタイラスクリックオーバーライドオーバーレイ切り替えキー</i>、\n
-<b>EXIT</b>は<i>アプリケーション終了キー</i>。</string>
+    
+    
+    <string name="extra_keys_config_desc">
+        ここでTermuxアプリのようにextra-keys変数の値を設定できます（
+        <a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">こちら</a>
+        を参照）。\n
+例: 
+        <b>META</b>
+        は
+        <i>METAキー</i>
+        、\n
+
+        <b>KEYBOARD</b>
+        は
+        <i>ソフトキーボード切り替えキー</i>
+        、\n
+
+        <b>PREFERENCES</b>
+        は
+        <i>設定を開くキー</i>
+        、\n
+
+        <b>MOUSE_HELPER</b>
+        は
+        <i>マウスヘルパー切り替えキー</i>
+        、\n
+
+        <b>STYLUS_HELPER</b>
+        は
+        <i>スタイラスクリックオーバーライドオーバーレイ切り替えキー</i>
+        、\n
+
+        <b>EXIT</b>
+        は
+        <i>アプリケーション終了キー</i>
+        。
+    </string>
+    
+    
     <string name="notification_content_text">下にスワイプしてオプションを表示</string>
+    
+    
     <string name="notification_open_preferences">設定</string>
+    
+    
     <string name="notification_exit">終了</string>
+    
+    
     <string name="notification_restart_activity">再起動</string>
+    
+    
     <string name="notification_toggle_soft_keyboard">IMEを切り替え</string>
+    
+    
     <string name="notification_toggle_additional_key_bar">追加キーボードを切り替え</string>
+    
+    
     <string name="notification_release_pointer_and_keyboard_capture">キャプチャを解放</string>
+    
+    
     <string name="notification_toggle_fullscreen">全画面表示を切り替え</string>
+    
 
+    
     <string name="pref_main">設定</string>
+    
+    
     <string name="pref_output">出力</string>
+    
+    
     <string name="pref_pointer">ポインター</string>
+    
+    
     <string name="pref_kbd">キーボード</string>
+    
+    
     <string name="pref_other">その他</string>
+    
+    
     <string name="pref_version">バージョン</string>
+    
+    
     <string name="pref_ekbar">追加キーバーの設定</string>
+    
+    
     <string name="pref_userActions">ユーザー操作への応答</string>
+    
 
+    
     <string name="pref_displayResolutionMode">ディスプレイ解像度モード</string>
+    
+    
     <string name="pref_displayScale">ディスプレイスケール、%</string>
+    
+    
     <string name="pref_displayResolutionExact">ディスプレイ解像度</string>
+    
+    
     <string name="pref_displayResolutionCustom">ディスプレイ解像度</string>
+    
+    
     <string name="pref_adjustResolution">画面の向きに合わせて設定解像度を調整する</string>
+    
+    
     <string name="pref_displayStretch">ディスプレイに合わせて引き伸ばす</string>
+    
+    
     <string name="pref_Reseed">ソフトキーボードが開いている間は画面をリサイズする</string>
+    
+    
     <string name="pref_Reseed_summary">ソフトキーボードが開いている間は画面サイズが調整されます。</string>
+    
+    
     <string name="pref_PIP">PIPモード</string>
+    
+    
     <string name="pref_PIP_summary">ホームボタンまたは最近使ったアプリボタンが押されたときにピクチャーインピクチャーモードでアプリを表示する</string>
+    
+    
     <string name="pref_fullscreen">全画面表示</string>
+    
+    
     <string name="pref_fullscreen_summary">デバイスのディスプレイでイマーシブモードを切り替える</string>
+    
+    
     <string name="pref_forceOrientation">画面の向き</string>
+    
+    
     <string name="pref_hideCutout">ディスプレイのノッチを非表示（ある場合）</string>
+    
+    
     <string name="pref_keepScreenOn">画面を常にオンにする</string>
+    
 
+    
     <string name="pref_touchMode">タッチスクリーン入力モード</string>
+    
+    
     <string name="pref_scaleTouchpad">タッチパッドにディスプレイスケール係数を適用する</string>
+    
+    
     <string name="pref_showStylusClickOverride">スタイラスクリックオプションを表示</string>
+    
+    
     <string name="pref_showStylusClickOverride_summary">スタイラスタッチのオーバーライド、左・中・右クリック（スタイラスのみ）</string>
+    
+    
     <string name="pref_stylusIsMouse">スタイラスマウスモードを有効化</string>
+    
+    
     <string name="pref_stylusIsMouse_summary">スタイラスをマウスのように動作させます。有効化すると、スタイラスはカーソルを移動してマウスクリックを送信するだけになり、筆圧・角度・傾きは無視されます。</string>
+    
+    
     <string name="pref_stylusButtonContactModifierMode">スタイラスボタン接触修飾モード</string>
+    
+    
     <string name="pref_stylusButtonContactModifierMode_summary">スタイラスがボタンを押しながら画面に触れているときのみ右ボタンまたは中ボタンのマウスクリックを送信するにはこのオプションを有効にしてください。</string>
+    
+    
     <string name="pref_showMouseHelper">マウスクリックヘルパーオーバーレイを表示</string>
+    
+    
     <string name="pref_showMouseHelper_summary">タッチパッドで使用できるオンスクリーンマウスボタン</string>
+    
+    
     <string name="pref_pointerCapture">可能な場合は外部ポインターデバイスをキャプチャする</string>
+    
+    
     <string name="pref_pointerCapture_summary">すべてのハードウェアポインターイベントを傍受します。Escapeキーを押すとAndroidにポインターが返ります。</string>
+    
+    
     <string name="pref_transformCapturedPointer">キャプチャされたポインターの動きを変換する</string>
+    
+    
     <string name="pref_capturedPointerSpeedFactor">キャプチャされたポインターの速度係数、%</string>
+    
+    
     <string name="pref_tapToMove">タッチパッドのタップ移動を有効化</string>
+    
 
+    
     <string name="pref_showAdditionalKbd">追加キーボードを表示</string>
+    
+    
     <string name="pref_showAdditionalKbd_summary">追加キー付きキーボードを表示します。</string>
+    
+    
     <string name="pref_showIMEWhileExternalConnected">外部キーボード接続時にIMEを表示</string>
+    
+    
     <string name="pref_showIMEWhileExternalConnected_summary">ハードウェアキーボードが接続されている間にソフトウェアキーボードを表示します。</string>
+    
+    
     <string name="pref_preferScancodes">可能な場合はスキャンコードを優先する</string>
+    
+    
     <string name="pref_preferScancodes_summary">Xサーバーにハードウェアキーボードレイアウトの処理を任せます（DEの設定またはsetxkbmapを使用）。</string>
+    
+    
     <string name="pref_hardwareKbdScancodesWorkaround">ハードウェアキーボードスキャンコードの回避策</string>
+    
+    
     <string name="pref_hardwareKbdScancodesWorkaround_summary">一部のデバイスでスキャンコードを修正します。複数のレイアウトで問題が発生する場合があります。</string>
+    
+    
     <string name="pref_dexMetaKeyCapture">システムショートカットを傍受する</string>
+    
+    
     <string name="pref_dexMetaKeyCapture_summary">Samsung Dexのみ。&quot;Alt+F4&quot;、&quot;Meta+D&quot;、&quot;Meta+E&quot;などの傍受を許可します。</string>
+    
+    
     <string name="pref_enableAccessibilityService">システムショートカットを手動で傍受するためにアクセシビリティサービスを有効にします。</string>
+    
+    
     <string name="pref_enableAccessibilityService_summary">アクセシビリティ設定を開きます。</string>
+    
+    
     <string name="pref_enableAccessibilityServiceAutomatically">システムショートカットを自動的に傍受するためにアクセシビリティサービスを有効にします。</string>
+    
+    
     <string name="pref_enableAccessibilityServiceAutomatically_summary">WRITE_SECURE_SETTINGS権限が必要です。</string>
+    
+    
     <string name="pref_pauseKeyInterceptingWithEsc">Escキーでキー傍受を一時停止する</string>
+    
+    
     <string name="pref_filterOutWinkey">傍受されたWin（Meta/Mod4）キーをフィルタリングする。</string>
+    
+    
     <string name="pref_filterOutWinkey_summary">傍受中にDexショートカットを使用できるようにします。アクセシビリティサービスが必要です。</string>
+    
+    
     <string name="pref_enableGboardCJK">CJK Gboardを有効化するための回避策</string>
+    
+    
     <string name="pref_enableGboardCJK_summary">Android 14およびGboard 14が必要な場合があります</string>
+    
 
+    
     <string name="pref_clipboardEnable">クリップボードの共有</string>
+    
+    
     <string name="pref_requestNotificationPermission">通知の許可をリクエスト</string>
+    
+    
     <string name="pref_xrMode">Meta Oculus XRモード</string>
+    
+    
     <string name="pref_configureResponseToUserActions">ユーザー操作への応答を設定する</string>
+    
+    
     <string name="pref_storeSecondaryDisplayPreferencesSeparately">セカンダリディスプレイの設定を別々に保存する</string>
+    
+    
     <string name="pref_storeSecondaryDisplayPreferencesSeparately_summary">設定したいディスプレイでこの画面を開いてください</string>
+    
 
+    
     <string name="pref_adjustHeightForEK">追加キーバーのためにディスプレイの高さを調整する</string>
+    
+    
     <string name="pref_adjustHeightForEK_summary">EKバーの切り替え時に画面のちらつきが発生する場合があります。</string>
+    
+    
     <string name="pref_useTermuxEKBarBehaviour">キーを押すたびに追加キーバーの特殊キーを非アクティブにする</string>
+    
+    
     <string name="pref_useTermuxEKBarBehaviour_summary">長押しで特殊キーをロックする</string>
+    
+    
     <string name="pref_opacityEKBar">追加キーバーの不透明度、%</string>
+    
+    
     <string name="pref_extra_keys_config">追加キーの設定</string>
+    
 
+    
     <string name="pref_swipeUpAction">3本指で上にスワイプ</string>
+    
+    
     <string name="pref_swipeDownAction">3本指で下にスワイプ</string>
+    
+    
     <string name="pref_volumeUpAction">音量を上げる</string>
+    
+    
     <string name="pref_volumeDownAction">音量を下げる</string>
+    
+    
     <string name="pref_backButtonAction">戻るボタン</string>
+    
+    
     <string name="pref_notificationTapAction">通知タップ</string>
+    
+    
     <string name="pref_notificationButton0Action">通知の最初のボタン</string>
+    
+    
     <string name="pref_notificationButton1Action">通知の2番目のボタン</string>
+    
+    
     <string name="pref_mediaKeysAction">メディアキー</string>
+    
 
+    
     <string name="pref_summary_requiresExactOrCustom">「ディスプレイ解像度モード」が「exact」または「custom」である必要があります</string>
+    
+    
     <string name="pref_summary_requiresIntercepting">Dexモードまたはアクセシビリティサービスでシステムショートカットの傍受が必要です</string>
+    
+    
     <string name="pref_summary_requiresTrackpadAndNative">「タッチスクリーン入力モード」が「トラックパッド」であり、「ディスプレイ解像度モード」が「native」でない必要があります</string>
+    
+    
     <string name="fexcore_config">FEXCore</string>
+    
+    
     <string name="fexcore_preset">FEXCoreプリセット</string>
+    
+    
     <string name="adrenotools_gpu_drivers">Adrenotools GPUドライバー</string>
+    
+    
     <string name="install_drivers">ドライバーをインストール</string>
+    
+    
     <string name="install_drivers_message">ドライバーを選択するよう求められます。Yuzu、Dolphin、Citraなどの他のエミュレーターで使用されているものと同じドライバーが必要です。</string>
+    
+    
     <string name="install_drivers_warning">現在のPCエミュレーターの制限により、QualcommドライバーはパッチなしではGen2以下のチップセットで動作しない場合があることをご注意ください。</string>
+    
+    
     <string name="enable_vulkan_api_dump">Vulkan APIコールのダンプをファイルに有効化する。</string>
+    
+    
     <string name="dll_emulator">32ビットエミュレーター</string>
+    
+    
     <string name="open_with_android_browser">WineでAndroidブラウザを開く</string>
+    
+    
     <string name="share_android_clipboard">AndroidクリップボードをWineと共有する</string>
+    
+    
     <string name="ddraw_wrapper">DDraw ラッパー</string>
+    
+    
     <string name="fexcore_version">FEXCoreバージョン</string>
+    
+    
     <string name="graphics_driver_max_device_memory">デバイスの最大メモリ</string>
+    
+    
     <string name="graphics_driver_sync_frame">フレームごとに同期</string>
+    
+    
     <string name="graphics_driver_disable_present_wait">KHR_present_waitを無効化</string>
+    
+    
     <string name="graphics_driver_present_modes">プレゼントモード</string>
+    
+    
     <string name="graphics_driver_resource_type">メモリリソースタイプ</string>
+    
+    
     <string name="graphics_driver_vulkan_version">Vulkanバージョン</string>
+    
+    
     <string name="graphics_driver_bcn_emulation">BCnエミュレーション</string>
+    
+    
     <string name="graphics_driver_bcn_emulation_type">BCnエミュレーションタイプ</string>
+    
+    
     <string name="graphics_driver_bcn_emulation_cache">BCnエミュレーションキャッシュ</string>
+    
+    
     <string name="vkbasalt">vkBasalt</string>
+    
+    
     <string name="vkbasalt_sharpness_effects">シャープネスエフェクト</string>
+    
+    
     <string name="vkbasalt_sharpness_level">シャープネスレベル</string>
+    
+    
     <string name="vkbasalt_sharpness_denoise">シャープネスノイズ除去</string>
+    
+    
     <string name="shutdown">シャットダウン</string>
+    
+    
     <string name="no_items_to_display_saves">セーブデータが空です</string>
+    
+    
     <string name="select_folder">ファイルの場所を選択</string>
+    
+    
     <string name="no_containers_available">コンテナが見つかりません</string>
+    
+    
     <string name="binding_additional">バインディングコンボ</string>
+    
+    
     <string name="force_fullscreen">全画面表示を強制</string>
+    
+    
     <string name="import_icons">アイコンをインポート</string>
+    
+    
     <string name="language">言語</string>
+    
+    
     <string name="native_rendering">ネイティブレンダリングを有効化</string>
+    
+    
     <string name="all_files_access_dialog_title">全ファイルへのアクセスが必要です</string>
+    
+    
     <string name="all_files_access_dialog_message">USBストレージデバイスなどの追加のストレージデバイスへのアクセスを許可するには、全ファイルアクセス権限を付与する必要があります。「OK」を押してAndroid設定で全ファイルアクセスを許可してください。</string>
+    
+    
     <string name="help_import_icons">アイコンをZIPアーカイブに圧縮し、このボタンを押してインポートしてください。</string>
+    
+
+    <string name="visible_slots">Visible Slot</string>
+    <string name="mouse_speed">Cursor Sensitivity</string>
+    <string name="offset_scale">Offset Scale</string>
+    <string name="cursor_hotspot_offset">Cursor Center Position</string>
+    <string name="hide_stroke_fill">Hide Stroke Fill</string>
+    <string name="lsfg_section_label">LSFG</string>
+    <string name="lsfg_multiplier">Multiplier</string>
+    <string name="lsfg_present_mode">Present Mode</string>
+    <string name="lsfg_performance_mode">Performance Mode</string>
+    <string name="lsfg_hdr_mode">HDR Mode</string>
+    <string name="lsfg_enable_global">Enable LSFG</string>
+    <string name="lsfg_dll_label">Lossless.dll</string>
+    <string name="lsfg_import_dll">Import DLL</string>
+    <string name="lsfg_clear_dll">Clear DLL</string>
+    <string name="settings_lsfg_select_valid_dll">Please select a valid .dll file</string>
+    <string name="settings_lsfg_import_failed">Failed to import DLL file</string>
+    <string name="lsfg_flow_scale">Flow Scale</string>
+    <string name="lsfg_change_dll">Change</string>
+    <string name="lsfg_pacing_mode">Pacing Mode</string>
+    <string name="hud_elements">HUD Elements</string>
+    <string name="toggle_hud">FPS Monitor</string>
+    <string name="hud_element_fps">FPS</string>
+    <string name="hud_element_renderer">Renderer / API</string>
+    <string name="hud_element_gpu">GPU Load</string>
+    <string name="hud_element_cpu_ram">CPU / RAM</string>
+    <string name="hud_element_batt_temp">Battery / Temp</string>
+    <string name="hud_element_graph">Graph</string>
+    <string name="hud_elements_none">None (HUD disabled)</string>
+    <string name="hud_overlay">HUD Overlay</string>
+    <string name="hud_elements_label">HUD Active elements</string>
 </resources>

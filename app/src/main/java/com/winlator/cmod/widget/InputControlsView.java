@@ -370,6 +370,40 @@ public class InputControlsView extends View {
 
     public void setTouchpadView(TouchpadView touchpadView) {
         this.touchpadView = touchpadView;
+        if (this.touchpadView != null) {
+            this.touchpadView.setTwoFingerGestureListener(active -> {
+                handleTouchpadToggleGesture(active);
+            });
+        }
+    }
+
+    private ControlElement findActiveTouchpadToggle() {
+        if (profile == null) return null;
+        for (ControlElement element : profile.getElements()) {
+            if (element.getType() == ControlElement.Type.TOUCHSCREEN_TOGGLE && element.isSelected()) {
+                return element;
+            }
+        }
+        return null;
+    }
+
+    private ControlElement currentTwoFingerGestureElement;
+
+    private void handleTouchpadToggleGesture(boolean active) {
+        ControlElement toggleElement = findActiveTouchpadToggle();
+        if (active && currentTwoFingerGestureElement == null && toggleElement != null) {
+            currentTwoFingerGestureElement = toggleElement;
+            for (int i = 0; i < toggleElement.getBindingCount(); i++) {
+                Binding binding = toggleElement.getBindingAt(i);
+                if (binding != Binding.NONE) handleInputEvent(binding, true);
+            }
+        } else if (!active && currentTwoFingerGestureElement != null) {
+            for (int i = 0; i < currentTwoFingerGestureElement.getBindingCount(); i++) {
+                Binding binding = currentTwoFingerGestureElement.getBindingAt(i);
+                if (binding != Binding.NONE) handleInputEvent(binding, false);
+            }
+            currentTwoFingerGestureElement = null;
+        }
     }
 
     public XServer getXServer() {

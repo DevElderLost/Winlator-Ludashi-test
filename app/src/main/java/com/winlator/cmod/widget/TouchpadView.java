@@ -60,6 +60,12 @@ public class TouchpadView extends View {
 
     private SharedPreferences preferences;
 
+    private boolean twoFingerGestureActive = false;
+    private float gesturePrevDistance = 0f;
+    private float gesturePrevAngle = 0f;
+    private float gesturePrevCentroidX = 0f;
+    private float gesturePrevCentroidY = 0f;
+    private TwoFingerGestureListener twoFingerGestureListener;
 
     // Flag to control touchpad vs touchscreen mode
 
@@ -166,7 +172,7 @@ public class TouchpadView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        boolean isTouchscreenMode = preferences.getBoolean("touchscreen_toggle", false);
+        boolean isTouchscreenMode = isSimTouchScreen() || preferences.getBoolean("touchscreen_toggle", false);
 
         // Reset the timeout timer to keep controls visible
         resetTouchscreenTimeout();  // <-- Ensure the controls stay visible
@@ -350,17 +356,25 @@ public class TouchpadView extends View {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN:
-                handleTouchDown(event);
+                if (event.getPointerCount() == 2) {
+                    resetTwoFingerGestureState(event);
+                } else {
+                    handleTouchDown(event);
+                }
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (event.getPointerCount() == 2) {
-                    handleTwoFingerScroll(event);
+                    handleTwoFingerGesture(event);
                 } else {
+                    stopTwoFingerGesture();
                     handleTouchMove(event);
                 }
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
+                if (twoFingerGestureActive) {
+                    stopTwoFingerGesture();
+                }
                 if (event.getPointerCount() == 2) {
                     handleTwoFingerTap(event);
                 } else {
@@ -368,6 +382,9 @@ public class TouchpadView extends View {
                 }
                 break;
             case MotionEvent.ACTION_CANCEL:
+                if (twoFingerGestureActive) {
+                    stopTwoFingerGesture();
+                }
                 if (xServer.isRelativeMouseMovement()) {
                     xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTUP, 0, 0, 0);
                     xServer.getWinHandler().mouseEvent(MouseEventFlags.RIGHTUP, 0, 0, 0);
@@ -438,6 +455,76 @@ public class TouchpadView extends View {
         }
     }
 
+    public interface TwoFingerGestureListener {
+        void onTwoFingerGesture(boolean active);
+    }
+
+    public void setTwoFingerGestureListener(TwoFingerGestureListener listener) {
+        this.twoFingerGestureListener = listener;
+    }
+
+    private void resetTwoFingerGestureState(MotionEvent event) {
+        twoFingerGestureActive = false;
+        gesturePrevDistance = 0f;
+        gesturePrevAngle = 0f;
+        gesturePrevCentroidX = 0f;
+        gesturePrevCentroidY = 0f;
+        if (event.getPointerCount() == 2) {
+            float x0 = event.getX(0);
+            float y0 = event.getY(0);
+            float x1 = event.getX(1);
+            float y1 = event.getY(1);
+            gesturePrevDistance = (float) Math.hypot(x1 - x0, y1 - y0);
+            gesturePrevAngle = (float) Math.toDegrees(Math.atan2(y1 - y0, x1 - x0));
+            gesturePrevCentroidX = (x0 + x1) * 0.5f;
+            gesturePrevCentroidY = (y0 + y1) * 0.5f;
+        }
+    }
+
+    private void handleTwoFingerGesture(MotionEvent event) {
+        if (event.getPointerCount() != 2) return;
+
+        float x0 = event.getX(0);
+        float y0 = event.getY(0);
+        float x1 = event.getX(1);
+        float y1 = event.getY(1);
+        float currentDistance = (float) Math.hypot(x1 - x0, y1 - y0);
+        float currentAngle = (float) Math.toDegrees(Math.atan2(y1 - y0, x1 - x0));
+        float centroidX = (x0 + x1) * 0.5f;
+        float centroidY = (y0 + y1) * 0.5f;
+
+        if (gesturePrevDistance <= 0f) {
+            resetTwoFingerGestureState(event);
+            return;
+        }
+
+        float deltaDistance = currentDistance - gesturePrevDistance;
+        float deltaAngle = normalizeAngle(currentAngle - gesturePrevAngle);
+        float deltaCentroid = (float) Math.hypot(centroidX - gesturePrevCentroidX, centroidY - gesturePrevCentroidY);
+
+        boolean gestureDetected = Math.abs(deltaDistance) > 10f || Math.abs(deltaAngle) > 5f || deltaCentroid > 8f;
+        if (gestureDetected && !twoFingerGestureActive) {
+            twoFingerGestureActive = true;
+            if (twoFingerGestureListener != null) twoFingerGestureListener.onTwoFingerGesture(true);
+        }
+
+        gesturePrevDistance = currentDistance;
+        gesturePrevAngle = currentAngle;
+        gesturePrevCentroidX = centroidX;
+        gesturePrevCentroidY = centroidY;
+    }
+
+    private void stopTwoFingerGesture() {
+        if (!twoFingerGestureActive) return;
+        twoFingerGestureActive = false;
+        if (twoFingerGestureListener != null) twoFingerGestureListener.onTwoFingerGesture(false);
+    }
+
+    private float normalizeAngle(float angle) {
+        while (angle > 180f) angle -= 360f;
+        while (angle < -180f) angle += 360f;
+        return angle;
+    }
 
 
     private void handleFingerUp(Finger finger1) {

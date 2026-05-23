@@ -234,6 +234,10 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                     element.setCursorMoveRadius(elementJSONObject.optInt("cursorMoveRadius", 150));
                 }
 
+                if (element.getType() == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
+                    element.setSelected(elementJSONObject.optBoolean("selected", false));
+                }
+
                 // MULTIPLE_BUTTON: load data sub-button
                 if (element.getType() == ControlElement.Type.MULTIPLE_BUTTON) {
                     element.setMultiButtonCount(elementJSONObject.optInt("multiButtonCount", 4));

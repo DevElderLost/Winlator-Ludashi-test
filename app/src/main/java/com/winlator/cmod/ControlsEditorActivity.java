@@ -138,6 +138,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
             }
             else if (type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
                 view.findViewById(R.id.LLShape).setVisibility(View.VISIBLE);
+                view.findViewById(R.id.LLBindings).setVisibility(View.VISIBLE);
                 view.findViewById(R.id.LLCustomTextIcon).setVisibility(View.VISIBLE);
             }
             else if (type == ControlElement.Type.RANGE_BUTTON) {
@@ -605,7 +606,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         }
 
         // Hanya BUTTON yang boleh pakai tombol Add dan multiple binding
-        if (type == ControlElement.Type.BUTTON) {
+        if (type == ControlElement.Type.BUTTON || type == ControlElement.Type.TOUCHSCREEN_TOGGLE) {
             ImageButton btnAddBinding = settingsView.findViewById(R.id.btnAddBinding);
             btnAddBinding.setVisibility(View.VISIBLE);
 

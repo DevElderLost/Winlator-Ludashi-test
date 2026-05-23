@@ -1912,7 +1912,7 @@ public class ControlElement {
             } else if (type == Type.MULTIPLE_BUTTON) {
                 // Sentuhan pada tombol utama → toggle expand/collapse sub-buttons
                 return true;
-            } else if (type == Type.BUTTON || type == Type.TOUCHSCREEN_TOGGLE) {
+            } else if (type == Type.BUTTON) {
                 if (isKeepButtonPressedAfterMinTime()) touchTime = System.currentTimeMillis();
 
                 // Tekan SEMUA binding
@@ -1924,6 +1924,10 @@ public class ControlElement {
                         }
                     }
                 }
+                return true;
+            } else if (type == Type.TOUCHSCREEN_TOGGLE) {
+                // Touchscreen toggle mode hanya menyalakan/mematikan mode,
+                // gesture dua jari akan dieksekusi dari TouchpadView.
                 return true;
             } else if (type == Type.RANGE_BUTTON) {
                 scroller.handleTouchDown(x, y);

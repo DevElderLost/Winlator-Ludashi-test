@@ -371,8 +371,8 @@ public class InputControlsView extends View {
     public void setTouchpadView(TouchpadView touchpadView) {
         this.touchpadView = touchpadView;
         if (this.touchpadView != null) {
-            this.touchpadView.setTwoFingerGestureListener(active -> {
-                handleTouchpadToggleGesture(active);
+            this.touchpadView.setTwoFingerGestureListener((gesture, active) -> {
+                handleTouchpadToggleGesture(gesture, active);
             });
         }
     }
@@ -388,21 +388,50 @@ public class InputControlsView extends View {
     }
 
     private ControlElement currentTwoFingerGestureElement;
+    private TouchpadView.TwoFingerGestureType currentTwoFingerGestureType;
 
-    private void handleTouchpadToggleGesture(boolean active) {
+    private void handleTouchpadToggleGesture(TouchpadView.TwoFingerGestureType gesture, boolean active) {
         ControlElement toggleElement = findActiveTouchpadToggle();
-        if (active && currentTwoFingerGestureElement == null && toggleElement != null) {
+        if (toggleElement == null) return;
+
+        if (active && currentTwoFingerGestureElement == null) {
             currentTwoFingerGestureElement = toggleElement;
-            for (int i = 0; i < toggleElement.getBindingCount(); i++) {
-                Binding binding = toggleElement.getBindingAt(i);
-                if (binding != Binding.NONE) handleInputEvent(binding, true);
-            }
+            currentTwoFingerGestureType = gesture;
+            sendTouchpadGestureBindings(toggleElement, gesture, true);
+        } else if (active && currentTwoFingerGestureElement != null && currentTwoFingerGestureType != gesture) {
+            sendTouchpadGestureBindings(currentTwoFingerGestureElement, currentTwoFingerGestureType, false);
+            currentTwoFingerGestureType = gesture;
+            sendTouchpadGestureBindings(currentTwoFingerGestureElement, gesture, true);
         } else if (!active && currentTwoFingerGestureElement != null) {
-            for (int i = 0; i < currentTwoFingerGestureElement.getBindingCount(); i++) {
-                Binding binding = currentTwoFingerGestureElement.getBindingAt(i);
-                if (binding != Binding.NONE) handleInputEvent(binding, false);
-            }
+            sendTouchpadGestureBindings(currentTwoFingerGestureElement, currentTwoFingerGestureType, false);
             currentTwoFingerGestureElement = null;
+            currentTwoFingerGestureType = null;
+        }
+    }
+
+    private void sendTouchpadGestureBindings(ControlElement element, TouchpadView.TwoFingerGestureType gesture, boolean isActionDown) {
+        ControlElement.TouchscreenGesture touchscreenGesture;
+        switch (gesture) {
+            case ZOOM_IN: touchscreenGesture = ControlElement.TouchscreenGesture.ZOOM_IN; break;
+            case ZOOM_OUT: touchscreenGesture = ControlElement.TouchscreenGesture.ZOOM_OUT; break;
+            case ROTATE: touchscreenGesture = ControlElement.TouchscreenGesture.ROTATE; break;
+            case PAN: touchscreenGesture = ControlElement.TouchscreenGesture.PAN; break;
+            default: touchscreenGesture = ControlElement.TouchscreenGesture.TWO_FINGER_TAP; break;
+        }
+
+        int count = element.getTouchscreenGestureBindingCount(touchscreenGesture);
+        if (count == 0) {
+            count = element.getBindingCount();
+            for (int i = 0; i < count; i++) {
+                Binding binding = element.getBindingAt(i);
+                if (binding != Binding.NONE) handleInputEvent(binding, isActionDown);
+            }
+            return;
+        }
+
+        for (int i = 0; i < count; i++) {
+            Binding binding = element.getTouchscreenGestureBindingAt(touchscreenGesture, i);
+            if (binding != Binding.NONE) handleInputEvent(binding, isActionDown);
         }
     }
 

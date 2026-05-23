@@ -66,6 +66,22 @@ public class TouchpadView extends View {
     private float gesturePrevCentroidX = 0f;
     private float gesturePrevCentroidY = 0f;
     private TwoFingerGestureListener twoFingerGestureListener;
+    private TwoFingerGestureType activeTwoFingerGesture = null;
+    private boolean twoFingerTapCandidate = false;
+    private long twoFingerTapStartTime = 0;
+    private int twoFingerGestureLastPointerId = -1;
+    private boolean twoFingerGestureLeftHeld = false;
+
+    private static final long TWO_FINGER_TAP_MAX_DURATION_MS = 250;
+    private static final float TWO_FINGER_TAP_MAX_MOVE = 20f;
+
+    public enum TwoFingerGestureType {
+        ZOOM_IN,
+        ZOOM_OUT,
+        ROTATE,
+        PAN,
+        TWO_FINGER_TAP
+    }
 
     // Flag to control touchpad vs touchscreen mode
 
@@ -358,12 +374,28 @@ public class TouchpadView extends View {
             case MotionEvent.ACTION_POINTER_DOWN:
                 if (event.getPointerCount() == 2) {
                     resetTwoFingerGestureState(event);
+                    twoFingerTapCandidate = true;
+                    twoFingerTapStartTime = System.currentTimeMillis();
+                    activeTwoFingerGesture = null;
+                    twoFingerGestureActive = false;
+                    twoFingerGestureLastPointerId = event.getPointerId(event.getActionIndex());
                 } else {
                     handleTouchDown(event);
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (event.getPointerCount() == 2) {
+                    if (twoFingerTapCandidate) {
+                        float x0 = event.getX(0);
+                        float y0 = event.getY(0);
+                        float x1 = event.getX(1);
+                        float y1 = event.getY(1);
+                        float centroidX = (x0 + x1) * 0.5f;
+                        float centroidY = (y0 + y1) * 0.5f;
+                        if (Math.hypot(centroidX - gesturePrevCentroidX, centroidY - gesturePrevCentroidY) > TWO_FINGER_TAP_MAX_MOVE) {
+                            twoFingerTapCandidate = false;
+                        }
+                    }
                     handleTwoFingerGesture(event);
                 } else {
                     stopTwoFingerGesture();
@@ -375,6 +407,18 @@ public class TouchpadView extends View {
                 if (twoFingerGestureActive) {
                     stopTwoFingerGesture();
                 }
+                if (event.getPointerCount() == 2 && twoFingerTapCandidate) {
+                    long duration = System.currentTimeMillis() - twoFingerTapStartTime;
+                    if (duration <= TWO_FINGER_TAP_MAX_DURATION_MS) {
+                        if (twoFingerGestureListener != null) {
+                            twoFingerGestureListener.onTwoFingerGesture(TwoFingerGestureType.TWO_FINGER_TAP, true);
+                            twoFingerGestureListener.onTwoFingerGesture(TwoFingerGestureType.TWO_FINGER_TAP, false);
+                        }
+                        twoFingerTapCandidate = false;
+                        break;
+                    }
+                }
+                twoFingerTapCandidate = false;
                 if (event.getPointerCount() == 2) {
                     handleTwoFingerTap(event);
                 } else {
@@ -384,6 +428,9 @@ public class TouchpadView extends View {
             case MotionEvent.ACTION_CANCEL:
                 if (twoFingerGestureActive) {
                     stopTwoFingerGesture();
+                }
+                if (twoFingerGestureLeftHeld) {
+                    releaseLeftButtonForTwoFingerGesture();
                 }
                 if (xServer.isRelativeMouseMovement()) {
                     xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTUP, 0, 0, 0);
@@ -456,7 +503,7 @@ public class TouchpadView extends View {
     }
 
     public interface TwoFingerGestureListener {
-        void onTwoFingerGesture(boolean active);
+        void onTwoFingerGesture(TwoFingerGestureType gesture, boolean active);
     }
 
     public void setTwoFingerGestureListener(TwoFingerGestureListener listener) {
@@ -469,6 +516,7 @@ public class TouchpadView extends View {
         gesturePrevAngle = 0f;
         gesturePrevCentroidX = 0f;
         gesturePrevCentroidY = 0f;
+        twoFingerGestureLastPointerId = -1;
         if (event.getPointerCount() == 2) {
             float x0 = event.getX(0);
             float y0 = event.getY(0);
@@ -502,10 +550,26 @@ public class TouchpadView extends View {
         float deltaAngle = normalizeAngle(currentAngle - gesturePrevAngle);
         float deltaCentroid = (float) Math.hypot(centroidX - gesturePrevCentroidX, centroidY - gesturePrevCentroidY);
 
-        boolean gestureDetected = Math.abs(deltaDistance) > 10f || Math.abs(deltaAngle) > 5f || deltaCentroid > 8f;
-        if (gestureDetected && !twoFingerGestureActive) {
-            twoFingerGestureActive = true;
-            if (twoFingerGestureListener != null) twoFingerGestureListener.onTwoFingerGesture(true);
+        TwoFingerGestureType gesture = determineTwoFingerGesture(deltaDistance, deltaAngle, deltaCentroid);
+        if (gesture != activeTwoFingerGesture) {
+            if (activeTwoFingerGesture != null) {
+                if ((activeTwoFingerGesture == TwoFingerGestureType.ROTATE || activeTwoFingerGesture == TwoFingerGestureType.PAN) && twoFingerGestureLeftHeld) {
+                    releaseLeftButtonForTwoFingerGesture();
+                }
+                if (twoFingerGestureListener != null) {
+                    twoFingerGestureListener.onTwoFingerGesture(activeTwoFingerGesture, false);
+                }
+            }
+            activeTwoFingerGesture = gesture;
+            twoFingerGestureActive = gesture != null;
+            if (gesture != null) {
+                if ((gesture == TwoFingerGestureType.ROTATE || gesture == TwoFingerGestureType.PAN) && !twoFingerGestureLeftHeld) {
+                    pressLeftButtonForTwoFingerGesture(event);
+                }
+                if (twoFingerGestureListener != null) {
+                    twoFingerGestureListener.onTwoFingerGesture(gesture, true);
+                }
+            }
         }
 
         gesturePrevDistance = currentDistance;
@@ -514,10 +578,46 @@ public class TouchpadView extends View {
         gesturePrevCentroidY = centroidY;
     }
 
+    private TwoFingerGestureType determineTwoFingerGesture(float deltaDistance, float deltaAngle, float deltaCentroid) {
+        float absDistance = Math.abs(deltaDistance);
+        float absAngle = Math.abs(deltaAngle);
+
+        if (absDistance > 10f && absDistance > absAngle * 4 && absDistance > deltaCentroid) {
+            return deltaDistance > 0 ? TwoFingerGestureType.ZOOM_IN : TwoFingerGestureType.ZOOM_OUT;
+        }
+        if (absAngle > 5f && absAngle > absDistance * 0.4f && absAngle > deltaCentroid) {
+            return TwoFingerGestureType.ROTATE;
+        }
+        if (deltaCentroid > 8f) {
+            return TwoFingerGestureType.PAN;
+        }
+        return null;
+    }
+
+    private void startTwoFingerGesture(TwoFingerGestureType gesture) {
+        if (gesture == null) return;
+        if (twoFingerGestureActive && gesture == activeTwoFingerGesture) return;
+        if (twoFingerGestureActive && activeTwoFingerGesture != null && twoFingerGestureListener != null) {
+            twoFingerGestureListener.onTwoFingerGesture(activeTwoFingerGesture, false);
+        }
+        activeTwoFingerGesture = gesture;
+        twoFingerGestureActive = true;
+        if (twoFingerGestureListener != null) {
+            twoFingerGestureListener.onTwoFingerGesture(gesture, true);
+        }
+    }
+
     private void stopTwoFingerGesture() {
         if (!twoFingerGestureActive) return;
         twoFingerGestureActive = false;
-        if (twoFingerGestureListener != null) twoFingerGestureListener.onTwoFingerGesture(false);
+        if ((activeTwoFingerGesture == TwoFingerGestureType.ROTATE || activeTwoFingerGesture == TwoFingerGestureType.PAN) && twoFingerGestureLeftHeld) {
+            releaseLeftButtonForTwoFingerGesture();
+        }
+        if (activeTwoFingerGesture != null && twoFingerGestureListener != null) {
+            twoFingerGestureListener.onTwoFingerGesture(activeTwoFingerGesture, false);
+        }
+        activeTwoFingerGesture = null;
+        twoFingerGestureLastPointerId = -1;
     }
 
     private float normalizeAngle(float angle) {
@@ -526,6 +626,40 @@ public class TouchpadView extends View {
         return angle;
     }
 
+    private void pressLeftButtonForTwoFingerGesture(MotionEvent event) {
+        if (twoFingerGestureLeftHeld) return;
+
+        int pointerIndex = event.findPointerIndex(twoFingerGestureLastPointerId);
+        float x;
+        float y;
+        if (pointerIndex >= 0) {
+            x = event.getX(pointerIndex);
+            y = event.getY(pointerIndex);
+        } else {
+            x = (event.getX(0) + event.getX(1)) * 0.5f;
+            y = (event.getY(0) + event.getY(1)) * 0.5f;
+        }
+
+        float[] transformedPoint = XForm.transformPoint(xform, x, y);
+        if (xServer.isRelativeMouseMovement()) {
+            xServer.getWinHandler().mouseEvent(MouseEventFlags.MOVE, (int) transformedPoint[0], (int) transformedPoint[1], 0);
+            xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTDOWN, 0, 0, 0);
+        } else {
+            xServer.injectPointerMove((int) transformedPoint[0], (int) transformedPoint[1]);
+            xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
+        }
+        twoFingerGestureLeftHeld = true;
+    }
+
+    private void releaseLeftButtonForTwoFingerGesture() {
+        if (!twoFingerGestureLeftHeld) return;
+        if (xServer.isRelativeMouseMovement()) {
+            xServer.getWinHandler().mouseEvent(MouseEventFlags.LEFTUP, 0, 0, 0);
+        } else {
+            xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+        }
+        twoFingerGestureLeftHeld = false;
+    }
 
     private void handleFingerUp(Finger finger1) {
         switch (numFingers) {

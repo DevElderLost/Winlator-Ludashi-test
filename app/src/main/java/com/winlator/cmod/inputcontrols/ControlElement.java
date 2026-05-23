@@ -76,10 +76,36 @@ public class ControlElement {
         }
     }
 
+    public enum TouchscreenGesture {
+        ZOOM_IN("Zoom In"),
+        ZOOM_OUT("Zoom Out"),
+        ROTATE("Rotate"),
+        PAN("Pan"),
+        TWO_FINGER_TAP("2-Finger Tap");
+
+        private final String label;
+
+        TouchscreenGesture(String label) {
+            this.label = label;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public static String[] labels() {
+            TouchscreenGesture[] values = values();
+            String[] labels = new String[values.length];
+            for (int i = 0; i < values.length; i++) labels[i] = values[i].getLabel();
+            return labels;
+        }
+    }
+
     private final InputControlsView inputControlsView;
     private Type type = Type.BUTTON;
     private Shape shape = Shape.CIRCLE;
     private List<Binding> bindings = new ArrayList<>();
+    private final EnumMap<TouchscreenGesture, List<Binding>> touchscreenGestureBindings = new EnumMap<>(TouchscreenGesture.class);
     private float scale = 1.0f;
     private short x;
     private short y;
@@ -221,10 +247,13 @@ public class ControlElement {
         } else if (type == Type.TOUCHSCREEN_TOGGLE) {
             bindings.add(Binding.NONE);
             states = new boolean[1];
+            touchscreenGestureBindings.clear();
+            ensureTouchscreenGestureBindings();
         } else {
             // BUTTON, MENU_NAVIGATION, dan tipe lain default 1 binding
             bindings.add(Binding.NONE);
             states = new boolean[1];
+            touchscreenGestureBindings.clear();
         }
 
         // MULTIPLE_BUTTON: inisialisasi sub-button data
@@ -291,7 +320,75 @@ public class ControlElement {
         this.range = range;
     }
 
+    public List<Binding> getTouchscreenGestureBindings(TouchscreenGesture gesture) {
+        if (gesture == null) return new ArrayList<>();
+        List<Binding> bindings = touchscreenGestureBindings.get(gesture);
+        return bindings != null ? bindings : new ArrayList<>();
+    }
 
+    public int getTouchscreenGestureBindingCount(TouchscreenGesture gesture) {
+        return getTouchscreenGestureBindings(gesture).size();
+    }
+
+    public Binding getTouchscreenGestureBindingAt(TouchscreenGesture gesture, int index) {
+        List<Binding> bindings = getTouchscreenGestureBindings(gesture);
+        return (index >= 0 && index < bindings.size()) ? bindings.get(index) : Binding.NONE;
+    }
+
+    public void setTouchscreenGestureBindingAt(TouchscreenGesture gesture, int index, Binding binding) {
+        if (gesture == null) return;
+        List<Binding> bindings = touchscreenGestureBindings.get(gesture);
+        if (bindings == null) {
+            bindings = new ArrayList<>();
+            touchscreenGestureBindings.put(gesture, bindings);
+        }
+        while (bindings.size() <= index) {
+            bindings.add(Binding.NONE);
+        }
+        bindings.set(index, binding != null ? binding : Binding.NONE);
+    }
+
+    public void addTouchscreenGestureBinding(TouchscreenGesture gesture, Binding binding) {
+        if (gesture == null) return;
+        List<Binding> bindings = touchscreenGestureBindings.get(gesture);
+        if (bindings == null) {
+            bindings = new ArrayList<>();
+            touchscreenGestureBindings.put(gesture, bindings);
+        }
+        bindings.add(binding != null ? binding : Binding.NONE);
+    }
+
+    public void removeTouchscreenGestureBinding(TouchscreenGesture gesture, int index) {
+        if (gesture == null) return;
+        List<Binding> bindings = touchscreenGestureBindings.get(gesture);
+        if (bindings == null || index < 0 || index >= bindings.size()) return;
+        bindings.remove(index);
+    }
+
+    public void setTouchscreenGestureBindingCount(TouchscreenGesture gesture, int count) {
+        if (gesture == null) return;
+        List<Binding> bindings = touchscreenGestureBindings.get(gesture);
+        if (bindings == null) {
+            bindings = new ArrayList<>();
+            touchscreenGestureBindings.put(gesture, bindings);
+        }
+        while (bindings.size() > count) {
+            bindings.remove(bindings.size() - 1);
+        }
+        while (bindings.size() < count) {
+            bindings.add(Binding.NONE);
+        }
+    }
+
+    private void ensureTouchscreenGestureBindings() {
+        for (TouchscreenGesture gesture : TouchscreenGesture.values()) {
+            if (!touchscreenGestureBindings.containsKey(gesture)) {
+                List<Binding> bindings = new ArrayList<>();
+                bindings.add(Binding.NONE);
+                touchscreenGestureBindings.put(gesture, bindings);
+            }
+        }
+    }
 
     public byte getOrientation() {
         return orientation;
@@ -1792,6 +1889,16 @@ public class ControlElement {
 
             if (type == Type.TOUCHSCREEN_TOGGLE) {
                 elementJSONObject.put("selected", selected);
+
+                JSONObject gesturesObject = new JSONObject();
+                for (TouchscreenGesture gesture : TouchscreenGesture.values()) {
+                    JSONArray gestureArray = new JSONArray();
+                    for (Binding binding : getTouchscreenGestureBindings(gesture)) {
+                        gestureArray.put(binding.name());
+                    }
+                    gesturesObject.put(gesture.name(), gestureArray);
+                }
+                elementJSONObject.put("touchscreenGestures", gesturesObject);
             }
 
             if (type == Type.RIGHT_STICK) {

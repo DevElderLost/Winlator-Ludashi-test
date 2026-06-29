@@ -1133,13 +1133,6 @@ public class XServerDisplayActivity extends AppCompatActivity {
             renderer.setUnviewableWMClasses("explorer.exe");
         }
 
-        boolean nativeMode = shortcut != null ? shortcut.getRendererNative()
-                : (container != null && container.isRendererNative());
-        String nativeColorFormatExtra = shortcut != null ? shortcut.getExtra("nativeColorFormat", "0") : "0";
-        int nativeColorFormat = nativeColorFormatExtra.isEmpty() ? 0 : Integer.parseInt(nativeColorFormatExtra);
-        renderer.setNativeMode(nativeMode);
-        renderer.setNativeColorFormat(nativeColorFormat);
-
         xServer.setRenderer(renderer);
         rootView.addView(xServerView);
 
@@ -1735,6 +1728,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             int savedFpsPos = savedFps.isEmpty() ? 0 : Integer.parseInt(savedFps);
             if (savedFpsPos < 0 || savedFpsPos >= fpsLabels.length) savedFpsPos = 0;
             spNativeFPS.setSelection(savedFpsPos);
+            renderer.setFpsLimit(savedFpsPos < fpsValues.length ? fpsValues[savedFpsPos] : 0);
             spNativeFPS.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     if (llStandardOptions != null) llStandardOptions.setVisibility(View.VISIBLE);
@@ -1835,6 +1829,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 container.putExtra("graphicsPostFXMode",
                     String.valueOf(spPostFXMode != null ? spPostFXMode.getSelectedItemPosition() : 0));
                 container.putExtra("graphicsColorMode", "0");
+                container.saveData();
                 Toast.makeText(this, "Preset saved", Toast.LENGTH_SHORT).show();
             });
         }

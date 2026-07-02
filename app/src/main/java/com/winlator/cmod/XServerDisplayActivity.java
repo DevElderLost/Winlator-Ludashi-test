@@ -721,7 +721,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         if (environment != null) {
             environment.onResume();
+            xServerView.onResume();
         }
+        
         startTime = System.currentTimeMillis();
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
 
@@ -751,6 +753,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // Only pause environment and xServerView if not in PiP mode
             if (environment != null) {
                 environment.onPause();
+                xServerView.onPause();
             }
             
             if (isSuspendEnabled)
@@ -806,6 +809,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (preloaderDialog != null && preloaderDialog.isShowing()) preloaderDialog.closeOnUiThread();
                 if (winHandler != null) winHandler.stop();
                 if (wineRequestHandler != null) wineRequestHandler.stop();
+                xServerView.onDestroy();
                 /* Gracefully terminate all running wine processes */
                 ProcessHelper.terminateAllWineProcesses();
                 /* Wait until all processes have gracefully terminated, forcefully killing them only after a certain amount of time */
@@ -870,10 +874,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case R.id.main_menu_pause:
                 if (isPaused) {
+                    xServerView.onResume();
                     ProcessHelper.resumeAllWineProcesses();
                     item.setIcon(R.drawable.icon_pause);
                 }
                 else {
+                    xServerView.onPause();
                     ProcessHelper.pauseAllWineProcesses();
                     item.setIcon(R.drawable.icon_play);
                 }
@@ -1128,7 +1134,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         xServerView.setCursorVisible(false);
 
         if (shortcut != null) {
-            xServerView.setUnviewableWMClasses("explorer.exe");
+            xServerView.setUnviewableWMClass("explorer.exe");
         }
         
         xServer.setXServerView(xServerView);

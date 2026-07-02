@@ -521,7 +521,7 @@ public class WinHandler {
                 XServer xServer = activity.getXServer();
                 xServer.pointer.setX(x);
                 xServer.pointer.setY(y);
-                activity.getXServerView().requestRenderer();
+                activity.getXServerView().onPointerMove(x, y);
                 break;
             }
             default: {

@@ -141,13 +141,13 @@ void EGLRenderer::renderingThreadLoop() {
             viewportNeedsUpdate = true;
             sizeChanged = false;
             drawFrame();
-            eglSwapBuffers(display, surface);
         }
         
         if (requestRender && surface != EGL_NO_SURFACE) {
             drawFrame();
-            eglSwapBuffers(display, surface);
         }
+        
+        SwappyGL_swap(display, surface);
         
         if (wantRendererNotification) {
             wantRendererNotification = false;
@@ -382,6 +382,8 @@ void EGLRenderer::createEGLSurface(ANativeWindow *window) {
         printf("Failed to make context current");
         return;
     }
+    
+    SwappyGL_setWindow(window);
         
     glFrontFace(GL_CCW);
     glDisable(GL_CULL_FACE);

@@ -17,7 +17,7 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void*) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_winlator_cmod_widget_XServerView_nativeInit(JNIEnv *env, jobject thiz, jobject xServer, jobject rootCursorObj) {
+Java_com_winlator_cmod_widget_XServerView_nativeInit(JNIEnv *env, jobject thiz, jobject context, jobject xServer, jobject rootCursorObj) {
     jobject windowManagerObj = env->GetObjectField(xServer, cache.windowManager);
     jobject inputDeviceManagerObj = env->GetObjectField(xServer, cache.inputDeviceManager);
     jobject rootWindowObj = env->GetObjectField(windowManagerObj, cache.rootWindow);
@@ -101,6 +101,13 @@ Java_com_winlator_cmod_widget_XServerView_nativeInit(JNIEnv *env, jobject thiz, 
     renderer.cursorManager = &cursorManager;
     renderer.cache = &cache;
     renderer.xServer = &xserver;
+    
+    SwappyGL_init(env, context);
+    
+    uint64_t period = SwappyGL_getRefreshPeriodNanos();
+    SwappyGL_setAutoSwapInterval(true);
+    SwappyGL_setMaxAutoSwapIntervalNS(period);
+    SwappyGL_setAutoPipelineMode(true);
     
     renderer.start();
 }
@@ -375,6 +382,7 @@ Java_com_winlator_cmod_widget_XServerView_nativeResume(JNIEnv *env, jobject thiz
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_cmod_widget_XServerView_nativeStop(JNIEnv *env, jobject thiz) {
     renderer.stop();
+    SwappyGL_destroy();
 }
 
 extern "C" JNIEXPORT void JNICALL

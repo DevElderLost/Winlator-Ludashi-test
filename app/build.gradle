@@ -135,6 +135,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags ''
+                arguments "-DANDROID_STL=c++_shared"
             }
         }
 
@@ -174,6 +175,10 @@ android {
             useLegacyPackaging = true
         }
     }
+    
+    buildFeatures {
+        prefab = true
+    }
 }
 
 dependencies {
@@ -183,6 +188,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.4.0'
     implementation 'com.github.luben:zstd-jni:1.5.2-3@aar'
     implementation 'org.tukaani:xz:1.7'
+    implementation "androidx.games:games-frame-pacing:2.1.3"
     implementation 'org.apache.commons:commons-compress:1.20'
     implementation 'androidx.activity:activity-ktx:1.4.0'
     implementation 'androidx.fragment:fragment-ktx:1.4.0'

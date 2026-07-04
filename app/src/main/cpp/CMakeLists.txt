@@ -8,6 +8,8 @@ add_subdirectory(OpenXR-SDK)
 add_subdirectory(patchelf)
 add_subdirectory(adrenotools)
 
+find_package(games-frame-pacing REQUIRED CONFIG)
+
 # Add Winlator shared library
 add_library(winlator SHARED
         xr/engine.c
@@ -43,4 +45,5 @@ target_link_libraries(winlator
         GLESv2
         GLESv3
         adrenotools
+        games-frame-pacing::swappy_static
 )

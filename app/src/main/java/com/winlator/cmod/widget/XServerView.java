@@ -4,6 +4,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Choreographer;
+import androidx.core.app.ActivityCompat;
 import com.winlator.cmod.R;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -63,8 +64,7 @@ public class XServerView extends SurfaceView implements SurfaceHolder.Callback, 
         xServer.windowManager.addOnWindowModificationListener(this);
         xServer.pointer.addOnPointerMotionListener(this);
         xServer.cursorManager.addOnCursorModificationListener(this);
-        nativeInit(xServer, rootCursorDrawable);
-        
+        nativeInit(this.context, xServer, rootCursorDrawable);
     }
     
     @Override
@@ -222,7 +222,7 @@ public class XServerView extends SurfaceView implements SurfaceHolder.Callback, 
     @FastNative
     public native void nativeDestroySurface();
     @FastNative
-    public native void nativeInit(XServer xserver, Drawable rootCursor);
+    public native void nativeInit(Context context, XServer xserver, Drawable rootCursor);
     @FastNative
     public native void nativeChangeSurface(int width, int height);
     @FastNative

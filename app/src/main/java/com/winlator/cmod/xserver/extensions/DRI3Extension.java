@@ -143,7 +143,7 @@ public class DRI3Extension implements Extension {
 
         if (modifiers == 1255) {
             Log.d("Dri3", "Creating pixmap from AHardwareBuffer");
-            pixmapFromHardwareBuffer(client, pixmapId, width, height, depth, fd);
+            pixmapFromHardwareBuffer(client, pixmapId, width, height, depth, fd, window);
         }
         else if (modifiers == 1274) {
             Log.d("Dri3", "Creating pixmap from dmabuf filedescriptor"); 
@@ -151,11 +151,13 @@ public class DRI3Extension implements Extension {
         }    
     }
     
-    private void pixmapFromHardwareBuffer(XClient client, int pixmapId, short width, short height, byte depth, int fd) throws IOException, XRequestError {
+    private void pixmapFromHardwareBuffer(XClient client, int pixmapId, short width, short height, byte depth, int fd, Window window) throws IOException, XRequestError {
         try {
             GPUImage gpuImage = new GPUImage(fd);
-            Drawable drawable = client.xServer.drawableManager.createDrawable(pixmapId, gpuImage.getStride(), height, depth);
+            Drawable drawable = client.xServer.drawableManager.createDrawable(pixmapId, width, height, depth);
             drawable.setGPUImage(gpuImage);
+            drawable.setOnDrawListener(() -> client.xServer.windowManager.triggerOnUpdateWindowContentDirect(window, drawable));
+            client.xServer.getXServerView().nativeAddDirectContent(window.id, drawable, gpuImage);
             Pixmap pixmap = client.xServer.pixmapManager.createPixmap(drawable);
             client.registerAsOwnerOfResource(pixmap);
         }

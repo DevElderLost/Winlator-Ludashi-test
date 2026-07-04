@@ -104,11 +104,6 @@ Java_com_winlator_cmod_widget_XServerView_nativeInit(JNIEnv *env, jobject thiz, 
     
     SwappyGL_init(env, context);
     
-    uint64_t period = SwappyGL_getRefreshPeriodNanos();
-    SwappyGL_setAutoSwapInterval(true);
-    SwappyGL_setMaxAutoSwapIntervalNS(period);
-    SwappyGL_setAutoPipelineMode(true);
-    
     renderer.start();
 }
 

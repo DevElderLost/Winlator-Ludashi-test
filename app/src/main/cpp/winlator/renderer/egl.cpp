@@ -141,12 +141,12 @@ void EGLRenderer::renderingThreadLoop() {
             viewportNeedsUpdate = true;
             sizeChanged = false;
             drawFrame();
-            SwappyGL_swap(display, surface);
+            eglSwapBuffers(display, surface);
         }
         
         if (requestRender && surface != EGL_NO_SURFACE) {
             drawFrame();
-            SwappyGL_swap(display, surface);
+            eglSwapBuffers(display, surface);
         }
         
         if (wantRendererNotification) {
@@ -382,13 +382,7 @@ void EGLRenderer::createEGLSurface(ANativeWindow *window) {
         printf("Failed to make context current");
         return;
     }
-   
-    SwappyGL_setWindow(window);
-    uint64_t period = SwappyGL_getRefreshPeriodNanos();
-    SwappyGL_setAutoSwapInterval(false);
-    SwappyGL_setUseAffinity(true);
-    SwappyGL_setSwapIntervalNS(period);
-        
+
     glFrontFace(GL_CCW);
     glDisable(GL_CULL_FACE);
 

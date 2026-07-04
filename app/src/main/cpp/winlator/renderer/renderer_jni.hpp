@@ -2,8 +2,6 @@
 
 #include <jni.h>
 #include <android/native_window_jni.h>
-#include <swappy/swappyGL.h>
-#include <swappy/swappyGL_extra.h>
 
 #define LOAD_METHOD_ID(method, env, cls, name, sig) \
     (method) = (env)->GetMethodID((cls), (name), (sig));

@@ -102,8 +102,6 @@ Java_com_winlator_cmod_widget_XServerView_nativeInit(JNIEnv *env, jobject thiz, 
     renderer.cache = &cache;
     renderer.xServer = &xserver;
     
-    SwappyGL_init(env, context);
-    
     renderer.start();
 }
 
@@ -377,7 +375,6 @@ Java_com_winlator_cmod_widget_XServerView_nativeResume(JNIEnv *env, jobject thiz
 extern "C" JNIEXPORT void JNICALL
 Java_com_winlator_cmod_widget_XServerView_nativeStop(JNIEnv *env, jobject thiz) {
     renderer.stop();
-    SwappyGL_destroy();
 }
 
 extern "C" JNIEXPORT void JNICALL

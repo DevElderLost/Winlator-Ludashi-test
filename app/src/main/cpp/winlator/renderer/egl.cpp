@@ -229,10 +229,8 @@ void EGLRenderer::renderWindows() {
     for (const auto& renderableWindow : renderableWindows) {
         if (renderableWindow == nullptr) continue;
         
-        if (renderableWindow->window->hasDirectContents()) {
-            auto& content = renderableWindow->window->directContents[renderableWindow->window->currentDirectContent];
-            renderDrawable(content.get(), renderableWindow->rootX, renderableWindow->rootY, true);
-        }
+        if (renderableWindow->window->hasDirectContents())
+            renderDrawable(renderableWindow->window->currentDirectContent, renderableWindow->rootX, renderableWindow->rootY, true);
         else
             renderDrawable(renderableWindow->content, renderableWindow->rootX, renderableWindow->rootY, true);
     }

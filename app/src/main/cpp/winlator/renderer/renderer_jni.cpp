@@ -398,7 +398,7 @@ Java_com_winlator_cmod_widget_XServerView_nativeAddDirectContent(JNIEnv *env, jo
     drawable->isDirectContent = true;
     drawable->drawableObj = env->NewGlobalRef(drawableObj);
     
-    window->currentDirectContent = drawable->id;
+    window->currentDirectContent = nullptr;
     window->directContents[drawable->id] = std::move(drawable);
 }
 
@@ -407,6 +407,18 @@ Java_com_winlator_cmod_widget_XServerView_nativeUpdateDirectContent(JNIEnv *env,
     auto window = windowManager.getWindow(windowId);
     if (!window) return;
     
-    window->currentDirectContent = drawableId;
+    auto directContent = window->directContents[drawableId].get();
+    if (!directContent) return;
+    
+    window->currentDirectContent = directContent;
     renderer.requestRenderer();
+}
+
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_cmod_widget_XServerView_nativeRemoveDirectContent(JNIEnv *env, jclass obj, jint windowId, jint drawableId) {
+    auto window = windowManager.getWindow(windowId);
+    if (!window) return;
+    
+    window->directContents.erase(drawableId);
 }

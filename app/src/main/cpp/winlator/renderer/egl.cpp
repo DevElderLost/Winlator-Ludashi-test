@@ -229,10 +229,8 @@ void EGLRenderer::renderWindows() {
     for (const auto& renderableWindow : renderableWindows) {
         if (renderableWindow == nullptr) continue;
         
-        if (renderableWindow->window->hasDirectContents()) {
-            auto& content = renderableWindow->window->directContents[renderableWindow->window->currentDirectContent];
-            renderDrawable(content.get(), renderableWindow->rootX, renderableWindow->rootY, true);
-        }
+        if (renderableWindow->window->hasDirectContents())
+            renderDrawable(renderableWindow->window->currentDirectContent, renderableWindow->rootX, renderableWindow->rootY, true);
         else
             renderDrawable(renderableWindow->content, renderableWindow->rootX, renderableWindow->rootY, true);
     }
@@ -410,25 +408,19 @@ void EGLRenderer::renderDrawable(int textureId, int length, float xform[], bool 
 int EGLRenderer::allocateTextureDirect(AHardwareBuffer* hardwareBuffer) {
     int textureId;
     
-    if (!hardwareBuffer) {
-        printf("createImageKHR: Invalid AHardwareBuffer pointer\n");
+    if (!hardwareBuffer || !display) {
         return -1;
     }
 
     const EGLint attribList[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
-    AHardwareBuffer_acquire(hardwareBuffer);
 
     EGLClientBuffer clientBuffer = eglGetNativeClientBufferANDROID(hardwareBuffer);
     if (!clientBuffer) {
-        printf("Failed to get native client buffer\n");
-        AHardwareBuffer_release(hardwareBuffer);
         return -1;
     }
 
     EGLImageKHR imageKHR = eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, clientBuffer, attribList);
     if (!imageKHR) {
-        printf("Failed to create EGLImageKHR\n");
-        AHardwareBuffer_release(hardwareBuffer);
         return -1;
     }
     
@@ -437,9 +429,7 @@ int EGLRenderer::allocateTextureDirect(AHardwareBuffer* hardwareBuffer) {
 
     glBindTexture(GL_TEXTURE_2D, textureId);
     if (glGetError() != GL_NO_ERROR) {
-        printf("Failed to bind texture\n");
         eglDestroyImageKHR(display, imageKHR);
-        AHardwareBuffer_release(hardwareBuffer);
         return -1;
     }
     
@@ -450,13 +440,12 @@ int EGLRenderer::allocateTextureDirect(AHardwareBuffer* hardwareBuffer) {
 
     glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, imageKHR);
     if (glGetError() != GL_NO_ERROR) {
-        printf("Failed to bind EGLImage to texture\n");
         eglDestroyImageKHR(display, imageKHR);
-        AHardwareBuffer_release(hardwareBuffer);
         return -1;
     }
 
     glBindTexture(GL_TEXTURE_2D, 0);
+    eglDestroyImageKHR(display, imageKHR);
     
     return textureId;
 }

@@ -24,7 +24,7 @@ struct Window {
     jobject attributes;
     jobject windowObj;
     std::unordered_map<int, std::unique_ptr<struct Drawable>> directContents;
-    int currentDirectContent;
+    Drawable *currentDirectContent;
     
     bool hasDirectContents() {
         return !directContents.empty();

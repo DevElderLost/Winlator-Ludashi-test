@@ -25,6 +25,14 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
+    - name: Install mingw-w64 toolchain
+      run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+    - name: Build refactorsize.exe
+      run: |
+        mkdir -p app/src/main/assets/refactorsize
+        x86_64-w64-mingw32-windres app/src/main/cpp/wn-refactor-size/refactorsize.rc -O coff -o refactorsize.res.o
+        x86_64-w64-mingw32-gcc -O2 -s -mwindows app/src/main/cpp/wn-refactor-size/refactorsize.c refactorsize.res.o -o app/src/main/assets/refactorsize/refactorsize.exe -luser32
     - name: Build with Gradle
       run: ./gradlew assembleDebug
 

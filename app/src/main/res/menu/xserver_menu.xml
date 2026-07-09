@@ -42,6 +42,11 @@
             android:id="@+id/main_menu_pip_mode"
             android:title="@string/pip_mode" />
         <item
+            android:id="@+id/main_menu_refactor_size"
+            android:icon="@drawable/ic_picture_in_picture_alt"
+            android:title="@string/refactor_size"
+            android:checkable="true" />
+        <item
             android:icon="@drawable/icon_task_manager"
             android:id="@+id/main_menu_task_manager"
             android:title="@string/task_manager" />

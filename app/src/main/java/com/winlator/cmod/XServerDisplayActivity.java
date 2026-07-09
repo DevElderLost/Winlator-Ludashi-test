@@ -194,6 +194,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private Runnable configChangedCallback = null;
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
+    private boolean isRefactorSizeEnabled = false;
+    private static final long REFACTOR_SIZE_EXE_BYTES = 16384L;
 
     private boolean isMouseDisabled = false;
     private boolean isVolumeUpPressed = false;
@@ -882,6 +884,30 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         editor.apply();
     }
 
+    private void applyRefactorSize(boolean enabled) {
+        if (winHandler == null || container == null) return;
+        if (enabled) stageRefactorSizeHelper();
+        winHandler.exec("\"C:\\winlator\\refactorsize.exe\" " + (enabled ? "on" : "off"));
+    }
+
+    private void stageRefactorSizeHelper() {
+        try {
+            File dir = new File(container.getRootDir(), ".wine/drive_c/winlator");
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            File dst = new File(dir, "refactorsize.exe");
+            if (dst.exists() && dst.length() == REFACTOR_SIZE_EXE_BYTES) return;
+            try (InputStream in = getAssets().open("refactorsize/refactorsize.exe");
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            Log.i("XServerDisplayActivity", "Refactor Size: staged refactorsize.exe (" + dst.length() + " B) at " + dst.getPath());
+        } catch (Exception e) {
+            Log.e("XServerDisplayActivity", "Refactor Size: helper staging failed", e);
+        }
+    }
+
     public void exitApp() {
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         preloaderDialog.showOnUiThread(R.string.shutdown);
@@ -1065,6 +1091,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 break;
             case R.id.main_menu_logs:
                 debugDialog.show();
+                drawerLayout.closeDrawers();
+                break;
+            case R.id.main_menu_refactor_size:
+                isRefactorSizeEnabled = !isRefactorSizeEnabled;
+                applyRefactorSize(isRefactorSizeEnabled);
                 drawerLayout.closeDrawers();
                 break;
             case R.id.main_menu_exit:

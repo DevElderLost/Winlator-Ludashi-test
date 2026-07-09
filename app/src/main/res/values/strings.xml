@@ -677,4 +677,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="hud_elements_none">None (HUD disabled)</string>
     <string name="hud_overlay">HUD Overlay</string>
     <string name="hud_elements_label">HUD Active elements</string>
+    <string name="refactor_size">Refactor Size</string>
 </resources>

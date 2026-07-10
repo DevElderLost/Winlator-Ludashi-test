@@ -644,4 +644,5 @@ E.g. <b>META</b> untuk <i>tombol META</i>, \n
     <string name="help_import_icons">Kompres ikon Anda dalam arsip ZIP dan impor dengan menekan tombol ini.</string>
     <string name="cursor_hotspot_offset">Posisi Tengah Cursor</string>
     <string name="hide_stroke_fill">Sembunyikan Garis</string>
+    <string name="support_fex_unix_libs">Dukungan Unix Libs FEX</string>
 </resources>

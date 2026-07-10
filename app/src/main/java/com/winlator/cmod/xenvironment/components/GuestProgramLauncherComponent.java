@@ -53,6 +53,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private WineInfo wineInfo;
     private String box64Preset = Box64Preset.COMPATIBILITY;
     private String fexcorePreset = FEXCorePreset.INTERMEDIATE;
+    private boolean fexUnixLibsActive = false;
     private Callback<Integer> terminationCallback;
     private static final Object lock = new Object();
     private final ContentsManager contentsManager;
@@ -135,6 +136,25 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, environment.getContext(), "fexcore/fexcore-" + fexcoreVersion + ".tzst", system32dir);
             container.putExtra("fexcoreVersion", fexcoreVersion);
             containerDataChanged = true;
+        }
+
+        // === FEX Unix libs (ContentsManager): baca preferensi & terapkan via ContentsManager ===
+        boolean unixLibsPref = container.isUseUnixLibs();
+        if (shortcut != null) {
+            unixLibsPref = "1".equals(shortcut.getExtra("useUnixLibs", unixLibsPref ? "1" : "0"));
+        }
+        ContentProfile fexcoreProfile = contentsManager.getProfileByEntryName("fexcore-" + fexcoreVersion);
+        File wineUnixDir = new File(environment.getImageFs().getWinePath(), "lib/wine/aarch64-unix");
+        fexUnixLibsActive = unixLibsPref && contentsManager.fexcoreVersionHasUnixLibs(fexcoreVersion);
+        if (fexcoreProfile != null) {
+            if (fexUnixLibsActive) {
+                contentsManager.copyUnixLibsToDir(fexcoreProfile, wineUnixDir);
+                Log.i("GuestProgramLauncherComponent", "FEX UnixLibs: mode aktif, .so disalin ke " + wineUnixDir);
+            } else {
+                contentsManager.removeAppliedUnixLibs(fexcoreProfile);
+                contentsManager.deleteUnixLibsFromDir(fexcoreProfile, wineUnixDir);
+                Log.i("GuestProgramLauncherComponent", "FEX UnixLibs: mode nonaktif (dll mode)");
+            }
         }
         if (containerDataChanged) container.saveData();
     }

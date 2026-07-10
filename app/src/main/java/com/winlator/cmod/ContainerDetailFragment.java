@@ -421,6 +421,9 @@ public class ContainerDetailFragment extends Fragment {
         final Spinner sFEXCorePreset = view.findViewById(R.id.SFEXCorePreset);
         FEXCorePresetManager.loadSpinner(sFEXCorePreset, isEditMode() ? container.getFEXCorePreset() : preferences.getString("fexcore_preset", FEXCorePreset.INTERMEDIATE));
 
+        final CheckBox cbUseUnixLibs = view.findViewById(R.id.CBUseUnixLibs);
+        cbUseUnixLibs.setChecked(isEditMode() ? container.isUseUnixLibs() : true);
+
         String selectedDriver = sGraphicsDriver.getSelectedItem().toString();
         List<String> sGraphicsItemsList = new ArrayList<>(Arrays.asList(context.getResources().getStringArray(R.array.graphics_driver_entries)));
         sGraphicsDriver.setAdapter(new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, sGraphicsItemsList));
@@ -543,6 +546,7 @@ public class ContainerDetailFragment extends Fragment {
                     container.setBox64Preset(box64Preset);
                     container.setFEXCoreVersion(fexcoreVersion);
                     container.setFEXCorePreset(fexcorePreset);
+                    container.setUseUnixLibs(cbUseUnixLibs.isChecked());
                     container.setDesktopTheme(desktopTheme);
                     container.setMidiSoundFont(midiSoundFont);
                     container.setLC_ALL(lc_all);
@@ -575,6 +579,7 @@ public class ContainerDetailFragment extends Fragment {
                     data.put("box64Preset", box64Preset);
                     data.put("fexcoreVersion", fexcoreVersion);
                     data.put("fexcorePreset", fexcorePreset);
+                    data.put("useUnixLibs", cbUseUnixLibs.isChecked());
                     data.put("desktopTheme", desktopTheme);
                     data.put("wineVersion", sWineVersion.getSelectedItem().toString());
                     data.put("midiSoundFont", midiSoundFont);

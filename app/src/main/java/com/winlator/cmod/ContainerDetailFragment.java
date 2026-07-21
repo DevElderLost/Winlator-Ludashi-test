@@ -646,6 +646,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
         final Spinner sFEXCorePreset = view.findViewById(R.id.SFEXCorePreset);
         FEXCorePresetManager.loadSpinner(sFEXCorePreset, isEditMode() ? container.getFEXCorePreset()
                 : preferences.getString("fexcore_preset", FEXCorePreset.INTERMEDIATE));
+        final CheckBox cbUseUnixLibs = view.findViewById(R.id.CBUseUnixLibs);
+        cbUseUnixLibs.setChecked(isEditMode() && container.isUseUnixLibs());
 
         String selectedDriver = sGraphicsDriver.getSelectedItem().toString();
         List<String> sGraphicsItemsList = new ArrayList<>(

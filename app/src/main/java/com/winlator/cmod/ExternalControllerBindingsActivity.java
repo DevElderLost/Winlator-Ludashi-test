@@ -267,7 +267,7 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
         return super.dispatchKeyEvent(event);
     }
 
-erride
+    @Override
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         finish();
         return true;

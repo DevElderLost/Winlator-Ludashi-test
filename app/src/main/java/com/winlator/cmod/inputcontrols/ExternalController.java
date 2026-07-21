@@ -32,13 +32,89 @@ public class ExternalController {
     public static final byte IDX_BUTTON_R3 = 9;
     public static final byte IDX_BUTTON_L2 = 10;
     public static final byte IDX_BUTTON_R2 = 11;
+    public static final byte TRIGGER_IS_BUTTON = 0;
+    public static final byte TRIGGER_IS_AXIS = 1;
+    public static final byte TRIGGER_IS_BOTH = 2;
     private String name;
     private String id;
     private int deviceId = -1;
+    private byte triggerType = TRIGGER_IS_AXIS;
     private final ArrayList<ExternalControllerBinding> controllerBindings = new ArrayList<>();
     public final GamepadState state = new GamepadState();
-    public final GamepadState remappedState = new GamepadState();
     private XServerDisplayActivity activity;
+
+    private float deadzoneLeft = 0.1f;
+    private float deadzoneRight = 0.1f;
+    private float sensitivityLeft = 1.0f;
+    private float sensitivityRight = 1.0f;
+    private boolean invertLeftX = false;
+    private boolean invertLeftY = false;
+    private boolean invertRightX = false;
+    private boolean invertRightY = false;
+    private boolean useSquareDeadzoneLeft;
+
+    private Context context;
+
+    public void setContext(Context context) {
+        this.context = context;
+        loadPreferences();
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        prefs.registerOnSharedPreferenceChangeListener(prefChangeListener);
+    }
+
+    private SharedPreferences.OnSharedPreferenceChangeListener prefChangeListener =
+        new SharedPreferences.OnSharedPreferenceChangeListener() {
+            @Override
+            public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+                switch (key) {
+                    case PreferenceKeys.DEADZONE_LEFT:
+                        deadzoneLeft = sharedPreferences.getFloat(PreferenceKeys.DEADZONE_LEFT, 0.1f);
+                        break;
+                    case PreferenceKeys.DEADZONE_RIGHT:
+                        deadzoneRight = sharedPreferences.getFloat(PreferenceKeys.DEADZONE_RIGHT, 0.1f);
+                        break;
+                    case PreferenceKeys.SENSITIVITY_LEFT:
+                        sensitivityLeft = sharedPreferences.getFloat(PreferenceKeys.SENSITIVITY_LEFT, 1.0f);
+                        break;
+                    case PreferenceKeys.SENSITIVITY_RIGHT:
+                        sensitivityRight = sharedPreferences.getFloat(PreferenceKeys.SENSITIVITY_RIGHT, 1.0f);
+                        break;
+                    case PreferenceKeys.INVERT_LEFT_X:
+                        invertLeftX = sharedPreferences.getBoolean(PreferenceKeys.INVERT_LEFT_X, false);
+                        break;
+                    case PreferenceKeys.INVERT_LEFT_Y:
+                        invertLeftY = sharedPreferences.getBoolean(PreferenceKeys.INVERT_LEFT_Y, false);
+                        break;
+                    case PreferenceKeys.INVERT_RIGHT_X:
+                        invertRightX = sharedPreferences.getBoolean(PreferenceKeys.INVERT_RIGHT_X, false);
+                        break;
+                    case PreferenceKeys.INVERT_RIGHT_Y:
+                        invertRightY = sharedPreferences.getBoolean(PreferenceKeys.INVERT_RIGHT_Y, false);
+                        break;
+                }
+            }
+        };
+
+    public void unregisterListener() {
+        if (context != null) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            prefs.unregisterOnSharedPreferenceChangeListener(prefChangeListener);
+        }
+    }
+
+    private void loadPreferences() {
+        if (context == null) return;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        this.deadzoneLeft = prefs.getFloat(PreferenceKeys.DEADZONE_LEFT, 0.1f);
+        this.deadzoneRight = prefs.getFloat(PreferenceKeys.DEADZONE_RIGHT, 0.1f);
+        this.sensitivityLeft = prefs.getFloat(PreferenceKeys.SENSITIVITY_LEFT, 1.0f);
+        this.sensitivityRight = prefs.getFloat(PreferenceKeys.SENSITIVITY_RIGHT, 1.0f);
+        this.invertLeftX = prefs.getBoolean(PreferenceKeys.INVERT_LEFT_X, false);
+        this.invertLeftY = prefs.getBoolean(PreferenceKeys.INVERT_LEFT_Y, false);
+        this.invertRightX = prefs.getBoolean(PreferenceKeys.INVERT_RIGHT_X, false);
+        this.invertRightY = prefs.getBoolean(PreferenceKeys.INVERT_RIGHT_Y, false);
+        this.useSquareDeadzoneLeft = prefs.getBoolean(PreferenceKeys.SQUARE_DEADZONE_LEFT, false);
+    }
 
 
 
@@ -56,6 +132,14 @@ public class ExternalController {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public byte getTriggerType() {
+        return triggerType;
+    }
+
+    public void setTriggerType(byte mode) {
+        triggerType = mode;
     }
 
 
@@ -352,7 +436,10 @@ public class ExternalController {
 
     public boolean updateStateFromMotionEvent(MotionEvent event) {
         if (isJoystickDevice(event)) {
-            processTriggerButton(event);
+            if (triggerType == TRIGGER_IS_AXIS)
+                processTriggerButton(event);
+            else if (triggerType == TRIGGER_IS_BUTTON && isXboxController())
+                processXboxTriggerButton(event);
             int historySize = event.getHistorySize();
             for (int i = 0; i < historySize; i++) processJoystickInput(event, i);
             processJoystickInput(event, -1);
@@ -368,9 +455,17 @@ public class ExternalController {
         int buttonIdx = getButtonIdxByKeyCode(keyCode);
         if (buttonIdx != -1) {
             if (buttonIdx == IDX_BUTTON_L2) {
-                return true;
+                if (triggerType == TRIGGER_IS_BUTTON) {
+                    state.triggerL = pressed ? 1.0f : 0f;
+                    state.setPressed(buttonIdx, pressed);
+                } else
+                    return true;
             } else if (buttonIdx == IDX_BUTTON_R2) {
-                return true;
+                if (triggerType == TRIGGER_IS_BUTTON) {
+                    state.triggerR = pressed ? 1.0f : 0f;
+                    state.setPressed(buttonIdx, pressed);
+                } else
+                    return true;
             } else
                 state.setPressed(buttonIdx, pressed);
             return true;
@@ -439,9 +534,10 @@ public class ExternalController {
     public static ArrayList<ExternalController> getControllers() {
         int[] deviceIds = InputDevice.getDeviceIds();
         ArrayList<ExternalController> controllers = new ArrayList<>();
-        for (int i = deviceIds.length-1; i >= 0; i--) {
+        for (int i = deviceIds.length - 1; i >= 0; i--) {
             InputDevice device = InputDevice.getDevice(deviceIds[i]);
-            if (isGameController(device)) {
+            if (device == null || device.isVirtual()) continue;
+            if (isGameController(device) || isMouseDevice(device)) {
                 ExternalController controller = new ExternalController();
                 controller.setId(device.getDescriptor());
                 controller.setName(device.getName());
@@ -449,6 +545,12 @@ public class ExternalController {
             }
         }
         return controllers;
+    }
+
+    public static boolean isMouseDevice(InputDevice device) {
+        if (device == null || device.isVirtual()) return false;
+        int sources = device.getSources();
+        return (sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
     }
 
     public static ExternalController getController(String id) {
@@ -498,8 +600,30 @@ public class ExternalController {
 
         if (Math.abs(value) <= flat) return 0.0f;
 
-        if (axis == MotionEvent.AXIS_X || axis == MotionEvent.AXIS_Y || axis == MotionEvent.AXIS_Z || axis == MotionEvent.AXIS_RZ) {
-             return Math.abs(value) >= ControlElement.STICK_DEAD_ZONE ? value : 0.0f;
+        if (axis == MotionEvent.AXIS_X || axis == MotionEvent.AXIS_Y) {
+            float correctedValue = useSquareDeadzoneLeft
+                    ? applySquareDeadzone(
+                    event.getAxisValue(MotionEvent.AXIS_X),
+                    event.getAxisValue(MotionEvent.AXIS_Y),
+                    this.deadzoneLeft,
+                    this.sensitivityLeft,
+                    axis
+            )
+                    : applyDeadzoneAndSensitivity(value, this.deadzoneLeft, this.sensitivityLeft);
+
+            if (axis == MotionEvent.AXIS_X && invertLeftX) correctedValue = -correctedValue;
+            if (axis == MotionEvent.AXIS_Y && invertLeftY) correctedValue = -correctedValue;
+
+            return correctedValue;
+        }
+
+        if (axis == MotionEvent.AXIS_Z || axis == MotionEvent.AXIS_RZ) {
+            value = applyDeadzoneAndSensitivity(value, this.deadzoneRight, this.sensitivityRight);
+
+            if (axis == MotionEvent.AXIS_Z && invertRightX) value = -value;
+            if (axis == MotionEvent.AXIS_RZ && invertRightY) value = -value;
+
+            return value;
         }
 
         return 0.0f;

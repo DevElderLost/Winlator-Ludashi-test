@@ -313,6 +313,10 @@ public class ShortcutSettingsDialog extends ContentDialog implements DXVKConfigD
         final Spinner sFEXCorePreset = findViewById(R.id.SFEXCorePreset);
         FEXCorePresetManager.loadSpinner(sFEXCorePreset, shortcut.getExtra("fexcorePreset", shortcut.container.getFEXCorePreset()));
 
+        final CheckBox cbUseUnixLibs = findViewById(R.id.CBUseUnixLibs);
+        boolean isUseUnixLibs = shortcut.getExtra("useUnixLibs", shortcut.container.isUseUnixLibs() ? "1" : "0").equals("1");
+        cbUseUnixLibs.setChecked(isUseUnixLibs);
+
         final Spinner sControlsProfile = findViewById(R.id.SControlsProfile);
         loadControlsProfileSpinner(sControlsProfile, shortcut.getExtra("controlsProfile", "0"));
 
@@ -476,6 +480,8 @@ public class ShortcutSettingsDialog extends ContentDialog implements DXVKConfigD
 
                 String fexcorePreset = FEXCorePresetManager.getSpinnerSelectedId(sFEXCorePreset);
                 shortcut.putExtra("fexcorePreset", fexcorePreset);
+
+                shortcut.putExtra("useUnixLibs", cbUseUnixLibs.isChecked() ? "1" : "0");
 
                 String box64Preset = Box64PresetManager.getSpinnerSelectedId(sBox64Preset);
                 shortcut.putExtra("box64Preset", box64Preset);

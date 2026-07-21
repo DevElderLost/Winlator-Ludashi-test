@@ -662,4 +662,5 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="install">Install</string>
     <string name="select">Select</string>
     <string name="wine_version_locked_for_existing_container">Wine version is locked for existing containers</string>
+    <string name="support_fex_unix_libs">Support FEX Unix libs</string>
 </resources>

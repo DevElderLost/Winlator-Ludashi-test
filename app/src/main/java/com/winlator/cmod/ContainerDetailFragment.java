@@ -787,6 +787,7 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     container.setBox64Preset(box64Preset);
                     container.setFEXCoreVersion(fexcoreVersion);
                     container.setFEXCorePreset(fexcorePreset);
+                    container.setUseUnixLibs(cbUseUnixLibs.isChecked());
                     container.setDesktopTheme(desktopTheme);
                     container.setMidiSoundFont(midiSoundFont);
                     container.setLC_ALL(lc_all);
@@ -830,6 +831,7 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     data.put("box64Preset", box64Preset);
                     data.put("fexcoreVersion", fexcoreVersion);
                     data.put("fexcorePreset", fexcorePreset);
+                    data.put("useUnixLibs", cbUseUnixLibs.isChecked());
                     data.put("desktopTheme", desktopTheme);
                     data.put("wineVersion", sWineVersion.getSelectedItem().toString());
                     data.put("midiSoundFont", midiSoundFont);

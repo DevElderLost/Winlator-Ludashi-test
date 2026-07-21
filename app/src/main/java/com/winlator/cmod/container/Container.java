@@ -78,6 +78,7 @@ public class Container {
     private String controllerMapping = new String(new char[XrControllerMapping.values().length]);
     private String box64Version;
     private String emulator;
+    private boolean useUnixLibs = true;
     private boolean exclusiveXInput = true;
     private ContainerManager containerManager;
 
@@ -269,6 +270,14 @@ public class Container {
         return this.fexcoreVersion;
     }
 
+    public void setUseUnixLibs(boolean useUnixLibs) {
+        this.useUnixLibs = useUnixLibs;
+    }
+
+    public boolean isUseUnixLibs() {
+        return this.useUnixLibs;
+    }
+
     public void setFEXCorePreset(String preset) {
         this.fexcorePreset = preset;
     }
@@ -445,6 +454,7 @@ public class Container {
             data.put("box64Version", box64Version);
             data.put("fexcorePreset", fexcorePreset);
             data.put("fexcoreVersion", fexcoreVersion);
+            data.put("useUnixLibs", useUnixLibs);
             data.put("box64Preset", box64Preset);
             data.put("desktopTheme", desktopTheme);
             data.put("extraData", extraData);
@@ -546,6 +556,9 @@ public class Container {
                     break;
                 case "fexcoreVersion":
                     setFEXCoreVersion(data.getString(key));
+                    break;
+                case "useUnixLibs":
+                    setUseUnixLibs(data.getBoolean(key));
                     break;
                 case "fexcorePreset":
                     setFEXCorePreset(data.getString(key));

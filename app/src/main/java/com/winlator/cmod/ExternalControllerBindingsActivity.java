@@ -47,6 +47,9 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private ControllerBindingsAdapter adapter;
 
+    // Track trigger state to only register on rising edge
+    private boolean l2WasPressed = false;
+    private boolean r2WasPressed = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -179,92 +182,74 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        // Gamepad / controller terdaftar — filter ketat by deviceId
-        if (event.getDeviceId() == controller.getDeviceId()
+        // Accept motion events from any game controller for binding registration
+        InputDevice device = event.getDevice();
+        if (device != null && ExternalController.isGameController(device)
                 && controller.updateStateFromMotionEvent(event)) {
-            if (controller.state.isPressed(ExternalController.IDX_BUTTON_L2))
+
+            // Use a higher threshold for binding registration to avoid false triggers
+            float l2Value = Math.max(event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+                    event.getAxisValue(MotionEvent.AXIS_BRAKE));
+            float r2Value = Math.max(event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+                    event.getAxisValue(MotionEvent.AXIS_GAS));
+
+            // Only register L2/R2 on rising edge (first press) past 80% threshold
+            boolean l2Pressed = l2Value > 0.8f;
+            if (l2Pressed && !l2WasPressed) {
                 updateControllerBinding(KeyEvent.KEYCODE_BUTTON_L2, Binding.NONE);
-            if (controller.state.isPressed(ExternalController.IDX_BUTTON_R2))
+            }
+            l2WasPressed = l2Pressed;
+
+            boolean r2Pressed = r2Value > 0.8f;
+            if (r2Pressed && !r2WasPressed) {
                 updateControllerBinding(KeyEvent.KEYCODE_BUTTON_R2, Binding.NONE);
+            }
+            r2WasPressed = r2Pressed;
+
             processJoystickInput();
             return true;
         }
-
-        // Mouse Bluetooth — diidentifikasi via isMouseDevice()
-        InputDevice dev = InputDevice.getDevice(event.getDeviceId());
-        if (dev != null && ExternalController.isMouseDevice(dev)) {
-            float dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
-            float dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
-            if (dx == 0f && dy == 0f) {
-                dx = event.getAxisValue(MotionEvent.AXIS_X);
-                dy = event.getAxisValue(MotionEvent.AXIS_Y);
-            }
-            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 0.5f) {
-                updateControllerBinding(ExternalControllerBinding.getKeyCodeForAxis(
-                        MotionEvent.AXIS_X, (byte)(dx > 0 ? 1 : -1)), Binding.NONE);
-                return true;
-            } else if (Math.abs(dy) > 0.5f) {
-                updateControllerBinding(ExternalControllerBinding.getKeyCodeForAxis(
-                        MotionEvent.AXIS_Y, (byte)(dy > 0 ? 1 : -1)), Binding.NONE);
-                return true;
-            }
-            if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) {
-                int btn = event.getActionButton();
-                if ((btn & MotionEvent.BUTTON_PRIMARY) != 0) {
-                    updateControllerBinding(KeyEvent.KEYCODE_BUTTON_1, Binding.NONE); return true;
-                }
-                if ((btn & MotionEvent.BUTTON_SECONDARY) != 0) {
-                    updateControllerBinding(KeyEvent.KEYCODE_BUTTON_2, Binding.NONE); return true;
-                }
-                if ((btn & MotionEvent.BUTTON_TERTIARY) != 0) {
-                    updateControllerBinding(KeyEvent.KEYCODE_BUTTON_3, Binding.NONE); return true;
-                }
-            }
-            float scroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
-            if (Math.abs(scroll) > 0.1f) {
-                updateControllerBinding(ExternalControllerBinding.getKeyCodeForAxis(
-                        MotionEvent.AXIS_VSCROLL, (byte)(scroll > 0 ? 1 : -1)), Binding.NONE);
-                return true;
-            }
-        }
-
         return super.dispatchGenericMotionEvent(event);
     }
 
     @Override
-    public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event.getRepeatCount() != 0) return super.dispatchKeyEvent(event);
-
-        // Gamepad — diidentifikasi via deviceId runtime yang unik per device
-        if (event.getDeviceId() == controller.getDeviceId()) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN)
-                updateControllerBinding(event.getKeyCode(), Binding.NONE);
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Accept any gamepad button or D-pad keycode
+        if (isGamepadKeyCode(keyCode)) {
+            updateControllerBinding(keyCode, Binding.NONE);
             return true;
         }
+        return super.onKeyDown(keyCode, event);
+    }
 
-        // Keyboard Bluetooth — diidentifikasi via SOURCE_KEYBOARD
-        // Gamepad memiliki SOURCE_GAMEPAD/JOYSTICK, bukan SOURCE_KEYBOARD primary
-        // sehingga kedua blok tidak tumpang-tindih
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            InputDevice dev = InputDevice.getDevice(event.getDeviceId());
-            if (dev != null
-                    && (dev.getSources() & InputDevice.SOURCE_KEYBOARD) != 0
-                    && !ExternalController.isGameController(dev)) {
-                int kc = event.getKeyCode();
-                // Lewati tombol sistem agar navigasi tetap normal
-                if (kc != KeyEvent.KEYCODE_BACK
-                        && kc != KeyEvent.KEYCODE_HOME
-                        && kc != KeyEvent.KEYCODE_APP_SWITCH
-                        && kc != KeyEvent.KEYCODE_VOLUME_UP
-                        && kc != KeyEvent.KEYCODE_VOLUME_DOWN
-                        && kc != KeyEvent.KEYCODE_VOLUME_MUTE) {
-                    updateControllerBinding(kc, Binding.NONE);
-                    return true;
-                }
-            }
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        // Consume the key up for gamepad buttons
+        if (isGamepadKeyCode(keyCode)) {
+            return true;
         }
+        return super.onKeyUp(keyCode, event);
+    }
 
-        return super.dispatchKeyEvent(event);
+    private boolean isGamepadKeyCode(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_BUTTON_A ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_B ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_X ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_Y ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_L1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_R1 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_L2 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_R2 ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_THUMBL ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_THUMBR ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_START ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
+                keyCode == KeyEvent.KEYCODE_BUTTON_MODE ||
+                keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER;
     }
 
     @Override

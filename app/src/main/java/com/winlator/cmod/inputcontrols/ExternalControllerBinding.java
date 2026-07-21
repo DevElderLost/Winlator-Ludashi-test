@@ -24,11 +24,6 @@ public class ExternalControllerBinding {
         return keyCode;
     }
 
-    /** Alias untuk kompatibilitas */
-    public int getKeyCodeForAxis() {
-        return keyCode;
-    }
-
     public void setKeyCode(int keyCode) {
         this.keyCode = (short)keyCode;
     }

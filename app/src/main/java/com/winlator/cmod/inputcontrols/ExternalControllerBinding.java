@@ -20,6 +20,11 @@ public class ExternalControllerBinding {
     private short keyCode;
     private Binding binding = Binding.NONE;
 
+    public int getKeyCode() {
+        return keyCode;
+    }
+
+    /** Alias untuk kompatibilitas */
     public int getKeyCodeForAxis() {
         return keyCode;
     }

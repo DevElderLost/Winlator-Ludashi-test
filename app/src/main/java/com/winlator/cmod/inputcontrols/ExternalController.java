@@ -18,6 +18,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import com.winlator.cmod.inputcontrols.PreferenceKeys;
 
 public class ExternalController {
     public static final byte IDX_BUTTON_A = 0;
@@ -132,6 +133,14 @@ public class ExternalController {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public byte getTriggerType() {
+        return triggerType;
+    }
+
+    public void setTriggerType(byte mode) {
+        triggerType = mode;
     }
 
     public byte getTriggerType() {
@@ -631,6 +640,42 @@ public class ExternalController {
 
 
 
+
+    private float applySquareDeadzone(float x, float y, float deadzone, float sensitivity, int axis) {
+        final float PiOverFour = (float) (Math.PI / 4);
+        double angle = Math.atan2(y, x) + Math.PI;
+        float scale;
+        if (angle <= PiOverFour || angle > 7 * PiOverFour) {
+            scale = (float) (1 / Math.cos(angle));
+        } else if (angle > PiOverFour && angle <= 3 * PiOverFour) {
+            scale = (float) (1 / Math.sin(angle));
+        } else if (angle > 3 * PiOverFour && angle <= 5 * PiOverFour) {
+            scale = (float) (-1 / Math.cos(angle));
+        } else if (angle > 5 * PiOverFour && angle <= 7 * PiOverFour) {
+            scale = (float) (-1 / Math.sin(angle));
+        } else {
+            throw new IllegalStateException("Invalid angle encountered.");
+        }
+        float scaledX = x * scale;
+        float scaledY = y * scale;
+        float normalizedX = (Math.abs(scaledX) - deadzone) / (1.0f - deadzone);
+        float normalizedY = (Math.abs(scaledY) - deadzone) / (1.0f - deadzone);
+        if (axis == MotionEvent.AXIS_X) {
+            return Math.signum(x) * Math.min(Math.max(normalizedX, 0.0f), 1.0f) * sensitivity;
+        } else {
+            return Math.signum(y) * Math.min(Math.max(normalizedY, 0.0f), 1.0f) * sensitivity;
+        }
+    }
+
+    private float applyDeadzoneAndSensitivity(float value, float deadzone, float sensitivity) {
+        if (Math.abs(value) < deadzone) {
+            return 0.0f;
+        } else {
+            float normalized = (Math.abs(value) - deadzone) / (1.0f - deadzone);
+            normalized = Math.signum(value) * normalized;
+            return normalized * sensitivity;
+        }
+    }
 
     public static boolean isJoystickDevice(MotionEvent event) {
         return (event.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK && event.getAction() == MotionEvent.ACTION_MOVE;

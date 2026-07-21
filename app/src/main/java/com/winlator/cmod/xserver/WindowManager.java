@@ -25,6 +25,7 @@ public class WindowManager extends XResourceManager {
     private final SparseArray<Window> windows = new SparseArray<>();
     public final DrawableManager drawableManager;
     private Window focusedWindow;
+    private Window confinedWindow;
     private FocusRevertTo focusRevertTo = FocusRevertTo.NONE;
     private final ArrayList<OnWindowModificationListener> onWindowModificationListeners = new ArrayList<>();
     private volatile boolean renderingEnabled = true;
@@ -129,6 +130,16 @@ public class WindowManager extends XResourceManager {
 
     public Window getFocusedWindow() {
         return focusedWindow;
+    }
+
+    public Window getConfinedWindow() {
+        return confinedWindow;
+    }
+
+    public void setConfinedWindow(Window window) {
+        if (confinedWindow != null) confinedWindow.setConfined(false);
+            confinedWindow = window;
+        if (confinedWindow != null) confinedWindow.setConfined(true);
     }
 
     public void revertFocus() {

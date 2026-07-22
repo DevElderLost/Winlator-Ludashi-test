@@ -53,6 +53,10 @@ import com.winlator.cmod.container.Shortcut;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
 import com.winlator.cmod.services.NotificationService;
+import com.winlator.cmod.saves.Save;
+import com.winlator.cmod.saves.SaveManager;
+import com.winlator.cmod.contentdialog.SaveEditDialog;
+import com.winlator.cmod.contentdialog.SaveSettingsDialog;
 
 import java.io.File;
 import java.util.List;
@@ -75,6 +79,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private SharedPreferences sharedPreferences;
     private ContainerManager containerManager;
     private boolean isDarkMode;
+    // Add SaveSettingsDialog and SaveEditDialog instances
+    private SaveSettingsDialog saveSettingsDialog;
+    private SaveEditDialog saveEditDialog;
+    private SaveManager saveManager;
 
     private void createNotificationChannel() {
         String name = "Winlator";
@@ -143,6 +151,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         File winlatorDir = new File(SettingsFragment.DEFAULT_WINLATOR_PATH);
         if (!winlatorDir.exists())
             winlatorDir.mkdirs();
+
+        // Initialize SaveManager and ContainerManager
+        saveManager = new SaveManager(this);
 
         containerManager = new ContainerManager(this);
 
@@ -273,6 +284,32 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 drawerLayout.openDrawer(GravityCompat.START);
             }
             return true;
+        } else if (menuItem.getItemId() == R.id.saves_menu_add) {
+            // Check if we are editing a save
+            Intent intent = getIntent();
+            int editSaveId = intent.getIntExtra("edit_save_id", -1);
+            Save saveToEdit = editSaveId >= 0 ? saveManager.getSaveById(editSaveId) : null;
+
+            // Create and show SaveEditDialog or SaveSettingsDialog as appropriate
+            if (saveToEdit != null) {
+                // Ensure previous dialog is dismissed before showing a new one
+                if (saveEditDialog != null && saveEditDialog.isShowing()) {
+                    saveEditDialog.dismiss();
+                }
+                showSaveEditDialog(saveToEdit);
+            } else {
+                saveSettingsDialog = new SaveSettingsDialog(this, saveManager, containerManager);
+
+                // Check for dark mode and set the background accordingly
+                if (isDarkMode) {
+                    saveSettingsDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+                } else {
+                    saveSettingsDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+                }
+
+                saveSettingsDialog.show();
+            }
+            return true;
         } else {
             return super.onOptionsItemSelected(menuItem);
         }
@@ -311,6 +348,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 break;
             case R.id.main_menu_about:
                 showAboutDialog();
+                break;
+            case R.id.main_menu_saves:
+                show(new SavesFragment(), false);
                 break;
         }
         return true;
@@ -414,6 +454,40 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             if (bitmap == null) return;
             File userWallpaperFile = WineThemeManager.getUserWallpaperFile(this);
             ImageUtils.save(bitmap, userWallpaperFile, Bitmap.CompressFormat.PNG, 100);
+        } else if (saveSettingsDialog != null && saveSettingsDialog.isShowing()) {
+            Log.d("WinActivity", "Forwarding result to SaveSettingsDialog");
+            saveSettingsDialog.onActivityResult(requestCode, resultCode, data);
+        } else if (saveEditDialog != null && saveEditDialog.isShowing()) {
+            Log.d("WinActivity", "Forwarding result to SaveEditDialog");
+            saveEditDialog.onActivityResult(requestCode, resultCode, data);
+        } else {
+            Log.d("WinActivity", "No dialog found for request code: " + requestCode);
+        }
+    }
+
+    private void showSavesFragment() {
+        SavesFragment fragment = new SavesFragment();
+        getSupportFragmentManager().beginTransaction()
+                .replace(R.id.FLFragmentContainer, fragment)
+                .commit();
+    }
+
+    public void showSaveEditDialog(Save saveToEdit) {
+        saveEditDialog = new SaveEditDialog(this, saveManager, containerManager, saveToEdit);
+
+        if (isDarkMode) {
+            saveEditDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background_dark);
+        } else {
+            saveEditDialog.getWindow().setBackgroundDrawableResource(R.drawable.content_dialog_background);
+        }
+
+        saveEditDialog.show();
+    }
+
+    public void onSaveAdded() {
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.FLFragmentContainer);
+        if (currentFragment instanceof SavesFragment) {
+            ((SavesFragment) currentFragment).refreshSavesList();
         }
     }
 }

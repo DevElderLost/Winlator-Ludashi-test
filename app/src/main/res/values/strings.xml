@@ -374,7 +374,7 @@
     <string name="invalid_container">Invalid Path</string>
     <string name="up_directory">Up Directory</string>
     <string name="edit_save_title">Update Save title</string>
-    <string name="edit_save">Save edit</string>
+    <string name="edit_save">Save editor</string>
     <string name="original_save_path">Registered save path</string>
     <string name="updated_save_path">Updated save path</string>
     <string name="confirmation">Confirmation</string>

@@ -1,0 +1,211 @@
+package com.winlator.cmod.contentdialog;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.util.Log;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.Spinner;
+import android.widget.TextView;
+
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Paint;
+import android.graphics.Canvas;
+
+import androidx.preference.PreferenceManager;
+
+import androidx.core.content.ContextCompat;
+
+import com.winlator.cmod.MainActivity;
+import com.winlator.cmod.R;
+import com.winlator.cmod.container.Container;
+import com.winlator.cmod.container.ContainerManager;
+import com.winlator.cmod.core.AppUtils;
+import com.winlator.cmod.saves.Save;
+import com.winlator.cmod.saves.SaveManager;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+public class SaveSettingsDialog extends ContentDialog {
+    public static final int REQUEST_CODE_CUSTOM_FILE_PICKER = 1;
+    private final SaveManager saveManager;
+    private final ContainerManager containerManager;
+    private final Activity activity;
+    private Container selectedContainer;
+    private TextView tvSavePath;
+    private String selectedPath;
+    private EditText etTitle;
+    private Save saveToEdit;  // Store the save object being edited
+
+    private boolean isDarkMode;
+
+    public SaveSettingsDialog(Activity activity, SaveManager saveManager, ContainerManager containerManager) {
+        super(activity, R.layout.save_settings_dialog);
+        this.activity = activity;
+        this.saveManager = saveManager;
+        this.containerManager = containerManager;
+        setTitle(R.string.new_save);
+        setIcon(R.drawable.icon_save);
+
+        createContentView();
+
+        // Reload spinner data whenever the dialog is shown
+        setOnShowListener(dialog -> {
+            Spinner sContainer = findViewById(R.id.SContainer);
+            sContainer.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+            loadContainerSpinner(sContainer);
+
+            // Set the selected container if in edit mode
+            if (saveToEdit != null && selectedContainer != null) {
+                int containerPosition = containerManager.getContainers().indexOf(selectedContainer);
+                if (containerPosition >= 0) {
+                    sContainer.setSelection(containerPosition);
+                }
+            }
+        });
+    }
+
+    public SaveSettingsDialog(Activity activity, SaveManager saveManager, ContainerManager containerManager, Save saveToEdit) {
+        this(activity, saveManager, containerManager);
+        this.saveToEdit = saveToEdit;
+
+        if (saveToEdit != null) {
+            etTitle.setText(saveToEdit.getTitle());
+            selectedPath = saveToEdit.path;
+            tvSavePath.setText(selectedPath);
+            tvSavePath.setVisibility(View.VISIBLE);
+            selectedContainer = saveToEdit.container;
+        }
+    }
+
+    private void createContentView() {
+        final Context context = getContext();
+
+        isDarkMode = PreferenceManager.getDefaultSharedPreferences(getContext())
+                .getBoolean("dark_mode", false);
+
+        LinearLayout llContent = findViewById(R.id.LLContent);
+        llContent.getLayoutParams().width = AppUtils.getPreferredDialogWidth(context);
+
+        etTitle = findViewById(R.id.ETTitle);
+        etTitle.setBackgroundResource(isDarkMode ? R.drawable.edit_text_dark : R.drawable.edit_text);
+
+        tvSavePath = findViewById(R.id.TVPath);
+        tvSavePath.setVisibility(View.GONE);
+
+        // ImageButton listener
+        ImageButton btnPickPath = findViewById(R.id.BTPickPath);
+        btnPickPath.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
+        btnPickPath.setOnClickListener(v -> {
+            if (selectedContainer != null) {
+                openFolderPicker();
+            } else {
+                AppUtils.showToast(context, R.string.select_container_first);
+            }
+        });
+
+        // Tooltip (muncul saat ditekan lama) – opsional tapi membantu UX
+//        btnPickPath.setTooltipText(getString(R.string.select_save_path));
+
+        setOnConfirmCallback(() -> {
+            String title = etTitle.getText().toString().trim();
+            if (selectedPath != null && !title.isEmpty()) {
+                try {
+                    saveManager.addSave(title, selectedPath, selectedContainer);
+
+                    if (activity instanceof MainActivity) {
+                        ((MainActivity) activity).onSaveAdded();
+                    }
+                    dismiss();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else {
+                AppUtils.showToast(context, R.string.fill_all_fields);
+            }
+        });
+    }
+
+    public void updateSelectedPath(String path) {
+        selectedPath = path;
+        tvSavePath.setText(path);
+        tvSavePath.setVisibility(View.VISIBLE);
+        Log.d("SaveSettingsDialog", "Selected Path Updated in UI: " + path);
+    }
+
+    private void loadContainerSpinner(Spinner sContainer) {
+        List<Container> containers = containerManager.getContainers();
+        List<String> containerNames = new ArrayList<>();
+        for (Container container : containers) {
+            containerNames.add(container.getName());
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_item, containerNames);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        sContainer.setAdapter(adapter);
+
+        sContainer.setPopupBackgroundResource(isDarkMode ? R.drawable.content_dialog_background_dark : R.drawable.content_dialog_background);
+
+        sContainer.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedContainer = containers.get(position);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                selectedContainer = null;
+            }
+        });
+    }
+
+    private void openFolderPicker() {
+        if (selectedContainer == null) {
+            AppUtils.showToast(getContext(), R.string.select_container_first);
+            return;
+        }
+
+        String startPath = new File(selectedContainer.getRootDir(), ".wine/drive_c/").getAbsolutePath();
+        if (saveToEdit != null && saveToEdit.path != null) {
+            startPath = saveToEdit.path;
+        }
+
+        FolderPickerDialog dialog = new FolderPickerDialog(activity, startPath);
+        dialog.setOnFolderSelectedListener(path -> {
+            if (isPathValidForContainer(path)) {
+                updateSelectedPath(path);
+            } else {
+                AppUtils.showToast(getContext(), R.string.invalid_path);
+            }
+        });
+        dialog.show();
+    }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_CODE_CUSTOM_FILE_PICKER && resultCode == Activity.RESULT_OK) {
+            String path = data.getStringExtra("selectedDirectory");
+            Log.d("SaveSettingsDialog", "Returned Path from Picker: " + path);
+            if (path != null && isPathValidForContainer(path)) {
+                activity.runOnUiThread(() -> updateSelectedPath(path));
+                Log.d("SaveSettingsDialog", "Path selected: " + path);
+            } else {
+                AppUtils.showToast(getContext(), R.string.invalid_path);
+            }
+        }
+    }
+
+    private boolean isPathValidForContainer(String path) {
+        if (selectedContainer == null) return false;
+        File rootDir = selectedContainer.getRootDir();
+        return path.startsWith(rootDir.getAbsolutePath());
+    }
+}

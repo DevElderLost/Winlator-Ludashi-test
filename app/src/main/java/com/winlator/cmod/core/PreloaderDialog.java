@@ -47,6 +47,7 @@ public class PreloaderDialog {
         try {
             if (dialog != null) {
                 dialog.dismiss();
+                dialog = null;
             }
         }
         catch (Exception e) {}

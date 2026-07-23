@@ -15,7 +15,7 @@
         android:paddingBottom="12dp"
         android:ellipsize="middle"
         android:singleLine="true"
-        android:textColor="#ffffffff" />
+        android:textColor="#FFFFFF" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"

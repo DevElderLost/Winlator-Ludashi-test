@@ -51,13 +51,12 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         if (item.isUp) {
             holder.ivIcon.setImageResource(R.drawable.icon_open);  // atau ic_chevron_up
             holder.ivIcon.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
-            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.primary_text_light));
+            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.white));
             
         } else {
             holder.ivIcon.setImageResource(R.drawable.icon_open);
             holder.ivIcon.setColorFilter(ContextCompat.getColor(context, R.color.colorPrimary), PorterDuff.Mode.SRC_IN);
-            holder.tvName.setTextColor(holder.itemView.getContext()
-                    .getColor(android.R.color.primary_text_light));
+            holder.tvName.setTextColor(holder.itemView.getContext().getColor(android.R.color.white));
         }
 
         holder.itemView.setOnClickListener(v -> onItemClickListener.accept(item));

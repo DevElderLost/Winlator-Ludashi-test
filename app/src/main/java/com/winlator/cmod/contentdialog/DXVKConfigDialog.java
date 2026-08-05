@@ -37,9 +37,11 @@ public class DXVKConfigDialog extends ContentDialog {
     private final ToggleButton swAsync;
     private boolean isARM64EC = false;
     private final ToggleButton swAsyncCache;
+    // DXVK_COMPAT_FIX_V1_TO_V2
     private final ToggleButton swCompatMode;
     private final View llAsync;
     private final View llAsyncCache;
+    private final View llCompatMode;
     private final Context context;
     private static List<String> dxvkVersions;
     private static final Pattern SEMVER = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
@@ -112,6 +114,13 @@ public class DXVKConfigDialog extends ContentDialog {
         }
     }
 
+    // DXVK_COMPAT_FIX_V1_TO_V2
+    // Toggle Compatibility Mode cuma relevan/muncul untuk DXVK >= 2.7.x.
+    // Untuk versi lebih lama, disembunyikan supaya tidak membingungkan.
+    private void updateCompatModeVisibility(String version) {
+        llCompatMode.setVisibility(isDxvkVersionAtLeast27(version) ? View.VISIBLE : View.GONE);
+    }
+
     public DXVKConfigDialog(View anchor, boolean isARM64EC) {
         super(anchor.getContext(), R.layout.dxvk_config_dialog);
         context = anchor.getContext();
@@ -128,6 +137,7 @@ public class DXVKConfigDialog extends ContentDialog {
         swCompatMode = findViewById(R.id.SWCompatMode);
         llAsync = findViewById(R.id.LLAsync);
         llAsyncCache = findViewById(R.id.LLAsyncCache);
+        llCompatMode = findViewById(R.id.LLCompatMode);
 
         ContentsManager contentsManager = new ContentsManager(context);
         contentsManager.syncContents();
@@ -148,14 +158,25 @@ public class DXVKConfigDialog extends ContentDialog {
 
         swAsync.setChecked(config.get("async").equals("1"));
         swAsyncCache.setChecked(config.get("asyncCache").equals("1"));
-        swCompatMode.setChecked(config.get("compatMode").equals("1"));
+
+        // DXVK_COMPAT_FIX_V1_TO_V2
+        // Pre-check toggle otomatis HANYA kalau config belum pernah eksplisit
+        // disimpan (shortcut baru). Setelah user simpan sekali, nilai
+        // tersimpan yang menang, apapun GPU/versinya - toggle jadi force
+        // on/off yang sesungguhnya, bukan cuma "saran" seperti di v1.
+        String compatModeSaved = config.get("compatMode");
+        swCompatMode.setChecked(compatModeSaved.isEmpty()
+                ? (isDxvkVersionAtLeast27(config.get("version")) && isRiskyMobileGPU(context))
+                : compatModeSaved.equals("1"));
 
         updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+        updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
 
         sDXVKVersion.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updateConfigVisibility(getDXVKType(position));
+                updateCompatModeVisibility(dxvkVersions.get(position));
             }
 
             @Override
@@ -191,6 +212,7 @@ public class DXVKConfigDialog extends ContentDialog {
                             (curMajor != null && curMajor >= 2) ? currentDXVKVersion : DefaultVersion.DXVK
                     );
                     updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+                    updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
                 }
                 else {
                     loadDxvkVersionSpinner(contentsManager, sDXVKVersion, isARM64EC);
@@ -208,7 +230,7 @@ public class DXVKConfigDialog extends ContentDialog {
             config.put("framerate", StringUtils.parseNumber(sFramerate.getSelectedItem()));
             config.put("async", ((swAsync.isChecked())&&(llAsync.getVisibility()==View.VISIBLE))?"1":"0");
             config.put("asyncCache", ((swAsyncCache.isChecked())&&(llAsyncCache.getVisibility()==View.VISIBLE))?"1":"0");
-            config.put("compatMode", swCompatMode.isChecked()?"1":"0");
+            config.put("compatMode", ((swCompatMode.isChecked())&&(llCompatMode.getVisibility()==View.VISIBLE))?"1":"0");
             VKD3DVersionItem selectedItem = (VKD3DVersionItem) sVKD3DVersion.getSelectedItem();
             config.put("vkd3dVersion", selectedItem.getIdentifier());
             config.put("vkd3dLevel", sVKD3DFeatureLevel.getSelectedItem().toString());
@@ -299,10 +321,11 @@ public class DXVKConfigDialog extends ContentDialog {
         // GPU bukan Adreno/Mali (mis. desktop GPU lewat passthrough), tidak ada
         // baris tambahan yang di-inject ke dxvk.conf - upstream default dipakai
         // apa adanya.
-        boolean compatModeManual = config.get("compatMode").equals("1");
-        boolean compatModeAuto = isDxvkVersionAtLeast27(config.get("version"))
-                && isRiskyMobileGPU(context);
-        if (compatModeManual || compatModeAuto) {
+        // DXVK_COMPAT_FIX_V1_TO_V2
+        // Force on/off murni dari nilai tersimpan - TIDAK ada lagi auto
+        // override seperti di v1. Kalau toggle dimatikan (compatMode="0"
+        // atau kosong), tidak ada baris tambahan yang di-inject sama sekali.
+        if (config.get("compatMode").equals("1")) {
             if (!content.isEmpty()) content += "; ";
             content += "dxvk.enableDescriptorBuffer = False; dxvk.framePace = max-frame-latency;";
         }

@@ -15,6 +15,7 @@ import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.core.EnvVars;
+import com.winlator.cmod.core.GPUInformation;
 import com.winlator.cmod.core.KeyValueSet;
 import com.winlator.cmod.core.StringUtils;
 import com.winlator.cmod.core.VKD3DVersionItem;
@@ -32,9 +33,11 @@ public class DXVKConfigDialog extends ContentDialog {
     public static final int DXVK_TYPE_NONE = 0;
     public static final int DXVK_TYPE_ASYNC = 1;
     public static final int DXVK_TYPE_GPLASYNC = 2;
+    // DXVK_COMPAT_PATCH
     private final ToggleButton swAsync;
     private boolean isARM64EC = false;
     private final ToggleButton swAsyncCache;
+    private final ToggleButton swCompatMode;
     private final View llAsync;
     private final View llAsyncCache;
     private final Context context;
@@ -73,6 +76,42 @@ public class DXVKConfigDialog extends ContentDialog {
         return 0;
     }
 
+    // DXVK_COMPAT_PATCH
+    // Mengembalikan true jika string versi DXVK >= 2.7 (mis. "2.7.1", "3.0",
+    // "2.7.1-arm64ec-gplasync"). DXVK sejak v2.7 mengaktifkan
+    // VK_EXT_descriptor_buffer + dxvk.framePace low-latency secara default,
+    // yang menyebabkan crash pada banyak GPU mobile (Adreno/Mali).
+    private static boolean isDxvkVersionAtLeast27(String version) {
+        if (version == null) return false;
+        Matcher m = SEMVER.matcher(version);
+        if (!m.find()) return false;
+        try {
+            int major = Integer.parseInt(m.group(1));
+            int minor = m.group(2) != null ? Integer.parseInt(m.group(2)) : 0;
+            if (major > 2) return true;
+            return major == 2 && minor >= 7;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    // DXVK_COMPAT_PATCH
+    // Deteksi GPU yang diketahui rawan crash dengan VK_EXT_descriptor_buffer
+    // (Adreno dan Mali). Dipakai supaya auto-compat-mode HANYA aktif di GPU
+    // mobile yang bermasalah, bukan asal versi DXVK >= 2.7 tanpa pandang GPU.
+    // Kalau deteksi gagal (mis. context null / native call error), fallback
+    // aman: anggap berisiko, supaya tidak silently crash di device tak dikenal.
+    private static boolean isRiskyMobileGPU(Context context) {
+        try {
+            if (GPUInformation.isAdrenoGPU(context)) return true;
+            String renderer = GPUInformation.getRenderer(null, context);
+            return renderer != null && renderer.toLowerCase().contains("mali");
+        } catch (Throwable t) {
+            Log.w("DXVKConfigDialog", "GPU detection gagal, fallback ke compat mode aman", t);
+            return true;
+        }
+    }
+
     public DXVKConfigDialog(View anchor, boolean isARM64EC) {
         super(anchor.getContext(), R.layout.dxvk_config_dialog);
         context = anchor.getContext();
@@ -86,6 +125,7 @@ public class DXVKConfigDialog extends ContentDialog {
         final Spinner sDDRAWrapper = findViewById(R.id.SDDRAWrapper);
         swAsync = findViewById(R.id.SWAsync);
         swAsyncCache = findViewById(R.id.SWAsyncCache);
+        swCompatMode = findViewById(R.id.SWCompatMode);
         llAsync = findViewById(R.id.LLAsync);
         llAsyncCache = findViewById(R.id.LLAsyncCache);
 
@@ -108,6 +148,7 @@ public class DXVKConfigDialog extends ContentDialog {
 
         swAsync.setChecked(config.get("async").equals("1"));
         swAsyncCache.setChecked(config.get("asyncCache").equals("1"));
+        swCompatMode.setChecked(config.get("compatMode").equals("1"));
 
         updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
 
@@ -167,6 +208,7 @@ public class DXVKConfigDialog extends ContentDialog {
             config.put("framerate", StringUtils.parseNumber(sFramerate.getSelectedItem()));
             config.put("async", ((swAsync.isChecked())&&(llAsync.getVisibility()==View.VISIBLE))?"1":"0");
             config.put("asyncCache", ((swAsyncCache.isChecked())&&(llAsyncCache.getVisibility()==View.VISIBLE))?"1":"0");
+            config.put("compatMode", swCompatMode.isChecked()?"1":"0");
             VKD3DVersionItem selectedItem = (VKD3DVersionItem) sVKD3DVersion.getSelectedItem();
             config.put("vkd3dVersion", selectedItem.getIdentifier());
             config.put("vkd3dLevel", sVKD3DFeatureLevel.getSelectedItem().toString());
@@ -249,6 +291,21 @@ public class DXVKConfigDialog extends ContentDialog {
         String asyncCache = config.get("asyncCache");
         if (!asyncCache.isEmpty() && !asyncCache.equals("0"))
             envVars.put("DXVK_GPLASYNCCACHE", "1");
+
+        // DXVK_COMPAT_PATCH
+        // Aktif kalau toggle manual dinyalakan, ATAU (versi DXVK terdeteksi >= 2.7
+        // DAN GPU device termasuk yang berisiko / diketahui bermasalah dengan
+        // VK_EXT_descriptor_buffer, yaitu Adreno/Mali). Kalau versi < 2.7, atau
+        // GPU bukan Adreno/Mali (mis. desktop GPU lewat passthrough), tidak ada
+        // baris tambahan yang di-inject ke dxvk.conf - upstream default dipakai
+        // apa adanya.
+        boolean compatModeManual = config.get("compatMode").equals("1");
+        boolean compatModeAuto = isDxvkVersionAtLeast27(config.get("version"))
+                && isRiskyMobileGPU(context);
+        if (compatModeManual || compatModeAuto) {
+            if (!content.isEmpty()) content += "; ";
+            content += "dxvk.enableDescriptorBuffer = False; dxvk.framePace = max-frame-latency;";
+        }
 
         if (!content.isEmpty())
             envVars.put("DXVK_CONFIG", content);

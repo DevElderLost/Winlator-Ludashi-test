@@ -39,6 +39,13 @@
         <item>WineD3D</item>
         <item>DXVK+VKD3D</item>
     </string-array>
+    <!-- DXVK_VEGAS_GPU_TIER_PATCH -->
+    <string-array name="gpu_tier_entries">
+        <item>Auto</item>
+        <item>Low-end (Tier 1)</item>
+        <item>Mid-range (Tier 2)</item>
+        <item>High-end (Tier 3)</item>
+    </string-array>
     <string-array name="ddrawrapper_entries">
         <item>CnC-DDraw</item>
         <item>Dd7To9</item>

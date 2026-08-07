@@ -39,8 +39,11 @@ public class DXVKConfigDialog extends ContentDialog {
     private final ToggleButton swAsyncCache;
     // DXVK_COMPAT_FIX_V1_TO_V2
     private final ToggleButton swCompatMode;
+    // DXVK_VEGAS_GPU_TIER_PATCH
     private final View llAsync;
     private final View llAsyncCache;
+    private final Spinner sGPUTier;
+    private final View llGPUTier;
     private final View llCompatMode;
     private final Context context;
     private static List<String> dxvkVersions;
@@ -76,6 +79,27 @@ public class DXVKConfigDialog extends ContentDialog {
             return levelsA.length - levelsB.length;
 
         return 0;
+    }
+
+    // DXVK_VEGAS_GPU_TIER_PATCH
+    private static boolean isVegasFork(String version) {
+        return version != null && version.toLowerCase().contains("vegas");
+    }
+
+    // DXVK_VEGAS_GPU_TIER_PATCH
+    // vegas.forceTier: 0=Auto, 1=low-end, 2=mid-range, 3=high-end.
+    // Posisi spinner (0-3) persis sama dengan nilai config-nya.
+    private static int parseGpuTierPosition(String stored) {
+        try {
+            int v = Integer.parseInt(stored);
+            if (v >= 0 && v <= 3) return v;
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    // DXVK_VEGAS_GPU_TIER_PATCH
+    private void updateGPUTierVisibility(String version) {
+        llGPUTier.setVisibility(isVegasFork(version) ? View.VISIBLE : View.GONE);
     }
 
     // DXVK_COMPAT_PATCH
@@ -137,6 +161,8 @@ public class DXVKConfigDialog extends ContentDialog {
         swCompatMode = findViewById(R.id.SWCompatMode);
         llAsync = findViewById(R.id.LLAsync);
         llAsyncCache = findViewById(R.id.LLAsyncCache);
+        sGPUTier = findViewById(R.id.SGPUTier);
+        llGPUTier = findViewById(R.id.LLGPUTier);
         llCompatMode = findViewById(R.id.LLCompatMode);
 
         ContentsManager contentsManager = new ContentsManager(context);
@@ -155,6 +181,8 @@ public class DXVKConfigDialog extends ContentDialog {
         AppUtils.setSpinnerSelectionFromIdentifier(sVKD3DVersion, config.get("vkd3dVersion"));
         AppUtils.setSpinnerSelectionFromIdentifier(sVKD3DFeatureLevel, config.get("vkd3dLevel"));
         AppUtils.setSpinnerSelectionFromIdentifier(sDDRAWrapper, config.get("ddrawrapper"));
+        // DXVK_VEGAS_GPU_TIER_PATCH
+        sGPUTier.setSelection(parseGpuTierPosition(config.get("gpuTier")));
 
         swAsync.setChecked(config.get("async").equals("1"));
         swAsyncCache.setChecked(config.get("asyncCache").equals("1"));
@@ -170,12 +198,14 @@ public class DXVKConfigDialog extends ContentDialog {
                 : compatModeSaved.equals("1"));
 
         updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+        updateGPUTierVisibility(sDXVKVersion.getSelectedItem().toString());
         updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
 
         sDXVKVersion.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updateConfigVisibility(getDXVKType(position));
+                updateGPUTierVisibility(dxvkVersions.get(position));
                 updateCompatModeVisibility(dxvkVersions.get(position));
             }
 
@@ -212,6 +242,7 @@ public class DXVKConfigDialog extends ContentDialog {
                             (curMajor != null && curMajor >= 2) ? currentDXVKVersion : DefaultVersion.DXVK
                     );
                     updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+                    updateGPUTierVisibility(sDXVKVersion.getSelectedItem().toString());
                     updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
                 }
                 else {
@@ -235,6 +266,9 @@ public class DXVKConfigDialog extends ContentDialog {
             config.put("vkd3dVersion", selectedItem.getIdentifier());
             config.put("vkd3dLevel", sVKD3DFeatureLevel.getSelectedItem().toString());
             config.put("ddrawrapper", StringUtils.parseIdentifier(sDDRAWrapper.getSelectedItem().toString()));
+            config.put("gpuTier", (llGPUTier.getVisibility()==View.VISIBLE)
+                    ? String.valueOf(sGPUTier.getSelectedItemPosition())
+                    : "0");
             anchor.setTag(config.toString());
         });
     }
@@ -328,6 +362,13 @@ public class DXVKConfigDialog extends ContentDialog {
         if (config.get("compatMode").equals("1")) {
             if (!content.isEmpty()) content += "; ";
             content += "dxvk.enableDescriptorBuffer = False; dxvk.framePace = max-frame-latency;";
+        }
+
+        // DXVK_VEGAS_GPU_TIER_PATCH
+        int gpuTier = parseGpuTierPosition(config.get("gpuTier"));
+        if (gpuTier >= 1 && gpuTier <= 3) {
+            if (!content.isEmpty()) content += "; ";
+            content += "vegas.forceTier = " + gpuTier + ";";
         }
 
         if (!content.isEmpty())

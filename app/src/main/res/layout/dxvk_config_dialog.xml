@@ -118,6 +118,27 @@
 
         </LinearLayout>
 
+        <!-- DXVK_VEGAS_GPU_TIER_PATCH -->
+        <LinearLayout
+            android:id="@+id/LLGPUTier"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/dxvk_gpu_tier" />
+
+            <Spinner
+                style="@style/ComboBox"
+                android:layout_width="match_parent"
+                android:id="@+id/SGPUTier"
+                android:entries="@array/gpu_tier_entries"
+                android:spinnerMode="dialog" />
+
+        </LinearLayout>
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

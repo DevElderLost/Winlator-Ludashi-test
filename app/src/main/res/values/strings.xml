@@ -683,4 +683,6 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="dxvk_compat_mode">Compatibility Mode (Adreno/Mali)</string>
     <!-- DXVK_VEGAS_GPU_TIER_PATCH -->
     <string name="dxvk_gpu_tier">GPU Tier (Vegas)</string>
+    <!-- DXVK_VEGAS_FSR_ADD -->
+    <string name="dxvk_fsr_mode">FSR 1.0 Upscaler</string>
 </resources>

@@ -40,8 +40,11 @@ public class DXVKConfigDialog extends ContentDialog {
     // DXVK_COMPAT_FIX_V1_TO_V2
     private final ToggleButton swCompatMode;
     // DXVK_VEGAS_GPU_TIER_PATCH
+    // DXVK_VEGAS_FSR_ADD
     private final View llAsync;
     private final View llAsyncCache;
+    private final Spinner sFSRMode;
+    private final View llFSRMode;
     private final Spinner sGPUTier;
     private final View llGPUTier;
     private final View llCompatMode;
@@ -79,6 +82,11 @@ public class DXVKConfigDialog extends ContentDialog {
             return levelsA.length - levelsB.length;
 
         return 0;
+    }
+
+    // DXVK_VEGAS_FSR_ADD
+    private void updateFSRModeVisibility(String version) {
+        llFSRMode.setVisibility(isVegasFork(version) ? View.VISIBLE : View.GONE);
     }
 
     // DXVK_VEGAS_GPU_TIER_PATCH
@@ -161,6 +169,8 @@ public class DXVKConfigDialog extends ContentDialog {
         swCompatMode = findViewById(R.id.SWCompatMode);
         llAsync = findViewById(R.id.LLAsync);
         llAsyncCache = findViewById(R.id.LLAsyncCache);
+        sFSRMode = findViewById(R.id.SFSRMode);
+        llFSRMode = findViewById(R.id.LLFSRMode);
         sGPUTier = findViewById(R.id.SGPUTier);
         llGPUTier = findViewById(R.id.LLGPUTier);
         llCompatMode = findViewById(R.id.LLCompatMode);
@@ -181,6 +191,8 @@ public class DXVKConfigDialog extends ContentDialog {
         AppUtils.setSpinnerSelectionFromIdentifier(sVKD3DVersion, config.get("vkd3dVersion"));
         AppUtils.setSpinnerSelectionFromIdentifier(sVKD3DFeatureLevel, config.get("vkd3dLevel"));
         AppUtils.setSpinnerSelectionFromIdentifier(sDDRAWrapper, config.get("ddrawrapper"));
+        // DXVK_VEGAS_FSR_ADD
+        AppUtils.setSpinnerSelectionFromIdentifier(sFSRMode, config.get("fsrMode"));
         // DXVK_VEGAS_GPU_TIER_PATCH
         sGPUTier.setSelection(parseGpuTierPosition(config.get("gpuTier")));
 
@@ -198,6 +210,7 @@ public class DXVKConfigDialog extends ContentDialog {
                 : compatModeSaved.equals("1"));
 
         updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+        updateFSRModeVisibility(sDXVKVersion.getSelectedItem().toString());
         updateGPUTierVisibility(sDXVKVersion.getSelectedItem().toString());
         updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
 
@@ -205,6 +218,7 @@ public class DXVKConfigDialog extends ContentDialog {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updateConfigVisibility(getDXVKType(position));
+                updateFSRModeVisibility(dxvkVersions.get(position));
                 updateGPUTierVisibility(dxvkVersions.get(position));
                 updateCompatModeVisibility(dxvkVersions.get(position));
             }
@@ -242,6 +256,7 @@ public class DXVKConfigDialog extends ContentDialog {
                             (curMajor != null && curMajor >= 2) ? currentDXVKVersion : DefaultVersion.DXVK
                     );
                     updateConfigVisibility(getDXVKType(sDXVKVersion.getSelectedItemPosition()));
+                    updateFSRModeVisibility(sDXVKVersion.getSelectedItem().toString());
                     updateGPUTierVisibility(sDXVKVersion.getSelectedItem().toString());
                     updateCompatModeVisibility(sDXVKVersion.getSelectedItem().toString());
                 }
@@ -266,6 +281,9 @@ public class DXVKConfigDialog extends ContentDialog {
             config.put("vkd3dVersion", selectedItem.getIdentifier());
             config.put("vkd3dLevel", sVKD3DFeatureLevel.getSelectedItem().toString());
             config.put("ddrawrapper", StringUtils.parseIdentifier(sDDRAWrapper.getSelectedItem().toString()));
+            config.put("fsrMode", (llFSRMode.getVisibility()==View.VISIBLE)
+                    ? StringUtils.parseIdentifier(sFSRMode.getSelectedItem().toString())
+                    : "Auto");
             config.put("gpuTier", (llGPUTier.getVisibility()==View.VISIBLE)
                     ? String.valueOf(sGPUTier.getSelectedItemPosition())
                     : "0");
@@ -332,6 +350,12 @@ public class DXVKConfigDialog extends ContentDialog {
     public static void setEnvVars(Context context, KeyValueSet config, EnvVars envVars) {
         String content = "";
 
+        // DXVK_VEGAS_VERSION_GATE_HARDEN
+        // Dipakai untuk pastikan fitur khusus fork VEGAS (FSR, GPU Tier)
+        // TIDAK PERNAH ke-inject kalau versi DXVK yang aktif sekarang
+        // bukan fork vegas - terlepas dari nilai config yang tersimpan.
+        boolean isVegas = isVegasFork(config.get("version"));
+
         String framerate = config.get("framerate");
 
         if (!framerate.isEmpty() && !framerate.equals("0")) {
@@ -366,9 +390,18 @@ public class DXVKConfigDialog extends ContentDialog {
 
         // DXVK_VEGAS_GPU_TIER_PATCH
         int gpuTier = parseGpuTierPosition(config.get("gpuTier"));
-        if (gpuTier >= 1 && gpuTier <= 3) {
+        if (isVegas && gpuTier >= 1 && gpuTier <= 3) {
             if (!content.isEmpty()) content += "; ";
             content += "vegas.forceTier = " + gpuTier + ";";
+        }
+
+        // DXVK_VEGAS_FSR_ADD
+        // vegas.enableUpscaler: Auto/True/False. "Auto" tidak perlu
+        // di-inject - itu sudah default upstream fork VEGAS.
+        String fsrMode = config.get("fsrMode");
+        if (isVegas && (fsrMode.equalsIgnoreCase("True") || fsrMode.equalsIgnoreCase("False"))) {
+            if (!content.isEmpty()) content += "; ";
+            content += "vegas.enableUpscaler = " + fsrMode + ";";
         }
 
         if (!content.isEmpty())

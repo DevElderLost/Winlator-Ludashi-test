@@ -118,6 +118,27 @@
 
         </LinearLayout>
 
+        <!-- DXVK_VEGAS_FSR_ADD -->
+        <LinearLayout
+            android:id="@+id/LLFSRMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/dxvk_fsr_mode" />
+
+            <Spinner
+                style="@style/ComboBox"
+                android:layout_width="match_parent"
+                android:id="@+id/SFSRMode"
+                android:entries="@array/fsr_mode_entries"
+                android:spinnerMode="dialog" />
+
+        </LinearLayout>
+
         <!-- DXVK_VEGAS_GPU_TIER_PATCH -->
         <LinearLayout
             android:id="@+id/LLGPUTier"

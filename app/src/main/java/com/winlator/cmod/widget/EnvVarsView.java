@@ -43,6 +43,8 @@ public class EnvVarsView extends FrameLayout {
         {"PULSE_LATENCY_MSEC", "NUMBER"},
         {"WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER", "CHECKBOX", "0", "1"},
         {"WINE_NEW_MEDIASOURCE", "CHECKBOX", "0", "1"},
+        {"WINEVMEMMAXSIZE", "SELECT", "1024", "2048", "3072", "4096", "5120", "6144", "7168", "8192", "9216", "10240", "11264", "12288", "13312", "14336", "15360", "16384"},
+        {"WINE_FAST_YIELD", "CHECKBOX", "0", "1"},
         {"GALLIUM_HUD", "SELECT_MULTIPLE", "simple", "fps", "frametime"}
     };
     private final LinearLayout container;

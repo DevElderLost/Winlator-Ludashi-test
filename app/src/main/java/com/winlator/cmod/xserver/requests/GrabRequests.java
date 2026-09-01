@@ -66,10 +66,7 @@ public abstract class GrabRequests {
             status = Status.SUCCESS;
             client.xServer.grabManager.activatePointerGrab(
                     window, ownerEvents, eventMask, client, confineToWindow);
-            if (confineToId != 0) {
-                Window confineToWindow = client.xServer.windowManager.getWindow(confineToId);
-                client.xServer.windowManager.setConfinedWindow(confineToWindow);
-            }
+            client.xServer.windowManager.setConfinedWindow(confineToWindow);
         }
 
         try (XStreamLock lock = outputStream.lock()) {

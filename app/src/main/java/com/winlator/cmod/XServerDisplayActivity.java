@@ -720,8 +720,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
             return;
         }
 
-        if (xServer.getRenderer() != null) {
-            xServer.getRenderer().setCursorVisible(true);
+        if (xServerView != null) {
+            xServerView.setCursorVisible(true);
         }
 
         if (timeoutHandler != null && hideControlsRunnable != null) {

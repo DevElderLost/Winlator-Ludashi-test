@@ -215,7 +215,7 @@ public class ExternalControllerBindingsActivity extends AppCompatActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // Accept any gamepad button or D-pad keycode
-        if (isGamepadKeyCode(keyCode)) {
+        if (event.getRepeatCount() == 0 && keyCode != KeyEvent.KEYCODE_BACK) {
             updateControllerBinding(keyCode, Binding.NONE);
             return true;
         }

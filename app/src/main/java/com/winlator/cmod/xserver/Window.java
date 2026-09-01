@@ -30,6 +30,7 @@ public class Window extends XResource {
     private short height;
     private short borderWidth;
     private Window parent;
+    private boolean confined = false;
     public final XClient originClient;
     public final WindowAttributes attributes = new WindowAttributes(this);
     private final SparseArray<Property> properties = new SparseArray<>();
@@ -114,6 +115,14 @@ public class Window extends XResource {
     public void removeProperty(int id) {
         properties.remove(id);
         sendEvent(Event.PROPERTY_CHANGE, new PropertyNotify(this, id, true));
+    }
+
+    public boolean isConfined() {
+        return confined;
+    }
+
+    public void setConfined(boolean confined) {
+        this.confined = confined;
     }
 
     public Property modifyProperty(int atom, int type, Property.Format format, Property.Mode mode, byte[] data) {

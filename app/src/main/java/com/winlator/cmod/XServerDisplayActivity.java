@@ -22,6 +22,8 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.input.InputManager;
+import android.view.InputDevice;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -188,7 +190,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private int activeRendererWindowId = -1;
     private String lastRendererName = null;
-    private boolean cursorLock;
+//    private boolean cursorLock;
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
     private boolean navigationFocused = false;
@@ -200,6 +202,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private Runnable configChangedCallback = null;
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
+    private boolean isVolumeUpPressed = false;
+    private boolean isVolumeDownPressed = false;
     private boolean isMouseDisabled = false;
     private boolean simulateTouchScreen = false;
 
@@ -221,6 +225,32 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
+
+    private boolean hasExternalMouse() {
+        InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+        for (int deviceId : inputManager.getInputDeviceIds()) {
+            InputDevice device = inputManager.getInputDevice(deviceId);
+            if (device != null && !device.isVirtual() && (device.getSources() & InputDevice.SOURCE_MOUSE) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void tryCapturePointer() {
+        if (touchpadView != null && hasExternalMouse() && drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            touchpadView.postDelayed(() -> {
+                if (touchpadView != null) {
+                    touchpadView.requestFocus();
+                    touchpadView.requestPointerCapture();
+                    touchpadView.setOnCapturedPointerListener((view, event) -> {
+                        handleCapturedPointer(event);
+                        return true;
+                    });
+                }
+            }, 100);
+        }
+    }
 
     private void createNotifcationChannel() {
         String name = "Winlator";
@@ -298,7 +328,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         preloaderDialog = new PreloaderDialog(this);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
 
-        cursorLock = preferences.getBoolean("cursor_lock", true);
+//        cursorLock = preferences.getBoolean("cursor_lock", true);
 
         isDarkMode = preferences.getBoolean("dark_mode", false);
 
@@ -343,11 +373,16 @@ public class XServerDisplayActivity extends AppCompatActivity {
             @Override
             public void onDrawerOpened(View drawerView) {
                 openSidebarPanel(activeSidebarItemId, activeSidebarPanelId);
+                if (touchpadView != null) {
+                    touchpadView.releasePointerCapture();
+                    touchpadView.setOnCapturedPointerListener(null);
+                }
             }
 
             @Override
             public void onDrawerClosed(View drawerView) {
                 hideAllSidebarPanels();
+                tryCapturePointer();
             }
         });
 
@@ -680,6 +715,20 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private void handleCapturedPointer(MotionEvent event) {
+        
+        if (isMouseDisabled) {
+            return;
+        }
+
+        if (xServer.getRenderer() != null) {
+            xServer.getRenderer().setCursorVisible(true);
+        }
+
+        if (timeoutHandler != null && hideControlsRunnable != null) {
+            timeoutHandler.removeCallbacks(hideControlsRunnable);
+            timeoutHandler.postDelayed(hideControlsRunnable, 5000);
+        }
+
         switch (event.getAction()) {
             case MotionEvent.ACTION_BUTTON_PRESS: {
                 int button = event.getActionButton();
@@ -771,6 +820,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
     public void onPause() {
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
         super.onPause();
+        isVolumeUpPressed = false;
+        isVolumeDownPressed = false;
 
         if (!isInPictureInPictureMode()) {
             if (environment != null) {
@@ -942,10 +993,14 @@ public class XServerDisplayActivity extends AppCompatActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
 
-        if (hasFocus && cursorLock)
-            touchpadView.requestPointerCapture();
-        else if (!hasFocus)
-            touchpadView.releasePointerCapture();
+        if (hasFocus) {
+            tryCapturePointer();
+        } else {
+            if (touchpadView != null) {
+                touchpadView.releasePointerCapture();
+                touchpadView.setOnCapturedPointerListener(null);
+            }
+        }
     }
 
     private void setupWineSystemFiles() {
@@ -1232,14 +1287,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             if (!drawerLayout.isDrawerOpen(GravityCompat.START))
                 drawerLayout.openDrawer(GravityCompat.START);
         });
-        View.OnCapturedPointerListener capturedPointerListener = new View.OnCapturedPointerListener() {
-            @Override
-            public boolean onCapturedPointer(View view, MotionEvent event) {
-                handleCapturedPointer(event);
-                return true;
-            }
-        };
-        touchpadView.setOnCapturedPointerListener(cursorLock ? capturedPointerListener : null);
+        
         touchpadView.setFocusable(true);
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);

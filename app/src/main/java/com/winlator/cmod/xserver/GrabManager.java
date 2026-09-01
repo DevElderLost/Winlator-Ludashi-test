@@ -55,6 +55,7 @@ public class GrabManager implements WindowManager.OnWindowModificationListener {
             window = null;
             eventListener = null;
             confineToWindow = null;
+            xServer.windowManager.setConfinedWindow(null);
         }
     }
 

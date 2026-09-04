@@ -3,9 +3,9 @@ name: Android CI Bionic
 on:
   workflow_dispatch:
   push:
-    branches: [ "import-winlator-ludashi" ]
+    branches: [ "4.0-experimantal" ]
   pull_request: 
-    branches: [ "import-winlator-ludashi" ]
+    branches: [ "4.0-experimantal" ]
   
 
 permissions:

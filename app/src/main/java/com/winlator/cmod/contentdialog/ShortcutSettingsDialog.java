@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -50,6 +51,10 @@ import com.winlator.cmod.fexcore.FEXCoreManager;
 import com.winlator.cmod.fexcore.FEXCorePreset;
 import com.winlator.cmod.fexcore.FEXCorePresetManager;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
+import com.winlator.cmod.reshade.ReshadeCatalog;
+import com.winlator.cmod.reshade.ReshadeConfigWriter;
+import com.winlator.cmod.reshade.ReshadeDownloader;
+import com.winlator.cmod.reshade.ReshadeManager;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
 import com.winlator.cmod.midi.MidiManager;
 import com.winlator.cmod.widget.CPUListView;
@@ -382,6 +387,14 @@ public class ShortcutSettingsDialog extends ContentDialog implements DXVKConfigD
 
         AppUtils.setSpinnerSelectionFromValue(sSharpnessEffect, shortcut.getExtra("sharpnessEffect", "None"));
 
+        final Spinner sReshadeFxEffect = findViewById(R.id.SReshadeFxEffect);
+        refreshReshadeFxAdapter(sReshadeFxEffect, shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECT, "None"));
+
+        final Button btBrowseReshadeCatalog = findViewById(R.id.BTBrowseReshadeCatalog);
+        if (btBrowseReshadeCatalog != null) {
+            btBrowseReshadeCatalog.setOnClickListener(v -> browseReshadeCatalog(sReshadeFxEffect));
+        }
+
         sbSharpnessLevel.setProgress(Integer.parseInt(shortcut.getExtra("sharpnessLevel", "100")));
         tvSharpnessLevel.setText(shortcut.getExtra("sharpnessLevel", "100") + "%");
         sbSharpnessLevel.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -507,6 +520,10 @@ public class ShortcutSettingsDialog extends ContentDialog implements DXVKConfigD
                 shortcut.putExtra("sharpnessEffect", sharpeningEffect);
                 shortcut.putExtra("sharpnessLevel", sharpeningLevel);
                 shortcut.putExtra("sharpnessDenoise", sharpeningDenoise);
+
+                String reshadeFxEffect = sReshadeFxEffect.getSelectedItem() != null
+                        ? sReshadeFxEffect.getSelectedItem().toString() : "None";
+                shortcut.putExtra(ReshadeConfigWriter.EXTRA_FX_EFFECT, reshadeFxEffect);
 
                 ArrayList<ControlsProfile> profiles = inputControlsManager.getProfiles(true);
                 int controlsProfile = sControlsProfile.getSelectedItemPosition() > 0 ? profiles.get(sControlsProfile.getSelectedItemPosition() - 1).id : 0;
@@ -839,6 +856,53 @@ public class ShortcutSettingsDialog extends ContentDialog implements DXVKConfigD
             }
         }
         return null;
+    }
+
+    private void refreshReshadeFxAdapter(Spinner sReshadeFxEffect, String selectedName) {
+        List<String> reshadeFxItemsList = new ArrayList<>();
+        reshadeFxItemsList.add("None");
+        for (ReshadeManager.ReshadeEffect effect : ReshadeManager.scanEffects(getContext())) {
+            reshadeFxItemsList.add(effect.name);
+        }
+        sReshadeFxEffect.setAdapter(new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_dropdown_item, reshadeFxItemsList));
+        AppUtils.setSpinnerSelectionFromValue(sReshadeFxEffect, selectedName);
+    }
+
+    private void browseReshadeCatalog(Spinner sReshadeFxEffect) {
+        PreloaderDialog dialog = new PreloaderDialog(fragment.requireActivity());
+        dialog.showOnUiThread(R.string.loading);
+        CONTENT_IO_EXECUTOR.execute(() -> {
+            List<ReshadeCatalog.CatalogEntry> catalog = ReshadeCatalog.fetchCatalog();
+            fragment.requireActivity().runOnUiThread(() -> {
+                dialog.closeOnUiThread();
+                if (catalog.isEmpty()) {
+                    AppUtils.showToast(getContext(), R.string.reshade_catalog_empty);
+                    return;
+                }
+                String[] entries = new String[catalog.size()];
+                for (int i = 0; i < catalog.size(); i++) entries[i] = catalog.get(i).displayName;
+                ContentDialog.showSingleChoiceList(fragment.requireContext(), R.string.reshade_select_effect, entries, idx -> {
+                    if (idx < 0 || idx >= catalog.size()) return;
+                    downloadReshadeEffect(sReshadeFxEffect, catalog.get(idx));
+                });
+            });
+        });
+    }
+
+    private void downloadReshadeEffect(Spinner sReshadeFxEffect, ReshadeCatalog.CatalogEntry entry) {
+        PreloaderDialog dialog = new PreloaderDialog(fragment.requireActivity());
+        dialog.showOnUiThread(R.string.reshade_downloading_effect);
+        CONTENT_IO_EXECUTOR.execute(() -> {
+            ReshadeDownloader.Result result = ReshadeDownloader.downloadEffect(getContext(), entry);
+            fragment.requireActivity().runOnUiThread(() -> {
+                dialog.closeOnUiThread();
+                if (!result.success) {
+                    AppUtils.showToast(getContext(), R.string.unable_to_download_file);
+                    return;
+                }
+                refreshReshadeFxAdapter(sReshadeFxEffect, result.effectName);
+            });
+        });
     }
 
     private void downloadContentForTypes(List<ContentProfile.ContentType> types, Runnable refreshAction) {

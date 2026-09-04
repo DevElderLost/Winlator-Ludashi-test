@@ -60,6 +60,8 @@ import androidx.preference.PreferenceManager;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.container.Shortcut;
+import com.winlator.cmod.reshade.ReshadeConfigWriter;
+import com.winlator.cmod.reshade.ReshadeManager;
 import com.winlator.cmod.contentdialog.ContentDialog;
 import com.winlator.cmod.contentdialog.DXVKConfigDialog;
 import com.winlator.cmod.contentdialog.DebugDialog;
@@ -197,7 +199,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private MidiHandler midiHandler;
     private String midiSoundFont = "";
     private String lc_all = "";
-    private String vkbasaltConfig = "";
+    private String vkbasaltConfigFilePath = "";
     PreloaderDialog preloaderDialog = null;
     private Runnable configChangedCallback = null;
     private boolean isPaused = false;
@@ -549,12 +551,15 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
             winHandler.setXInputDisabled(xinputDisabledFromShortcut);
             String sharpnessEffect = shortcut.getExtra("sharpnessEffect", "None");
-            if (!sharpnessEffect.equals("None")) {
-                double sharpnessLevel = Double.parseDouble(shortcut.getExtra("sharpnessLevel", "100"));
-                double sharpnessDenoise = Double.parseDouble(shortcut.getExtra("sharpnessDenoise", "100"));
-                vkbasaltConfig = "effects=" + sharpnessEffect.toLowerCase() + ";" + "casSharpness="
-                        + sharpnessLevel / 100 + ";" + "dlsSharpness=" + sharpnessLevel / 100 + ";" + "dlsDenoise="
-                        + sharpnessDenoise / 100 + ";" + "enableOnLaunch=True";
+            double sharpnessLevel = Double.parseDouble(shortcut.getExtra("sharpnessLevel", "100"));
+            double sharpnessDenoise = Double.parseDouble(shortcut.getExtra("sharpnessDenoise", "100"));
+            String reshadeFxEffectName = shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECT, "None");
+            ReshadeManager.ReshadeEffect reshadeFxEffect = ReshadeManager.findByName(this, reshadeFxEffectName);
+            ReshadeConfigWriter.BuiltConfig reshadeBuiltConfig = ReshadeConfigWriter.buildConfig(
+                    sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffect);
+            if (!reshadeBuiltConfig.isEmpty) {
+                File reshadeConfigFile = ReshadeConfigWriter.writeConfigFile(this, container, reshadeBuiltConfig);
+                vkbasaltConfigFilePath = reshadeConfigFile != null ? reshadeConfigFile.getAbsolutePath() : "";
             }
             Log.d("XServerDisplayActivity", "XInput Disabled from Shortcut: " + xinputDisabledFromShortcut);
 
@@ -2559,9 +2564,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
             envVars.put("WRAPPER_SURFACE_FORMAT", "rgba8");
         }
 
-        if (!vkbasaltConfig.isEmpty()) {
+        if (!vkbasaltConfigFilePath.isEmpty()) {
             envVars.put("ENABLE_VKBASALT", "1");
-            envVars.put("VKBASALT_CONFIG", vkbasaltConfig);
+            envVars.put("VKBASALT_CONFIG_FILE", vkbasaltConfigFilePath);
         }
     }
 

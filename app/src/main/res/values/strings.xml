@@ -639,6 +639,12 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="vkbasalt_sharpness_level">Sharpness Level</string>
     <string name="num_controllers">Number of Controllers</string>
     <string name="vkbasalt_sharpness_denoise">Sharpeness Denoise</string>
+    <string name="vkbasalt_fx_effect">Custom Effect (.fx)</string>
+    <string name="vkbasalt_fx_effect_hint">Drop .fx effect folders into Android/data/com.winlator.cmod/files/ReShade/</string>
+    <string name="reshade_browse_catalog">Browse Online Catalog</string>
+    <string name="reshade_select_effect">Select ReShade Effect</string>
+    <string name="reshade_downloading_effect">Downloading effect...</string>
+    <string name="reshade_catalog_empty">Could not reach the effect catalog. Check your connection.</string>
     <string name="shutdown">Shutdown</string>
     <string name="disable_mouse">Toggle Mouse</string>
     <string name="installing_wine_files">Installing Wine Files...</string>

@@ -88,6 +88,22 @@ public class ReshadeManager {
         return null;
     }
 
+    /** Recursively deletes a downloaded effect's whole folder. Returns true on success. */
+    public static boolean deleteEffect(Context context, String name) {
+        if (name == null || name.isEmpty()) return false;
+        File folder = new File(getReshadeRootDir(context), name);
+        return deleteRecursive(folder);
+    }
+
+    private static boolean deleteRecursive(File file) {
+        if (!file.exists()) return true;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) deleteRecursive(child);
+        }
+        return file.delete();
+    }
+
     private static File findPrimaryFxFile(File dir) {
         File[] files = dir.listFiles((d, fileName) -> fileName.toLowerCase().endsWith(".fx"));
         if (files == null || files.length == 0) return null;

@@ -553,10 +553,14 @@ public class XServerDisplayActivity extends AppCompatActivity {
             String sharpnessEffect = shortcut.getExtra("sharpnessEffect", "None");
             double sharpnessLevel = Double.parseDouble(shortcut.getExtra("sharpnessLevel", "100"));
             double sharpnessDenoise = Double.parseDouble(shortcut.getExtra("sharpnessDenoise", "100"));
-            String reshadeFxEffectName = shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECT, "None");
-            ReshadeManager.ReshadeEffect reshadeFxEffect = ReshadeManager.findByName(this, reshadeFxEffectName);
+            String reshadeFxEffectsExtra = shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECTS, "");
+            java.util.List<ReshadeManager.ReshadeEffect> reshadeFxEffects = new java.util.ArrayList<>();
+            for (String name : ReshadeConfigWriter.parseEnabledNames(reshadeFxEffectsExtra)) {
+                ReshadeManager.ReshadeEffect effect = ReshadeManager.findByName(this, name);
+                if (effect != null) reshadeFxEffects.add(effect);
+            }
             ReshadeConfigWriter.BuiltConfig reshadeBuiltConfig = ReshadeConfigWriter.buildConfig(
-                    sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffect);
+                    sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffects);
             if (!reshadeBuiltConfig.isEmpty) {
                 File reshadeConfigFile = ReshadeConfigWriter.writeConfigFile(this, container, reshadeBuiltConfig);
                 vkbasaltConfigFilePath = reshadeConfigFile != null ? reshadeConfigFile.getAbsolutePath() : "";

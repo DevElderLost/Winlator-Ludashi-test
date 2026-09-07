@@ -24,31 +24,25 @@ import java.util.Set;
  * Combines the existing built-in sharpen (CAS/DLS) with ANY NUMBER of
  * drop-in .fx effects (multi-select, all active ones chained together):
  * <pre>
- * effects = cas:myeffect1:myeffect2
+ * effects = cas:bloominghdr:cinematicdof
  * casSharpness = 0.80
- * myeffect1 = /abs/path/Effect1/Effect1.fx
- * myeffect2 = /abs/path/Effect2/Effect2.fx
- * reshadeIncludePath = /abs/path/Effect1:/abs/path/Effect2
- * reshadeTexturePath = /abs/path/Effect1/Textures:/abs/path/Effect2
+ * bloominghdr = /abs/path/ReShade/Shaders/BloomingHDR.fx
+ * cinematicdof = /abs/path/ReShade/Shaders/CinematicDOF.fx
+ * reshadeIncludePath = /abs/path/ReShade/Shaders
+ * reshadeTexturePath = /abs/path/ReShade/Textures
  * enableOnLaunch = true
  * </pre>
- * NOTE on the colon-joined reshadeIncludePath/reshadeTexturePath: each
- * downloaded effect is self-contained in its own folder (its own resolved
- * copy of ReShade.fxh, its own Textures/), so combining several active
- * effects needs the compiler to search across ALL of their folders at once.
- * This assumes the bundled libvkbasalt.so accepts multiple colon-joined
- * search paths for these two keys (already confirmed to be a custom-patched
- * build rather than vanilla vkBasalt, since it also supports the inline
- * VKBASALT_CONFIG env var vanilla vkBasalt doesn't have). If it turns out
- * this specific build only honors a single path, only the first listed
- * effect's includes/textures would resolve -- other active effects may
- * then fail to compile individually without affecting the rest of the chain.
+ * IMPORTANT: reshadeIncludePath/reshadeTexturePath are ALWAYS the single
+ * shared Shaders/Textures folders (see ReshadeManager) -- never colon-joined
+ * per-effect paths. That was tried and confirmed BROKEN: the bundled
+ * libvkbasalt.so does not search multiple colon-joined paths, it treats the
+ * whole joined string as one literal path, which crashed the whole Wine
+ * process trying to "open" a texture path like ".../A:/.../B/tex.png".
  */
 public class ReshadeConfigWriter {
     /**
      * Shortcut/container extra key holding the set of ENABLED drop-in .fx
-     * effect names (folder names), comma-separated. Empty/missing = none
-     * active. Replaces the old single-select "reshadeFxEffect" key.
+     * effect names, comma-separated. Empty/missing = none active.
      */
     public static final String EXTRA_FX_EFFECTS = "reshadeFxEffects";
 
@@ -89,12 +83,14 @@ public class ReshadeConfigWriter {
     }
 
     /**
+     * @param context         needed to resolve the single shared Shaders/Textures folders
      * @param sharpnessEffect "None", "CAS" or "DLS" (existing built-in vkBasalt effects)
      * @param sharpnessLevel  0-100
      * @param sharpnessDenoise 0-100 (only meaningful for DLS)
      * @param fxEffects       every ENABLED drop-in .fx effect (multi-select), may be empty
      */
     public static BuiltConfig buildConfig(
+            Context context,
             String sharpnessEffect,
             double sharpnessLevel,
             double sharpnessDenoise,
@@ -120,20 +116,18 @@ public class ReshadeConfigWriter {
 
         if (hasFxEffects) {
             Set<String> usedKeys = new HashSet<>();
-            List<String> includeDirs = new ArrayList<>();
-            List<String> textureDirs = new ArrayList<>();
-
             for (ReshadeManager.ReshadeEffect fx : fxEffects) {
                 String key = uniqueKey(sanitizeKey(fx.name), usedKeys);
                 usedKeys.add(key);
                 chain.add(key);
                 body.append(key).append(" = ").append(fx.fxFile.getAbsolutePath()).append('\n');
-                includeDirs.add(fx.getIncludeDir().getAbsolutePath());
-                textureDirs.add(fx.getTextureDir().getAbsolutePath());
             }
-
-            body.append("reshadeIncludePath = ").append(String.join(":", includeDirs)).append('\n');
-            body.append("reshadeTexturePath = ").append(String.join(":", textureDirs)).append('\n');
+            // Always ONE shared path for both -- vkBasalt doesn't support multiple
+            // colon-joined search paths (see class-level note above).
+            body.append("reshadeIncludePath = ")
+                    .append(ReshadeManager.getShadersDir(context).getAbsolutePath()).append('\n');
+            body.append("reshadeTexturePath = ")
+                    .append(ReshadeManager.getTexturesDir(context).getAbsolutePath()).append('\n');
         }
 
         StringBuilder out = new StringBuilder();

@@ -8,43 +8,38 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Scans for drop-in ReShade (.fx) effect folders and exposes them so a UI or
+ * Scans for drop-in ReShade (.fx) effects and exposes them so a UI or
  * ReshadeConfigWriter can turn a selection into a vkBasalt config.
  * <p>
- * Layout on disk (mirrors the convention used by other ReShade/vkBasalt front-ends):
+ * Layout on disk (matches the OFFICIAL ReShade installer convention -- a
+ * single shared Shaders/ and Textures/ folder, NOT one isolated folder per
+ * effect):
  * <pre>
- * Android/data/&lt;package&gt;/files/ReShade/&lt;EffectName&gt;/EffectName.fx
- * Android/data/&lt;package&gt;/files/ReShade/&lt;EffectName&gt;/*.fxh   (optional includes)
- * Android/data/&lt;package&gt;/files/ReShade/&lt;EffectName&gt;/Textures/*  (optional textures)
+ * Android/data/&lt;package&gt;/files/ReShade/Shaders/EffectName.fx
+ * Android/data/&lt;package&gt;/files/ReShade/Shaders/SomeInclude.fxh
+ * Android/data/&lt;package&gt;/files/ReShade/Shaders/Sub/Nested.fxh
+ * Android/data/&lt;package&gt;/files/ReShade/Textures/texture.png
  * </pre>
- * Each effect is self-contained in its own folder so its .fxh includes and
- * textures travel with it. The bundled libvkbasalt.so already embeds the
- * ReShade FX compiler (confirmed via reshadefx/ReshadeEffect symbols) and
- * reads reshadeTexturePath / reshadeIncludePath from the config file that
- * ReshadeConfigWriter produces.
+ * This is REQUIRED (not just a style choice) for multiple active effects to
+ * work together: vkBasalt only accepts a single reshadeIncludePath and a
+ * single reshadeTexturePath value each -- it does not search multiple
+ * colon-joined paths (confirmed from an actual crash log: joining paths
+ * with ':' made it treat the whole joined string as one literal path and
+ * fail to open textures, e.g. "couldn't open texture: .../A:/.../B/tex.png").
+ * So every downloaded effect's files must live under the SAME two folders.
  */
 public class ReshadeManager {
     private static final String RESHADE_DIR_NAME = "ReShade";
+    private static final String SHADERS_DIR_NAME = "Shaders";
+    private static final String TEXTURES_DIR_NAME = "Textures";
 
     public static class ReshadeEffect {
         public final String name;
-        public final File folder;
         public final File fxFile;
 
-        public ReshadeEffect(String name, File folder, File fxFile) {
+        public ReshadeEffect(String name, File fxFile) {
             this.name = name;
-            this.folder = folder;
             this.fxFile = fxFile;
-        }
-
-        /** Folder used for both reshadeIncludePath and reshadeTexturePath (self-contained layout). */
-        public File getIncludeDir() {
-            return folder;
-        }
-
-        public File getTextureDir() {
-            File textures = new File(folder, "Textures");
-            return textures.isDirectory() ? textures : folder;
         }
     }
 
@@ -52,28 +47,41 @@ public class ReshadeManager {
     public static File getReshadeRootDir(Context context) {
         File base = context.getExternalFilesDir(null);
         File root = new File(base, RESHADE_DIR_NAME);
-        if (!root.exists()) {
-            //noinspection ResultOfMethodCallIgnored
+        if (!root.exists()) //noinspection ResultOfMethodCallIgnored
             root.mkdirs();
-        }
         return root;
     }
 
+    /** Shared folder for every effect's .fx and .fxh files. Always used as reshadeIncludePath. */
+    public static File getShadersDir(Context context) {
+        File dir = new File(getReshadeRootDir(context), SHADERS_DIR_NAME);
+        if (!dir.exists()) //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+        return dir;
+    }
+
+    /** Shared folder for every effect's textures. Always used as reshadeTexturePath. */
+    public static File getTexturesDir(Context context) {
+        File dir = new File(getReshadeRootDir(context), TEXTURES_DIR_NAME);
+        if (!dir.exists()) //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+        return dir;
+    }
+
     /**
-     * Scans the drop-in folder and returns every effect that has at least one
-     * .fx file directly inside its own subfolder. Effects are sorted by name.
+     * Scans the shared Shaders/ folder and returns every top-level .fx file
+     * found there (subfolders hold only include dependencies, not
+     * standalone selectable effects). Sorted by name.
      */
     public static List<ReshadeEffect> scanEffects(Context context) {
         List<ReshadeEffect> effects = new ArrayList<>();
-        File root = getReshadeRootDir(context);
-        File[] subDirs = root.listFiles();
-        if (subDirs == null) return effects;
+        File[] files = getShadersDir(context).listFiles(
+                (dir, name) -> name.toLowerCase().endsWith(".fx"));
+        if (files == null) return effects;
 
-        for (File dir : subDirs) {
-            if (!dir.isDirectory()) continue;
-            File fxFile = findPrimaryFxFile(dir);
-            if (fxFile == null) continue;
-            effects.add(new ReshadeEffect(dir.getName(), dir, fxFile));
+        for (File f : files) {
+            String name = f.getName().substring(0, f.getName().length() - 3);
+            effects.add(new ReshadeEffect(name, f));
         }
 
         effects.sort(Comparator.comparing(e -> e.name.toLowerCase()));
@@ -88,32 +96,15 @@ public class ReshadeManager {
         return null;
     }
 
-    /** Recursively deletes a downloaded effect's whole folder. Returns true on success. */
+    /**
+     * Deletes just the top-level .fx file for this effect. Shared includes
+     * and textures under Shaders/Textures are intentionally left alone --
+     * they're small and may still be used by other downloaded effects, so
+     * it isn't safe to guess whether they're now orphaned.
+     */
     public static boolean deleteEffect(Context context, String name) {
         if (name == null || name.isEmpty()) return false;
-        File folder = new File(getReshadeRootDir(context), name);
-        return deleteRecursive(folder);
-    }
-
-    private static boolean deleteRecursive(File file) {
-        if (!file.exists()) return true;
-        File[] children = file.listFiles();
-        if (children != null) {
-            for (File child : children) deleteRecursive(child);
-        }
-        return file.delete();
-    }
-
-    private static File findPrimaryFxFile(File dir) {
-        File[] files = dir.listFiles((d, fileName) -> fileName.toLowerCase().endsWith(".fx"));
-        if (files == null || files.length == 0) return null;
-
-        // Prefer a .fx file that matches the folder name (EffectName/EffectName.fx),
-        // fall back to the first .fx file found otherwise.
-        for (File f : files) {
-            String base = f.getName().substring(0, f.getName().length() - 3);
-            if (base.equalsIgnoreCase(dir.getName())) return f;
-        }
-        return files[0];
+        File fx = new File(getShadersDir(context), name + ".fx");
+        return !fx.exists() || fx.delete();
     }
 }

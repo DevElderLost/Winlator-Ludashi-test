@@ -560,7 +560,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 if (effect != null) reshadeFxEffects.add(effect);
             }
             ReshadeConfigWriter.BuiltConfig reshadeBuiltConfig = ReshadeConfigWriter.buildConfig(
-                    sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffects);
+                    this, sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffects);
             if (!reshadeBuiltConfig.isEmpty) {
                 File reshadeConfigFile = ReshadeConfigWriter.writeConfigFile(this, container, reshadeBuiltConfig);
                 vkbasaltConfigFilePath = reshadeConfigFile != null ? reshadeConfigFile.getAbsolutePath() : "";

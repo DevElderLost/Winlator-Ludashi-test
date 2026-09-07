@@ -18,35 +18,28 @@ import java.util.regex.Pattern;
 
 /**
  * Downloads a single catalog effect (picked from ReshadeCatalog, which
- * covers ~40 independent repos via EffectPackages.ini) into ReshadeManager's
- * self-contained per-effect folder layout:
- * <pre>
- *   ReShade/&lt;EffectName&gt;/EffectName.fx
- *   ReShade/&lt;EffectName&gt;/SomeInclude.fxh
- *   ReShade/&lt;EffectName&gt;/Sub/Folder/Nested.fxh   (subfolder includes preserved as-is)
- *   ReShade/&lt;EffectName&gt;/Textures/foo.png
- * </pre>
- * Two things fixed vs the previous version, both of which were causing most
- * downloaded effects to render as a black screen:
+ * covers ~40 independent repos via EffectPackages.ini) into the SHARED
+ * Shaders/ and Textures/ folders (see ReshadeManager) -- required so that
+ * multiple active effects can all be found via the single reshadeIncludePath
+ * / reshadeTexturePath value vkBasalt actually supports.
+ * <p>
+ * Two correctness fixes baked in here:
  * <p>
  * 1. #include / texture "source" references that contain a subfolder (e.g.
- *    "Shared/Blend.fxh") used to be silently skipped entirely (the old regex
- *    rejected any match containing a slash). They're now captured and saved
- *    at the SAME relative path under the effect folder, because the shader
- *    compiler resolves an #include exactly as written, relative to
- *    reshadeIncludePath -- flattening it to just the basename would leave
- *    the compiler unable to find the file even though it was downloaded.
+ *    "Shared/Blend.fxh") are saved at that SAME relative path under
+ *    Shaders/ (or Textures/), because the shader compiler resolves an
+ *    #include exactly as written, relative to reshadeIncludePath.
  * <p>
  * 2. Virtually every .fx effect starts with #include "ReShade.fxh" and
  *    #include "ReShadeUI.fxh" -- but those two files only exist in the base
  *    crosire/reshade-shaders repo, NOT inside each individual package's own
- *    repo (SweetFX, qUINT, prod80, etc. don't bundle copies of them). The
- *    old downloader only ever looked inside the selected effect's own
- *    package repo, so this fundamental include failed to resolve for every
- *    non-"slim" package -- breaking the shader compile for almost every
- *    downloaded effect. There's now a fallback lookup against the base
- *    "slim" repo's tree whenever a file isn't found in the effect's own
- *    package.
+ *    repo (SweetFX, qUINT, prod80, etc. don't bundle copies of them). There's
+ *    a fallback lookup against the base "slim" repo's tree whenever a file
+ *    isn't found in the effect's own package.
+ * <p>
+ * Files already present under Shaders/Textures (e.g. ReShade.fxh downloaded
+ * once for an earlier effect) are NOT re-downloaded, since the shared-folder
+ * model means later effects reuse what earlier ones already fetched.
  * <p>
  * Blocking network I/O -- run off the main thread.
  */
@@ -60,6 +53,8 @@ public class ReshadeDownloader {
 
     /** Cached once per process -- reused across every single-effect download in this session. */
     private static Map<String, String> baseRepoTreeCache;
+    /** Cached per (owner/repo/branch) -- reused if multiple effects from the same package are downloaded. */
+    private static final Map<String, Map<String, String>> packageTreeCache = new HashMap<>();
 
     public static class Result {
         public final boolean success;
@@ -84,16 +79,16 @@ public class ReshadeDownloader {
 
     public static Result downloadEffect(Context context, ReshadeCatalog.CatalogEntry entry) {
         String effectName = entry.effectName();
-        Map<String, String> ownTree = fetchRepoTree(entry.pkg);
+        Map<String, String> ownTree = fetchRepoTreeCached(entry.pkg);
         if (ownTree.isEmpty()) return new Result(false, effectName);
 
         String mainPath = ownTree.get(basenameOf(entry.fileName).toLowerCase());
         if (mainPath == null) return new Result(false, effectName);
 
-        File effectDir = new File(ReshadeManager.getReshadeRootDir(context), effectName);
-        if (!effectDir.exists() && !effectDir.mkdirs()) return new Result(false, effectName);
+        File shadersDir = ReshadeManager.getShadersDir(context);
+        File texturesDir = ReshadeManager.getTexturesDir(context);
 
-        File fxFile = new File(effectDir, entry.fileName);
+        File fxFile = new File(shadersDir, entry.fileName);
         if (!downloadRawFile(entry.pkg, mainPath, fxFile)) return new Result(false, effectName);
 
         Set<String> resolved = new HashSet<>();
@@ -110,10 +105,17 @@ public class ReshadeDownloader {
                 String key = normalizeKey(includeRef);
                 if (!resolved.add(key)) continue;
 
+                File includeFile = new File(shadersDir, includeRef.replace('\\', '/'));
+                if (includeFile.exists()) {
+                    // Already fetched by an earlier effect sharing this include -- reuse it,
+                    // but still scan it for further nested includes/textures.
+                    queue.add(includeFile);
+                    continue;
+                }
+
                 Resolved found = resolveFile(entry.pkg, ownTree, includeRef);
                 if (found == null) continue; // optional/platform-specific include, skip silently
 
-                File includeFile = new File(effectDir, includeRef.replace('\\', '/'));
                 File parent = includeFile.getParentFile();
                 if (parent != null && !parent.exists()) //noinspection ResultOfMethodCallIgnored
                     parent.mkdirs();
@@ -123,16 +125,16 @@ public class ReshadeDownloader {
             }
 
             for (String textureRef : findMatches(text, TEXTURE_SOURCE_PATTERN)) {
+                File textureFile = new File(texturesDir, textureRef.replace('\\', '/'));
+                if (textureFile.exists()) continue; // already fetched for an earlier effect
+
                 Resolved found = resolveFile(entry.pkg, ownTree, textureRef);
                 if (found == null) continue; // best-effort; missing texture shouldn't block the effect
 
-                File textureFile = new File(new File(effectDir, "Textures"), textureRef.replace('\\', '/'));
                 File parent = textureFile.getParentFile();
                 if (parent != null && !parent.exists()) //noinspection ResultOfMethodCallIgnored
                     parent.mkdirs();
-                if (!textureFile.exists()) {
-                    downloadRawFile(found.repo, found.path, textureFile);
-                }
+                downloadRawFile(found.repo, found.path, textureFile);
             }
         }
 
@@ -151,7 +153,7 @@ public class ReshadeDownloader {
         String ownPath = ownTree.get(basename);
         if (ownPath != null) return new Resolved(ownPackage, ownPath);
 
-        Map<String, String> baseTree = fetchBaseRepoTree();
+        Map<String, String> baseTree = fetchBaseRepoTreeCached();
         String basePath = baseTree.get(basename);
         if (basePath != null) {
             ReshadeCatalog.Package baseRepo = new ReshadeCatalog.Package(
@@ -162,20 +164,29 @@ public class ReshadeDownloader {
         return null;
     }
 
-    private static Map<String, String> fetchBaseRepoTree() {
+    private static Map<String, String> fetchBaseRepoTreeCached() {
         if (baseRepoTreeCache != null) return baseRepoTreeCache;
         ReshadeCatalog.Package baseRepo = new ReshadeCatalog.Package(
                 "ReShade base shaders", "", BASE_REPO_OWNER, BASE_REPO_NAME, BASE_REPO_BRANCH);
-        baseRepoTreeCache = fetchRepoTree(baseRepo);
+        baseRepoTreeCache = fetchRepoTreeCached(baseRepo);
         return baseRepoTreeCache;
+    }
+
+    private static String cacheKey(ReshadeCatalog.Package pkg) {
+        return pkg.repoOwner + "/" + pkg.repoName + "@" + pkg.repoBranch;
     }
 
     /**
      * Fetches the full recursive file tree of a package's repo (one API
-     * call) and returns a map of lowercased-basename -> repo-relative path.
-     * If multiple files share a basename, the first one found wins.
+     * call, cached per repo+branch for the life of the process) and returns
+     * a map of lowercased-basename -> repo-relative path. If multiple files
+     * share a basename, the first one found wins.
      */
-    private static Map<String, String> fetchRepoTree(ReshadeCatalog.Package pkg) {
+    private static Map<String, String> fetchRepoTreeCached(ReshadeCatalog.Package pkg) {
+        String key = cacheKey(pkg);
+        Map<String, String> cached = packageTreeCache.get(key);
+        if (cached != null) return cached;
+
         Map<String, String> map = new HashMap<>();
         String url = "https://api.github.com/repos/" + pkg.repoOwner + "/" + pkg.repoName
                 + "/git/trees/" + pkg.repoBranch + "?recursive=1";
@@ -185,19 +196,21 @@ public class ReshadeDownloader {
         try {
             JSONObject root = new JSONObject(json);
             JSONArray tree = root.optJSONArray("tree");
-            if (tree == null) return map;
-
-            for (int i = 0; i < tree.length(); i++) {
-                JSONObject item = tree.getJSONObject(i);
-                if (!"blob".equals(item.optString("type"))) continue;
-                String path = item.optString("path", "");
-                if (path.isEmpty()) continue;
-                map.putIfAbsent(basenameOf(path).toLowerCase(), path);
+            if (tree != null) {
+                for (int i = 0; i < tree.length(); i++) {
+                    JSONObject item = tree.getJSONObject(i);
+                    if (!"blob".equals(item.optString("type"))) continue;
+                    String path = item.optString("path", "");
+                    if (path.isEmpty()) continue;
+                    map.putIfAbsent(basenameOf(path).toLowerCase(), path);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
             return new HashMap<>();
         }
+
+        packageTreeCache.put(key, map);
         return map;
     }
 

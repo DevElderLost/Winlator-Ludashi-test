@@ -22,6 +22,8 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.input.InputManager;
+import android.view.InputDevice;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -58,6 +60,8 @@ import androidx.preference.PreferenceManager;
 import com.winlator.cmod.container.Container;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.container.Shortcut;
+import com.winlator.cmod.reshade.ReshadeConfigWriter;
+import com.winlator.cmod.reshade.ReshadeManager;
 import com.winlator.cmod.contentdialog.ContentDialog;
 import com.winlator.cmod.contentdialog.DXVKConfigDialog;
 import com.winlator.cmod.contentdialog.DebugDialog;
@@ -200,18 +204,22 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private int activeRendererWindowId = -1;
     private String lastRendererName = null;
-    private boolean cursorLock;
+//    private boolean cursorLock;
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
     private boolean navigationFocused = false;
     private MidiHandler midiHandler;
     private String midiSoundFont = "";
     private String lc_all = "";
-    private String vkbasaltConfig = "";
+    private String vkbasaltConfigFilePath = "";
     PreloaderDialog preloaderDialog = null;
     private Runnable configChangedCallback = null;
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
+    private boolean isRefactorSizeEnabled = false;
+    private static final long REFACTOR_SIZE_EXE_BYTES = 16384L;
+    private boolean isVolumeUpPressed = false;
+    private boolean isVolumeDownPressed = false;
     private boolean isMouseDisabled = false;
     private boolean simulateTouchScreen = false;
 
@@ -233,6 +241,56 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
+
+    private boolean hasExternalMouse() {
+        InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
+        for (int deviceId : inputManager.getInputDeviceIds()) {
+            InputDevice device = inputManager.getInputDevice(deviceId);
+            if (device != null && !device.isVirtual() && (device.getSources() & InputDevice.SOURCE_MOUSE) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void tryCapturePointer() {
+        if (touchpadView != null && hasExternalMouse() && drawerLayout != null && !drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            touchpadView.postDelayed(() -> {
+                if (touchpadView != null) {
+                    touchpadView.requestFocus();
+                    touchpadView.requestPointerCapture();
+                    touchpadView.setOnCapturedPointerListener((view, event) -> {
+                        handleCapturedPointer(event);
+                        return true;
+                    });
+                }
+            }, 100);
+        }
+    }
+
+    private void applyRefactorSize(boolean enabled) {
+        if (winHandler == null || container == null) return;
+        if (enabled) stageRefactorSizeHelper();
+        winHandler.exec("\"C:\\winlator\\refactorsize.exe\" " + (enabled ? "on" : "off"));
+    }
+
+    private void stageRefactorSizeHelper() {
+        try {
+            File dir = new File(container.getRootDir(), ".wine/drive_c/winlator");
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            File dst = new File(dir, "refactorsize.exe");
+            if (dst.exists() && dst.length() == REFACTOR_SIZE_EXE_BYTES) return;
+            try (InputStream in = getAssets().open("refactorsize/refactorsize.exe");
+                java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                Log.i("XServerDisplayActivity", "Refactor Size: staged refactorsize.exe (" + dst.length() + " B) at " + dst.getPath());
+            } catch (Exception e) {
+                Log.e("XServerDisplayActivity", "Refactor Size: helper staging failed", e);
+        }
+    }
 
     private void createNotifcationChannel() {
         String name = "Winlator";
@@ -316,7 +374,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             refreshRate = display.getRefreshRate();
         }
 
-        cursorLock = preferences.getBoolean("cursor_lock", true);
+//        cursorLock = preferences.getBoolean("cursor_lock", true);
 
         isDarkMode = preferences.getBoolean("dark_mode", false);
 
@@ -361,11 +419,16 @@ public class XServerDisplayActivity extends AppCompatActivity {
             @Override
             public void onDrawerOpened(View drawerView) {
                 openSidebarPanel(activeSidebarItemId, activeSidebarPanelId);
+                if (touchpadView != null) {
+                    touchpadView.releasePointerCapture();
+                    touchpadView.setOnCapturedPointerListener(null);
+                }
             }
 
             @Override
             public void onDrawerClosed(View drawerView) {
                 hideAllSidebarPanels();
+                tryCapturePointer();
             }
         });
 
@@ -516,12 +579,19 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
             winHandler.setXInputDisabled(xinputDisabledFromShortcut);
             String sharpnessEffect = shortcut.getExtra("sharpnessEffect", "None");
-            if (!sharpnessEffect.equals("None")) {
-                double sharpnessLevel = Double.parseDouble(shortcut.getExtra("sharpnessLevel", "100"));
-                double sharpnessDenoise = Double.parseDouble(shortcut.getExtra("sharpnessDenoise", "100"));
-                vkbasaltConfig = "effects=" + sharpnessEffect.toLowerCase() + ";" + "casSharpness="
-                        + sharpnessLevel / 100 + ";" + "dlsSharpness=" + sharpnessLevel / 100 + ";" + "dlsDenoise="
-                        + sharpnessDenoise / 100 + ";" + "enableOnLaunch=True";
+            double sharpnessLevel = Double.parseDouble(shortcut.getExtra("sharpnessLevel", "100"));
+            double sharpnessDenoise = Double.parseDouble(shortcut.getExtra("sharpnessDenoise", "100"));
+            String reshadeFxEffectsExtra = shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECTS, "");
+            java.util.List<ReshadeManager.ReshadeEffect> reshadeFxEffects = new java.util.ArrayList<>();
+            for (String name : ReshadeConfigWriter.parseEnabledNames(reshadeFxEffectsExtra)) {
+                ReshadeManager.ReshadeEffect effect = ReshadeManager.findByName(this, name);
+                if (effect != null) reshadeFxEffects.add(effect);
+            }
+            ReshadeConfigWriter.BuiltConfig reshadeBuiltConfig = ReshadeConfigWriter.buildConfig(
+                    this, sharpnessEffect, sharpnessLevel, sharpnessDenoise, reshadeFxEffects);
+            if (!reshadeBuiltConfig.isEmpty) {
+                File reshadeConfigFile = ReshadeConfigWriter.writeConfigFile(this, container, reshadeBuiltConfig);
+                vkbasaltConfigFilePath = reshadeConfigFile != null ? reshadeConfigFile.getAbsolutePath() : "";
             }
             Log.d("XServerDisplayActivity", "XInput Disabled from Shortcut: " + xinputDisabledFromShortcut);
 
@@ -724,6 +794,20 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private void handleCapturedPointer(MotionEvent event) {
+        
+        if (isMouseDisabled) {
+            return;
+        }
+
+        if (xServerView != null) {
+            xServerView.setCursorVisible(true);
+        }
+
+        if (timeoutHandler != null && hideControlsRunnable != null) {
+            timeoutHandler.removeCallbacks(hideControlsRunnable);
+            timeoutHandler.postDelayed(hideControlsRunnable, 5000);
+        }
+
         switch (event.getAction()) {
             case MotionEvent.ACTION_BUTTON_PRESS: {
                 int button = event.getActionButton();
@@ -815,6 +899,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
     public void onPause() {
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
         super.onPause();
+        isVolumeUpPressed = false;
+        isVolumeDownPressed = false;
 
         if (!isInPictureInPictureMode()) {
             if (environment != null) {
@@ -1000,10 +1086,14 @@ public class XServerDisplayActivity extends AppCompatActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
 
-        if (hasFocus && cursorLock)
-            touchpadView.requestPointerCapture();
-        else if (!hasFocus)
-            touchpadView.releasePointerCapture();
+        if (hasFocus) {
+            tryCapturePointer();
+        } else {
+            if (touchpadView != null) {
+                touchpadView.releasePointerCapture();
+                touchpadView.setOnCapturedPointerListener(null);
+            }
+        }
     }
 
     private void setupWineSystemFiles() {
@@ -1529,6 +1619,15 @@ public class XServerDisplayActivity extends AppCompatActivity {
                         flContainer.addView(magnifierView);
                     }
                 }
+                drawerLayout.closeDrawers();
+            });
+        }
+
+        View btItemRefactorSize = findViewById(R.id.BTItemRefactorSize);
+        if (btItemRefactorSize != null) {
+            btItemRefactorSize.setOnClickListener(v -> {
+                isRefactorSizeEnabled = !isRefactorSizeEnabled;
+                applyRefactorSize(isRefactorSizeEnabled);
                 drawerLayout.closeDrawers();
             });
         }
@@ -2541,9 +2640,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
             envVars.put("WRAPPER_SURFACE_FORMAT", "rgba8");
         }
 
-        if (!vkbasaltConfig.isEmpty()) {
+        if (!vkbasaltConfigFilePath.isEmpty()) {
             envVars.put("ENABLE_VKBASALT", "1");
-            envVars.put("VKBASALT_CONFIG", vkbasaltConfig);
+            envVars.put("VKBASALT_CONFIG_FILE", vkbasaltConfigFilePath);
         }
     }
 

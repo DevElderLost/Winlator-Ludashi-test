@@ -1,5 +1,6 @@
 package com.winlator.cmod.xserver;
 
+import android.graphics.Rect;
 import android.hardware.HardwareBuffer;
 import android.util.SparseArray;
 
@@ -45,6 +46,7 @@ public class XServer {
     private WinHandler winHandler;
     private final EnumMap<Lockable, ReentrantLock> locks = new EnumMap<>(Lockable.class);
     private boolean relativeMouseMovement = false;
+    private boolean pointerCaptureActive = false;
     private boolean simulateTouchScreen = false;
     private boolean disableMouse = false;
     private boolean isGrabbed = false;
@@ -98,8 +100,17 @@ public class XServer {
         return relativeMouseMovement;
     }
 
+    public boolean isPointerCaptureActive() {
+        return pointerCaptureActive;
+    }
+
+    public void setPointerCaptureActive(boolean pointerCaptureActive) {
+        this.pointerCaptureActive = pointerCaptureActive;
+        cursorLocker.setEnabled(!relativeMouseMovement && !pointerCaptureActive);
+    }
+
     public void setRelativeMouseMovement(boolean relativeMouseMovement) {
-        cursorLocker.setEnabled(!relativeMouseMovement);
+        cursorLocker.setEnabled(!relativeMouseMovement && !pointerCaptureActive);
         this.relativeMouseMovement = relativeMouseMovement;
     }
 
@@ -200,7 +211,19 @@ public class XServer {
 
     public void injectPointerMoveDelta(int dx, int dy) {
         try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
-            pointer.setPosition(pointer.getX() + dx, pointer.getY() + dy);
+            Rect confinement = grabManager.getConfinementBounds();
+            if (confinement != null) {
+                int minX = Math.max(0, confinement.left);
+                int minY = Math.max(0, confinement.top);
+                int maxX = Math.min(screenInfo.width, confinement.right) - 1;
+                int maxY = Math.min(screenInfo.height, confinement.bottom) - 1;
+                int nextX = Math.max(minX, Math.min(maxX, pointer.getX() + dx));
+                int nextY = Math.max(minY, Math.min(maxY, pointer.getY() + dy));
+                pointer.setPosition(nextX, nextY);
+            }
+            else {
+                pointer.setPosition(pointer.getX() + dx, pointer.getY() + dy);
+            }
         }
     }
 

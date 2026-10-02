@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -131,6 +133,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.outlined.Delete
+import com.winlator.cmod.reshade.ReshadeCatalog
+import com.winlator.cmod.reshade.ReshadeConfigWriter
+import com.winlator.cmod.reshade.ReshadeDownloader
+import com.winlator.cmod.reshade.ReshadeManager
 
 private val shortcutComponentRowsV2 = listOf(
     "direct3d" to "Direct3D",
@@ -246,6 +253,9 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
     var sharpnessEffect by mutableStateOf(shortcut.getExtra("sharpnessEffect", "None"))
     var sharpnessLevel by mutableStateOf(shortcut.getExtra("sharpnessLevel", "100"))
     var sharpnessDenoise by mutableStateOf(shortcut.getExtra("sharpnessDenoise", "100"))
+    var reshadeFxEffects by mutableStateOf(
+        ReshadeConfigWriter.parseEnabledNames(shortcut.getExtra(ReshadeConfigWriter.EXTRA_FX_EFFECTS, ""))
+    )
     var lcAll by mutableStateOf(shortcut.getExtra("lc_all", container.getLC_ALL()))
     var midiSoundFont by mutableStateOf(shortcut.getExtra("midiSoundFont", container.getMIDISoundFont()))
     var gameSavesEnabled by mutableStateOf(GameSaveManager.isEnabled(shortcut))
@@ -1211,6 +1221,8 @@ private fun ShortcutCategoryV2(
                 SharpnessSliderV2("Sharpness Denoise", s.sharpnessDenoise) {
                     s.sharpnessDenoise = it; s.extra("sharpnessDenoise", it)
                 }
+                SettingsDivider()
+                ReshadeFxEffectPicker(context, s)
             }
             ExecArgumentsEditorV2(s.execArgs) {
                 s.execArgs = it; s.extra("execArgs", it.ifBlank { null })
@@ -1226,6 +1238,131 @@ private fun ShortcutCategoryV2(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ReshadeFxEffectPicker(context: Context, s: ShortcutEditorStateV2) {
+    val scope = rememberCoroutineScope()
+    var options by remember(s.shortcut.file.path) {
+        mutableStateOf(ReshadeManager.scanEffects(context).map { it.name })
+    }
+    var catalogEntries by remember { mutableStateOf<List<ReshadeCatalog.CatalogEntry>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    fun persist(names: Set<String>) {
+        s.reshadeFxEffects = names
+        s.extra(ReshadeConfigWriter.EXTRA_FX_EFFECTS, ReshadeConfigWriter.joinEnabledNames(names))
+    }
+
+    fun refreshOptions() {
+        options = ReshadeManager.scanEffects(context).map { it.name }
+    }
+
+    Text(
+        "Custom Effects (.fx)",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+    )
+
+    if (options.isEmpty()) {
+        Text(
+            "No downloaded effects yet.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
+        )
+    } else {
+        options.forEach { name ->
+            val enabled = s.reshadeFxEffects.contains(name)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { checked ->
+                        val updated = s.reshadeFxEffects.toMutableSet()
+                        if (checked) updated.add(name) else updated.remove(name)
+                        persist(updated)
+                    }
+                )
+                IconButton(onClick = {
+                    val updated = s.reshadeFxEffects.toMutableSet()
+                    updated.remove(name)
+                    persist(updated)
+                    ReshadeManager.deleteEffect(context, name)
+                    refreshOptions()
+                }) {
+                    Icon(Icons.Outlined.Delete, "Delete downloaded effect", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+
+    Text(
+        "Drop .fx effect folders into Android/data/${context.packageName}/files/ReShade/, or browse the online catalog below.",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+    )
+    Button(
+        onClick = {
+            busy = true
+            scope.launch {
+                val catalog = withContext(Dispatchers.IO) { ReshadeCatalog.fetchCatalog() }
+                busy = false
+                if (catalog.isEmpty()) {
+                    Toast.makeText(context, "Could not reach the effect catalog.", Toast.LENGTH_SHORT).show()
+                } else {
+                    catalogEntries = catalog
+                }
+            }
+        },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
+    ) { Text(if (busy) "Loading..." else "Browse Online Catalog") }
+
+    val entries = catalogEntries
+    if (entries != null) {
+        AlertDialog(
+            onDismissRequest = { catalogEntries = null },
+            title = { Text("Select ReShade Effect") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(entries) { entry ->
+                        Text(
+                            entry.displayName,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    catalogEntries = null
+                                    busy = true
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            ReshadeDownloader.downloadEffect(context, entry)
+                                        }
+                                        busy = false
+                                        if (result.success) {
+                                            refreshOptions()
+                                            val updated = s.reshadeFxEffects.toMutableSet()
+                                            updated.add(result.effectName)
+                                            persist(updated)
+                                        } else {
+                                            Toast.makeText(context, "Download failed.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { catalogEntries = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 

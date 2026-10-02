@@ -472,6 +472,24 @@
                         android:textSize="15sp" />
                 </LinearLayout>
                 <LinearLayout
+                    android:id="@+id/BTItemRefactorSize"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/sidebar_card"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Refactor Size"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp" />
+                </LinearLayout>
+                <LinearLayout
                     android:id="@+id/BTItemSoftStretch"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"

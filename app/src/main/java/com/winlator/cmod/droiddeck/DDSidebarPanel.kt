@@ -3,6 +3,9 @@ package com.winlator.cmod.droiddeck
 // DD-SIDEBAR-FIX: versi aman (tema ringan, lazy attach, fallback, try/catch)
 
 import android.app.Activity
+import android.content.Context
+import android.view.MotionEvent
+import android.widget.ScrollView
 import android.graphics.Color as AColor
 import android.util.Log
 import android.view.Gravity
@@ -46,8 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
@@ -131,8 +137,14 @@ object DDSidebarPanel {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                 setContent { SidebarTheme(activity) { DDSidebarContent(activity, revision.intValue) } }
             }
-            container.addView(
+            // DD-SIDEBAR-SCROLL: bungkus agar ScrollView sidebar tidak merebut drag vertikal
+            val guard = DDTouchGuardLayout(activity)
+            guard.addView(
                 compose,
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            )
+            container.addView(
+                guard,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             )
         } catch (t: Throwable) {
@@ -179,6 +191,40 @@ private fun SidebarTheme(activity: Activity, content: @Composable () -> Unit) {
     }
 }
 
+// DD-SIDEBAR-SCROLL: tinggi viewport sidebar. ScrollView induk memberi tinggi tak-terbatas,
+// jadi pakai tinggi ScrollView itu dikurangi padding ancestor (bukan angka tetap).
+@Composable
+private fun sidebarViewportHeight(): Dp {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    var pad = 0
+    var viewport = 0
+    var node: android.view.ViewParent? = view.parent
+    while (node != null) {
+        if (node is ViewGroup) pad += node.paddingTop + node.paddingBottom
+        if (node is ScrollView) {
+            viewport = node.height
+            break
+        }
+        node = node.parent
+    }
+    val total = if (viewport > 0) viewport else view.resources.displayMetrics.heightPixels
+    val px = total - pad
+    return if (px > 0) with(density) { px.toDp() } else PROBE_HEIGHT
+}
+
+/** DD-SIDEBAR-SCROLL: cegah ScrollView induk merebut gestur geser dari panel Compose. */
+private class DDTouchGuardLayout(context: Context) : FrameLayout(context) {
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        val handled = super.dispatchTouchEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        return handled
+    }
+}
+
 @Composable
 private fun DDSidebarContent(activity: Activity, rev: Int) {
     val s = remember(rev) { runCatching { DDPrefs.read(activity) }.getOrNull() }
@@ -207,7 +253,8 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
         // DD-SIDEBAR-MEASURE: horizontalScroll (baris Tint) dan verticalScroll melempar
         // IllegalStateException jika constraint tak-terbatas. Jaga LEBAR dan TINGGI.
         val widthMod = if (constraints.hasBoundedWidth) Modifier.fillMaxWidth() else Modifier.width(PROBE_WIDTH)
-        val heightMod = if (constraints.hasBoundedHeight) Modifier.fillMaxHeight() else Modifier.height(PROBE_HEIGHT)
+        val viewportHeight = sidebarViewportHeight()  // DD-SIDEBAR-SCROLL
+        val heightMod = if (constraints.hasBoundedHeight) Modifier.fillMaxHeight() else Modifier.height(viewportHeight)
         Column(
             modifier = widthMod.then(heightMod).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)

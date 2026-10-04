@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +61,11 @@ import com.winlator.cmod.ui.theme.winlatorColorScheme
 
 private const val TAG = "DDSidebarPanel"
 private const val ATTACHED_TAG = "dd_sidebar_panel_attached"
+
+// DD-SIDEBAR-MEASURE: ukuran cadangan bila View induk memberi constraint tak-terbatas
+// (pass pengukuran LinearLayout berbobot / ScrollView). Hanya dipakai pada pass itu.
+private val PROBE_WIDTH = 320.dp
+private val PROBE_HEIGHT = 480.dp
 
 /** Jalankan aksi tanpa pernah melempar exception ke UI thread. */
 private inline fun safe(block: () -> Unit) {
@@ -197,14 +204,12 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
     val sizeLabels = DDPrefs.SIZES.map { "$it%" }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        // verticalScroll melempar exception jika tinggi tak-terbatas.
-        val columnModifier = if (constraints.hasBoundedHeight) {
-            Modifier.fillMaxSize()
-        } else {
-            Modifier.fillMaxWidth().height(480.dp)
-        }
+        // DD-SIDEBAR-MEASURE: horizontalScroll (baris Tint) dan verticalScroll melempar
+        // IllegalStateException jika constraint tak-terbatas. Jaga LEBAR dan TINGGI.
+        val widthMod = if (constraints.hasBoundedWidth) Modifier.fillMaxWidth() else Modifier.width(PROBE_WIDTH)
+        val heightMod = if (constraints.hasBoundedHeight) Modifier.fillMaxHeight() else Modifier.height(PROBE_HEIGHT)
         Column(
-            modifier = columnModifier.verticalScroll(rememberScrollState()),
+            modifier = widthMod.then(heightMod).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(

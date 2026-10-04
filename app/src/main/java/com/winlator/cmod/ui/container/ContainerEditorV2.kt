@@ -222,6 +222,7 @@ private class ContainerEditorStateV2(
     var fexPreset by mutableStateOf(editing?.fexCorePreset ?: FEXCorePreset.INTERMEDIATE)
     var boxPreset by mutableStateOf(editing?.box64Preset ?: Box64Preset.COMPATIBILITY)
 
+    var ddUi by mutableStateOf(editing?.getExtra("droiddeckUi", "") ?: "")  // DD-UI-SELECT
     var exclusive by mutableStateOf(editing?.isExclusiveXInput ?: true)
     var xinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0 } ?: true)
     var dinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()) != 0 } ?: false)
@@ -315,7 +316,7 @@ private class ContainerEditorStateV2(
         renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXBackPressure,
         displayXPrecisePresentation, graphicsDriver, graphicsConfig,
-        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput,
+        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi,
         syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
@@ -488,6 +489,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.putExtra("mouseWarpOverride", state.mouseWarp)
         container.putExtra("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
         container.putExtra("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
+        container.putExtra("droiddeckUi", state.ddUi.ifBlank { null })  // DD-UI-SELECT
         container.saveData()
         applyMouseWarp(container)
     }
@@ -556,7 +558,8 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("oboeAdaptive", if (state.oboeAdaptive) "1" else "0")
                     .put("oboeExclusive", if (state.oboeExclusive) "1" else "0")
                     .put("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
-                    .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0"))
+                    .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
+                    .put("droiddeckUi", state.ddUi))  // DD-UI-SELECT
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
@@ -1047,6 +1050,9 @@ private fun ContainerCategoryV2(
                     s.dinput = it; if (s.exclusive && it && s.xinput) s.xinput = false
                 }
             }
+            SettingsCard {  // DD-UI-SELECT
+                SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_CONTAINER) { s.ddUi = it }
+            }
         }
 
         "Storage" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1186,3 +1192,11 @@ private fun containerDesktopThemeValueV2(theme: String, background: String, wall
         "$themeId,$backgroundId,#0277bd"
 }
 
+
+// ---- DD-UI-SELECT ----
+private val DD_UI_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
+    "" to "Default (DroidDeck toggle in sidebar)",
+    "0" to "Winlator",
+    "1" to "DroidDeck"
+)
+// ---- end DD-UI-SELECT ----

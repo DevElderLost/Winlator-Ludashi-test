@@ -1387,7 +1387,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
         inputControlsView.setVisibility(View.GONE);
         rootView.addView(inputControlsView);
         // DroidDeck-port: mode kontrol tambahan (default mati)
-        com.winlator.cmod.droiddeck.DDController.install(this, rootView, xServer, inputControlsView);
+        com.winlator.cmod.droiddeck.DDController.install(this, rootView, xServer, inputControlsView,
+                shortcut != null ? shortcut.getExtra("droiddeckUi", "") : "",
+                container != null ? container.getExtra("droiddeckUi", "") : ""); // DD-UI-SELECT
 
         boolean isTimeoutEnabled = preferences.getBoolean("touchscreen_timeout_enabled", false);
         if (isTimeoutEnabled) {

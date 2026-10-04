@@ -36,6 +36,38 @@ public final class DDController {
     private static int savedWinlatorVisibility = View.GONE;
     private static boolean winlatorHidden = false;
 
+    // ---- DD-UI-SELECT: pilihan UI kontrol per game / per container ----
+    private static Boolean uiOverride = null;
+    private static Boolean pendingUiOverride = null;
+
+    /** "1" = DroidDeck, "0" = Winlator, lainnya = tidak diatur. Setting game lebih kuat dari container. */
+    private static Boolean resolveUiOverride(String shortcutUi, String containerUi) {
+        if ("1".equals(shortcutUi)) return Boolean.TRUE;
+        if ("0".equals(shortcutUi)) return Boolean.FALSE;
+        if ("1".equals(containerUi)) return Boolean.TRUE;
+        if ("0".equals(containerUi)) return Boolean.FALSE;
+        return null;
+    }
+
+    /** Status efektif: pilihan game/container jika ada, selain itu toggle global DDPrefs. */
+    public static boolean isControlsEnabled() {
+        if (uiOverride != null) return uiOverride.booleanValue();
+        return activity != null && DDPrefs.isEnabled(activity);
+    }
+
+    private static void storeEnabled(boolean on) {
+        if (activity == null) return;
+        if (uiOverride != null) uiOverride = Boolean.valueOf(on);
+        else DDPrefs.setEnabled(activity, on);
+    }
+
+    public static void install(Activity act, FrameLayout rootView, XServer server, View winlatorControlsView,
+                               String shortcutUi, String containerUi) {
+        pendingUiOverride = resolveUiOverride(shortcutUi, containerUi);
+        install(act, rootView, server, winlatorControlsView);
+    }
+    // ---- end DD-UI-SELECT ----
+
     private DDController() {}
 
     public static void install(Activity act, FrameLayout rootView, XServer server, View winlatorControlsView) {
@@ -47,6 +79,8 @@ public final class DDController {
         keyboard = null;
         editor = null;
         winlatorHidden = false;
+        uiOverride = pendingUiOverride;  // DD-UI-SELECT
+        pendingUiOverride = null;
         installRailItem();
         applyMode();
     }
@@ -55,7 +89,7 @@ public final class DDController {
 
     private static void applyMode() {
         if (activity == null || root == null) return;
-        boolean on = DDPrefs.isEnabled(activity);
+        boolean on = isControlsEnabled();  // DD-UI-SELECT
         if (on) {
             if (controls == null) {
                 controls = new DDOnScreenControls(activity, padSink, false);
@@ -206,7 +240,7 @@ public final class DDController {
     /** Menu AlertDialog lama, hanya fallback kalau panel Compose gagal. */
     private static void openMenuLegacy() {
         if (activity == null) return;
-        final boolean on = DDPrefs.isEnabled(activity);
+        final boolean on = isControlsEnabled();  // DD-UI-SELECT
         String[] items = {
             "DroidDeck controls: " + (on ? "ON" : "OFF"),
             "PC keyboard: " + (keyboard != null ? "shown" : "hidden"),
@@ -219,7 +253,7 @@ public final class DDController {
         new AlertDialog.Builder(activity).setTitle("DroidDeck")
             .setItems(items, (dialog, which) -> {
                 switch (which) {
-                    case 0: DDPrefs.setEnabled(activity, !on); applyMode(); break;
+                    case 0: storeEnabled(!on); applyMode(); break;
                     case 1: toggleKeyboard(); break;
                     case 2: appearanceMenu(); break;
                     case 3: behaviourMenu(); break;
@@ -240,7 +274,7 @@ public final class DDController {
 
     public static void setControlsEnabled(boolean on) {
         if (activity == null) return;
-        DDPrefs.setEnabled(activity, on);
+        storeEnabled(on);
         applyMode();
     }
 

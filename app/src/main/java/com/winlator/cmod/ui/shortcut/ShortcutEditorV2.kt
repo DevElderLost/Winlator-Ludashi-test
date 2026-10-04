@@ -233,6 +233,7 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
     var boxPreset by mutableStateOf(shortcut.getExtra("box64Preset", container.getBox64Preset()))
 
     var controlsProfile by mutableStateOf(shortcut.getExtra("controlsProfile", "0"))
+    var ddUi by mutableStateOf(shortcut.getExtra("droiddeckUi", ""))  // DD-UI-SELECT
     var fullscreen by mutableStateOf(shortcut.getExtra("fullscreenStretched", "0") == "1")
     private var inputType by mutableIntStateOf(shortcut.getExtra("inputType", container.getInputType().toString()).toIntOrNull() ?: container.getInputType())
     var exclusive by mutableStateOf(shortcut.getExtra("exclusiveXInput").let { if (it.isBlank()) container.isExclusiveXInput() else it == "1" })
@@ -1169,6 +1170,8 @@ private fun ShortcutCategoryV2(
             SettingsCard {
                 SettingMappedChoice("Controls Profile", s.controlsProfile, profiles) { s.controlsProfile = it; s.extra("controlsProfile", it.takeUnless { id -> id == "0" }) }
                 SettingsDivider()
+                SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_SHORTCUT) { s.ddUi = it; s.extra("droiddeckUi", it.ifBlank { null }) }  // DD-UI-SELECT
+                SettingsDivider()
                 SettingToggle("Exclusive Input", s.exclusive) {
                     s.exclusive = it
                     if (!it) { s.xinput = true; s.dinput = true } else if (s.xinput && s.dinput) s.dinput = false
@@ -1505,3 +1508,11 @@ private fun renameShortcutV2(shortcut: Shortcut, requested: String) {
     }
 }
 
+
+// ---- DD-UI-SELECT ----
+private val DD_UI_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
+    "" to "Use container setting",
+    "0" to "Winlator",
+    "1" to "DroidDeck"
+)
+// ---- end DD-UI-SELECT ----

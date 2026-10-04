@@ -92,7 +92,7 @@ object DDSettingsComposeDialog {
 
 @Composable
 private fun DDSettingsPanel(activity: Activity, onClose: () -> Unit, onEditLayout: () -> Unit) {
-    var enabled by remember { mutableStateOf(DDPrefs.isEnabled(activity)) }
+    var enabled by remember { mutableStateOf(DDController.isControlsEnabled()) }
     var keyboardShown by remember { mutableStateOf(DDController.isKeyboardShown()) }
     var s by remember { mutableStateOf(DDPrefs.read(activity)) }
     var showMapping by remember { mutableStateOf(false) }
@@ -100,7 +100,7 @@ private fun DDSettingsPanel(activity: Activity, onClose: () -> Unit, onEditLayou
     // Baca ulang semua nilai dari DDPrefs lalu terapkan ke kontrol yang sedang tampil.
     fun refresh() {
         s = DDPrefs.read(activity)
-        enabled = DDPrefs.isEnabled(activity)
+        enabled = DDController.isControlsEnabled()
         DDController.refreshControls()
     }
 

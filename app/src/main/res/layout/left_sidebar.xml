@@ -78,6 +78,24 @@
                 app:tint="@color/ingame_sidebar_icon_tint" />
         </com.winlator.cmod.ui.SidebarNavItemView>
 
+        <!-- DD-SIDEBAR-PANEL -->
+        <com.winlator.cmod.ui.SidebarNavItemView
+            android:id="@+id/BTItemDD"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@drawable/sidebar_nav_icon_bg">
+            <ImageView
+                android:layout_width="25dp"
+                android:layout_height="25dp"
+                android:duplicateParentState="true"
+                android:src="@drawable/ic_sidebar_dd"
+                app:tint="@color/ingame_sidebar_icon_tint" />
+        </com.winlator.cmod.ui.SidebarNavItemView>
+
         <com.winlator.cmod.ui.SidebarNavItemView
             android:id="@+id/BTItemFPS"
             android:layout_width="48dp"

@@ -1039,6 +1039,13 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- DD-SIDEBAR-PANEL: panel DroidDeck (isi Compose ditempel oleh DDSidebarPanel) -->
+        <FrameLayout
+            android:id="@+id/LLSubDD"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
         <LinearLayout
             android:id="@+id/LLSubMouse"
             android:layout_width="0dp"

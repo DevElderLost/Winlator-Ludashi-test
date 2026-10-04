@@ -1510,6 +1510,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         toggleOnClick(R.id.BTItemInput, R.id.LLSubInput);
+        toggleOnClick(R.id.BTItemDD, R.id.LLSubDD);  // DD-SIDEBAR-PANEL
         toggleOnClick(R.id.BTItemMouse, R.id.LLSubMouse);
         toggleOnClick(R.id.BTItemFPS, R.id.LLSubFPS);
         toggleOnClick(R.id.BTItemGraphics, R.id.LLSubGraphics);
@@ -1687,7 +1688,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
         R.id.LLSubFPS,
         R.id.LLSubGraphics,
         R.id.LLSubScreen,
-        R.id.LLSubTaskManager
+        R.id.LLSubTaskManager,
+        R.id.LLSubDD  // DD-SIDEBAR-PANEL
     };
 
     private final int[] sidebarItemIds = {
@@ -1696,7 +1698,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
         R.id.BTItemFPS,
         R.id.BTItemGraphics,
         R.id.BTItemScreen,
-        R.id.BTItemTaskManager
+        R.id.BTItemTaskManager,
+        R.id.BTItemDD  // DD-SIDEBAR-PANEL
     };
 
     private void hideAllSidebarPanels() {

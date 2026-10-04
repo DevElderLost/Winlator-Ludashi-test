@@ -183,6 +183,7 @@ public final class DDController {
 
     private static void installRailItem() {
         final Activity act = activity;
+        if (installSidebarPanel(act)) return;  // DD-SIDEBAR-PANEL
         View rail = act.findViewById(R.id.IngameSidebarRail);
         if (!(rail instanceof LinearLayout)) return;
         final LinearLayout railLayout = (LinearLayout) rail;
@@ -228,6 +229,7 @@ public final class DDController {
 
     public static void openMenu() {  // DD-COMPOSE-SETTINGS
         if (activity == null) return;
+        try { if (DDSidebarPanel.select(activity)) return; } catch (Throwable ignored) { }  // DD-SIDEBAR-PANEL
         try {
             DDSettingsComposeDialog.show(activity);
             return;
@@ -301,6 +303,73 @@ public final class DDController {
         reloadControls();
     }
     // ---- end DD-COMPOSE-SETTINGS ----
+
+    // ---- DD-SIDEBAR-PANEL: panel pengaturan inline di left sidebar ----
+    private static boolean installSidebarPanel(final Activity act) {
+        final View item = act.findViewById(R.id.BTItemDD);
+        final View panel = act.findViewById(R.id.LLSubDD);
+        if (item == null || !(panel instanceof FrameLayout)) return false;
+        try {
+            DDSidebarPanel.attach(act, (FrameLayout) panel);
+        } catch (Throwable t) {
+            android.util.Log.w("DDController", "Panel sidebar Compose gagal, pakai dialog", t);
+            item.setOnClickListener(v -> {
+                closeDrawerFromRail();
+                openMenu();
+            });
+        }
+        return true;
+    }
+
+    private static void closeDrawerFromRail() {
+        if (activity == null) return;
+        View rail = activity.findViewById(R.id.IngameSidebarRail);
+        if (rail != null) closeDrawer(rail);
+    }
+
+    public static boolean panelControlsEnabled() { return isControlsEnabled(); }
+
+    public static void panelSetControlsEnabled(boolean enabled) {
+        setControlsEnabled(enabled);
+    }
+
+    public static boolean panelKeyboardShown() { return keyboard != null; }
+
+    public static void panelSetKeyboard(boolean show) {
+        if (show) {
+            showKeyboard();
+            closeDrawerFromRail();
+        } else {
+            hideKeyboard();
+        }
+    }
+
+    public static void panelRefreshControls() { reloadControls(); }
+
+    public static void panelEditLayout() {
+        closeDrawerFromRail();
+        startEditor();
+    }
+
+    public static void panelResetLayout() {
+        if (activity == null) return;
+        if (controls != null) controls.resetLayout();
+        else if (root != null) DDPrefs.resetLayout(activity, root.getWidth(), root.getHeight());
+        reloadControls();
+    }
+
+    public static void panelResetMapping() {
+        if (activity == null) return;
+        DDPrefs.resetMapping(activity);
+        reloadControls();
+    }
+
+    public static void panelResetAll() {
+        if (activity == null) return;
+        DDPrefs.resetAll(activity);
+        reloadControls();
+    }
+    // ---- end DD-SIDEBAR-PANEL ----
 
     private static void reloadControls() { if (controls != null) controls.reload(); }
 

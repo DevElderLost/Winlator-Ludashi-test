@@ -371,6 +371,19 @@ public final class DDController {
     }
     // ---- end DD-SIDEBAR-PANEL ----
 
+    // ---- DD-SIDEBAR-FIX: jalur dialog untuk fallback panel sidebar ----
+    public static void panelOpenDialog() {
+        if (activity == null) return;
+        try {
+            DDSettingsComposeDialog.show(activity);
+            return;
+        } catch (Throwable t) {
+            android.util.Log.w("DDController", "Dialog Compose gagal, pakai menu lama", t);
+        }
+        openMenuLegacy();
+    }
+    // ---- end DD-SIDEBAR-FIX ----
+
     private static void reloadControls() { if (controls != null) controls.reload(); }
 
     private static void appearanceMenu() {

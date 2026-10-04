@@ -30,21 +30,6 @@
 #include <sys/sysmacros.h>
 #include <linux/input.h>
 
-// DroidDeck-deck: header untuk emulasi pad Steam Deck
-#include <string>
-#include <mutex>
-#include <atomic>
-#include <algorithm>
-#include <dirent.h>
-#include <unordered_map>
-#include <sys/socket.h>
-#include <sys/mman.h>
-#include <sys/statfs.h>
-#include <sys/syscall.h>
-#include <pthread.h>
-#include <time.h>
-#include <limits.h>
-#include <linux/hidraw.h>
 #define EXPORT __attribute__((visibility("default"))) extern "C"
 
 std::unordered_map<int, const char *> controller_map;
@@ -154,358 +139,6 @@ int get_event_number(const char *event) {
     return event_number;
 }
 
-// ---- DroidDeck-deck: pad sebagai Steam Deck controller (28DE:1205) lewat /dev/hidraw16 ----
-//
-// Port dari fakeinput_steam.cpp DroidDeck. Perbedaan: laporan dibangun dari file state kecil
-// (FAKE_DECK_STATE, ditulis DDDeck.java di bawah seqlock), bukan dari ring evdev; pohon sysfs
-// ada di FAKE_DECK_SYSFS_DIR dan dilayani lewat hook path, bukan bind proot.
-static constexpr const char *DECK_NODE = "/dev/hidraw16";
-static constexpr unsigned DECK_MAJOR = 240, DECK_MINOR = 16;
-static constexpr int DECK_REPORT_BYTES = 64;
-static constexpr int DECK_INTERVAL_US = 4000;
-static constexpr const char *DECK_NAME = "Valve Software Steam Deck Controller";
-static constexpr const char *DECK_SERIAL = "DROIDDECK0001";
-static constexpr uint32_t DECK_STATE_MAGIC = 0x31534B44;  // "DKS1"
-static constexpr size_t DECK_STATE_SIZE = 64;
-static constexpr long DECK_SYSFS_MAGIC = 0x62656572;
-
-// InputPlumber CONTROLLER_DESCRIPTOR: satu laporan input vendor 64 byte, satu feature report 64 byte.
-static const uint8_t kDeckDesc[] = {
-    0x06, 0xff, 0xff, 0x09, 0x01, 0xa1, 0x01, 0x09, 0x02, 0x09, 0x03, 0x15, 0x00,
-    0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x40, 0x81, 0x02, 0x09, 0x06, 0x09, 0x07,
-    0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x40, 0xb1, 0x02, 0xc0};
-
-struct DeckFd {
-    int peer;
-    const uint8_t *state;
-    uint8_t pending;
-};
-
-static std::mutex &deck_mutex() { static auto *m = new std::mutex(); return *m; }
-static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std::unordered_map<int, DeckFd *>(); return *m; }
-
-static const char *deck_env(const char *name) {
-    const char *v = getenv(name);
-    return v && *v ? v : nullptr;
-}
-
-static bool deck_enabled() {
-    static int on = -1;
-    if (on < 0) on = deck_env("FAKE_EVDEV_DECK") && atoi(getenv("FAKE_EVDEV_DECK")) ? 1 : 0;
-    return on == 1;
-}
-
-static inline void deck_put16(uint8_t *at, int v) { at[0] = v & 0xff; at[1] = (v >> 8) & 0xff; }
-static inline void deck_put32(uint8_t *at, uint32_t v) { for (int i = 0; i < 4; i++) at[i] = (uint8_t)(v >> (8 * i)); }
-static inline int deck_get16(const uint8_t *at) { return (int16_t)(at[0] | (at[1] << 8)); }
-static inline uint32_t deck_get32(const uint8_t *at) { return at[0] | (at[1] << 8) | (at[2] << 16) | ((uint32_t)at[3] << 24); }
-
-// Laporan state Deck (SDL controller_structs.h: ValveInReportHeader_t + SteamDeckStatePacket_t) dari
-// file state di bawah seqlock. Tata letak file state (little endian):
-//   0 u32 magic | 8 u64 seq (ganjil = sedang ditulis) | 16 u32 tombol rendah | 20 u32 tombol tinggi
-//   24 i16 pad[4] (kiri X,Y kanan X,Y) | 32 i16 stik[4] (LX,LY,RX,RY; Y ke atas) | 40 u16 trigger[2]
-//   44 u16 tekanan pad[2] | 48 i16 accel[3] | 54 i16 gyro[3]
-static void deck_build_report(const uint8_t *state, uint8_t *report, uint32_t packet) {
-    uint8_t s[DECK_STATE_SIZE];
-    bool have = false;
-    for (int attempt = 0; attempt < 4 && !have; attempt++) {
-        uint64_t seq = __atomic_load_n((const uint64_t *)(state + 8), __ATOMIC_ACQUIRE);
-        if (seq & 1) continue;
-        memcpy(s, state, DECK_STATE_SIZE);
-        __atomic_thread_fence(__ATOMIC_ACQUIRE);
-        if (seq == __atomic_load_n((const uint64_t *)(state + 8), __ATOMIC_RELAXED)) have = true;
-    }
-    if (!have || deck_get32(s) != DECK_STATE_MAGIC) memset(s, 0, sizeof(s));
-    memset(report, 0, DECK_REPORT_BYTES);
-    report[0] = 0x01;                 // versi laporan
-    report[2] = 0x09;                 // ID_CONTROLLER_DECK_STATE
-    report[3] = DECK_REPORT_BYTES;
-    deck_put32(report + 4, packet);
-    deck_put32(report + 8, deck_get32(s + 16));   // tombol rendah
-    deck_put32(report + 12, deck_get32(s + 20));  // tombol tinggi
-    for (int i = 0; i < 4; i++) deck_put16(report + 16 + i * 2, deck_get16(s + 24 + i * 2));  // pad
-    for (int i = 0; i < 3; i++) {
-        deck_put16(report + 24 + i * 2, deck_get16(s + 48 + i * 2));  // accel
-        deck_put16(report + 30 + i * 2, deck_get16(s + 54 + i * 2));  // gyro
-    }
-    deck_put16(report + 44, deck_get16(s + 40));  // trigger kiri
-    deck_put16(report + 46, deck_get16(s + 42));  // trigger kanan
-    for (int i = 0; i < 4; i++) deck_put16(report + 48 + i * 2, deck_get16(s + 32 + i * 2));  // stik
-    deck_put16(report + 56, deck_get16(s + 44));  // tekanan pad kiri
-    deck_put16(report + 58, deck_get16(s + 46));  // tekanan pad kanan
-}
-
-static void *deck_report_thread(void *arg) {
-    DeckFd *deck = static_cast<DeckFd *>(arg);
-    uint32_t packet = 0;
-    for (;;) {
-        uint8_t report[DECK_REPORT_BYTES];
-        deck_build_report(deck->state, report, ++packet);
-        // Pembaca yang tertinggal kehilangan laporan, bukan menerima yang basi; pembaca yang menutup mengakhiri aliran.
-        if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0 &&
-            errno != EAGAIN && errno != EWOULDBLOCK)
-            break;
-        struct timespec interval = {0, DECK_INTERVAL_US * 1000L};
-        nanosleep(&interval, nullptr);
-    }
-    syscall(SYS_close, deck->peer);
-    return nullptr;
-}
-
-static DeckFd *deck_find(int fd) {
-    std::lock_guard<std::mutex> guard(deck_mutex());
-    auto it = deck_fds().find(fd);
-    return it == deck_fds().end() ? nullptr : it->second;
-}
-
-static void deck_forget(int fd) {
-    std::lock_guard<std::mutex> guard(deck_mutex());
-    deck_fds().erase(fd);  // DeckFd sengaja bocor kecil: thread laporan masih memakainya sampai peer menutup
-}
-
-static int open_deck_hidraw(int flags) {
-    const char *state_path = deck_env("FAKE_DECK_STATE");
-    if (!state_path) {
-        Logger::log("deck: %s refused: FAKE_DECK_STATE not set\n", DECK_NODE);
-        errno = ENODEV;
-        return -1;
-    }
-    int state_fd = syscall(SYS_openat, AT_FDCWD, state_path, O_RDONLY | O_CLOEXEC);
-    if (state_fd < 0) {
-        Logger::log("deck: %s refused: state file %s not openable (%s)\n", DECK_NODE, state_path, strerror(errno));
-        errno = ENODEV;
-        return -1;
-    }
-    void *map = mmap(nullptr, DECK_STATE_SIZE, PROT_READ, MAP_SHARED, state_fd, 0);
-    syscall(SYS_close, state_fd);
-    if (map == MAP_FAILED) {
-        Logger::log("deck: %s refused: state file could not be mapped\n", DECK_NODE);
-        errno = ENODEV;
-        return -1;
-    }
-    int pair[2];
-    if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) < 0) {
-        munmap(map, DECK_STATE_SIZE);
-        return -1;
-    }
-    int buffer = DECK_REPORT_BYTES * 4;  // hanya beberapa laporan, agar yang dibaca tak pernah lama
-    setsockopt(pair[1], SOL_SOCKET, SO_SNDBUF, &buffer, sizeof(buffer));
-    if (!(flags & O_CLOEXEC)) fcntl(pair[0], F_SETFD, 0);
-    if (flags & O_NONBLOCK) fcntl(pair[0], F_SETFL, fcntl(pair[0], F_GETFL) | O_NONBLOCK);
-    DeckFd *deck = new DeckFd{pair[1], static_cast<const uint8_t *>(map), 0};
-    {
-        std::lock_guard<std::mutex> guard(deck_mutex());
-        deck_fds()[pair[0]] = deck;
-    }
-    pthread_t thread;
-    if (pthread_create(&thread, nullptr, deck_report_thread, deck) != 0) {
-        deck_forget(pair[0]);
-        syscall(SYS_close, pair[0]);
-        syscall(SYS_close, pair[1]);
-        munmap(map, DECK_STATE_SIZE);
-        delete deck;
-        errno = ENOMEM;
-        return -1;
-    }
-    pthread_detach(thread);
-    Logger::log("deck: %s opened as fd %d\n", DECK_NODE, pair[0]);
-    return pair[0];
-}
-
-static int deck_copy_string(unsigned op, void *argp, const char *value) {
-    size_t size = _IOC_SIZE(op);
-    if (!argp || !size) return 0;
-    snprintf(static_cast<char *>(argp), size, "%s", value);
-    return (int)std::min(size, strlen(value) + 1);
-}
-
-// Feature report: id 0 dulu, lalu pesan Valve (tipe, panjang, payload); jawaban seperti InputPlumber untuk Deck virtual.
-static int deck_feature(DeckFd &deck, unsigned op, uint8_t *buf, bool set) {
-    size_t size = _IOC_SIZE(op);
-    if (!buf || size < 2) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (set) {
-        deck.pending = buf[1];
-        Logger::log("deck: feature 0x%02x set\n", buf[1]);
-        return (int)size;
-    }
-    uint8_t reply[DECK_REPORT_BYTES + 1] = {};
-    switch (deck.pending) {
-    case 0x83: {  // GET_ATTRIBUTES_VALUES (tangkapan dari Deck asli)
-        static const uint8_t kAttributes[] = {0x00, 0x83, 0x2d, 0x01, 0x05, 0x12, 0x00, 0x00, 0x02,
-                                              0x00, 0x00, 0x00, 0x00, 0x0a, 0x2b, 0x12, 0xa9, 0x62,
-                                              0x04, 0xad, 0xf1, 0xe4, 0x65, 0x09, 0x2e, 0x00, 0x00,
-                                              0x00, 0x0b, 0xa0, 0x0f, 0x00, 0x00, 0x0d, 0x00, 0x00,
-                                              0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x0e};
-        memcpy(reply, kAttributes, sizeof(kAttributes));
-        break;
-    }
-    case 0xAE:  // GET_STRING_ATTRIBUTE
-        reply[1] = 0xAE;
-        reply[2] = 0x14;
-        reply[3] = 0x01;
-        memcpy(reply + 4, DECK_SERIAL, strlen(DECK_SERIAL));
-        break;
-    case 0xBA:  // GET_CHIP_ID
-        reply[1] = 0xBA;
-        reply[2] = 0x11;
-        memcpy(reply + 4, "DROIDDECKCHIP01", 15);
-        break;
-    default:
-        reply[1] = deck.pending;
-        break;
-    }
-    Logger::log("deck: feature 0x%02x read\n", deck.pending);
-    size_t length = std::min(size, sizeof(reply));
-    memcpy(buf, reply, length);
-    return (int)length;
-}
-
-static int ioctl_deck(DeckFd &deck, unsigned op, void *argp) {
-    if (_IOC_TYPE(op) != 'H') {
-        errno = ENOTTY;
-        return -1;
-    }
-    switch (_IOC_NR(op)) {
-    case 0x01:  // HIDIOCGRDESCSIZE
-        *static_cast<int *>(argp) = sizeof(kDeckDesc);
-        return 0;
-    case 0x02: {  // HIDIOCGRDESC: { __u32 size; __u8 value[4096]; }
-        auto *desc = static_cast<uint8_t *>(argp);
-        uint32_t size;
-        memcpy(&size, desc, sizeof(size));
-        memcpy(desc + 4, kDeckDesc, std::min<size_t>(size, sizeof(kDeckDesc)));
-        return 0;
-    }
-    case 0x03: {  // HIDIOCGRAWINFO: { __u32 bustype; __s16 vendor, product; }
-        struct { uint32_t bustype; int16_t vendor; int16_t product; } info = {3 /*BUS_USB*/, (int16_t)0x28de, (int16_t)0x1205};
-        memcpy(argp, &info, sizeof(info));
-        return 0;
-    }
-    case 0x04: return deck_copy_string(op, argp, DECK_NAME);                 // HIDIOCGRAWNAME
-    case 0x05: return deck_copy_string(op, argp, "usb-droiddeck-1/input2");  // HIDIOCGRAWPHYS
-    case 0x08: return deck_copy_string(op, argp, DECK_SERIAL);               // HIDIOCGRAWUNIQ
-    case 0x06: return deck_feature(deck, op, static_cast<uint8_t *>(argp), true);   // HIDIOCSFEATURE
-    case 0x07: return deck_feature(deck, op, static_cast<uint8_t *>(argp), false);  // HIDIOCGFEATURE
-    default:
-        Logger::log("deck: unhandled hidraw ioctl 0x%02x\n", _IOC_NR(op));
-        errno = EINVAL;
-        return -1;
-    }
-}
-
-static bool deck_is_node(const char *path) {
-    return path && deck_enabled() && !strcmp(path, DECK_NODE);
-}
-
-// Pohon sysfs Deck (ditulis DDDeck.java) mencerminkan path absolutnya di bawah FAKE_DECK_SYSFS_DIR.
-static bool deck_redirect(const char *path, std::string &out) {
-    if (!path || path[0] != '/' || !deck_enabled()) return false;
-    const char *root = deck_env("FAKE_DECK_SYSFS_DIR");
-    if (!root) return false;
-    static const char *kPrefixes[] = {"/sys/devices/droiddeck", "/sys/class/hidraw", "/sys/bus/hid",
-                                      "/sys/bus/usb", "/sys/dev/char/240:16", "/run/udev/data/c240:16"};
-    for (const char *prefix : kPrefixes) {
-        size_t n = strlen(prefix);
-        if (!strncmp(path, prefix, n) && (path[n] == '\0' || path[n] == '/')) {
-            static std::atomic<bool> noted{false};
-            if (!noted.exchange(true)) Logger::log("deck: sysfs checked (%s)\n", path);
-            out.assign(root);
-            out += path;
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool deck_under_root(const char *path) {
-    const char *root = deck_env("FAKE_DECK_SYSFS_DIR");
-    return root && path && !strncmp(path, root, strlen(root));
-}
-
-// Hasil yang memuat folder pohon dikembalikan ke bentuk /sys/... agar libudev menerimanya.
-static size_t deck_strip_root(char *buf, size_t length) {
-    const char *root = deck_env("FAKE_DECK_SYSFS_DIR");
-    if (!root) return length;
-    size_t n = strlen(root);
-    if (length >= n && !strncmp(buf, root, n)) {
-        memmove(buf, buf + n, length - n);
-        return length - n;
-    }
-    return length;
-}
-
-EXPORT DIR *opendir(const char *name) {
-    static auto real = reinterpret_cast<DIR *(*)(const char *)>(dlsym(RTLD_NEXT, "opendir"));
-    std::string redirected;
-    if (deck_redirect(name, redirected)) name = redirected.c_str();
-    return real(name);
-}
-
-EXPORT ssize_t readlink(const char *path, char *buf, size_t size) {
-    static auto real = reinterpret_cast<ssize_t (*)(const char *, char *, size_t)>(dlsym(RTLD_NEXT, "readlink"));
-    std::string redirected;
-    bool hit = deck_redirect(path, redirected);
-    ssize_t result = real(hit ? redirected.c_str() : path, buf, size);
-    if (result > 0 && deck_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
-    return result;
-}
-
-EXPORT int lstat(const char *path, struct stat *st) {
-    static auto real = reinterpret_cast<int (*)(const char *, struct stat *)>(dlsym(RTLD_NEXT, "lstat"));
-    std::string redirected;
-    if (deck_redirect(path, redirected)) path = redirected.c_str();
-    return real(path, st);
-}
-
-EXPORT int access(const char *path, int mode) {
-    static auto real = reinterpret_cast<int (*)(const char *, int)>(dlsym(RTLD_NEXT, "access"));
-    std::string redirected;
-    if (deck_redirect(path, redirected)) path = redirected.c_str();
-    return real(path, mode);
-}
-
-EXPORT char *realpath(const char *path, char *resolved) {
-    static auto real = reinterpret_cast<char *(*)(const char *, char *)>(dlsym(RTLD_NEXT, "realpath"));
-    std::string redirected;
-    bool hit = deck_redirect(path, redirected);
-    char *result = real(hit ? redirected.c_str() : path, resolved);
-    if (result && hit) {
-        size_t length = strlen(result);
-        size_t kept = deck_strip_root(result, length);
-        result[kept] = '\0';
-    }
-    return result;
-}
-
-// libudev (sd-device) menerima perangkat hanya bila direktorinya ada di sysfs (diperiksa dengan fstatfs).
-EXPORT int statfs(const char *path, struct statfs *buf) {
-    static auto real = reinterpret_cast<int (*)(const char *, struct statfs *)>(dlsym(RTLD_NEXT, "statfs"));
-    std::string redirected;
-    bool hit = deck_redirect(path, redirected);
-    int result = real(hit ? redirected.c_str() : path, buf);
-    if (hit && result == 0) buf->f_type = DECK_SYSFS_MAGIC;
-    return result;
-}
-
-EXPORT int fstatfs(int fd, struct statfs *buf) {
-    static auto real = reinterpret_cast<int (*)(int, struct statfs *)>(dlsym(RTLD_NEXT, "fstatfs"));
-    int result = real(fd, buf);
-    if (result == 0 && deck_enabled()) {
-        char link[64], path[PATH_MAX];
-        snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
-        ssize_t length = syscall(SYS_readlinkat, AT_FDCWD, link, path, sizeof(path) - 1);
-        if (length > 0) {
-            path[length] = '\0';
-            if (deck_under_root(path)) buf->f_type = DECK_SYSFS_MAGIC;
-        }
-    }
-    return result;
-}
-// ---- end DroidDeck-deck ----
-
 EXPORT int open(const char *pathname, int flags, ...) {
     va_list va;
     mode_t mode;
@@ -526,15 +159,6 @@ EXPORT int open(const char *pathname, int flags, ...) {
 
 	if (!my_open)
     	*(void **)&my_open = dlsym(RTLD_NEXT, "open");
-	// DroidDeck-deck
-	std::string deck_path;
-	if (pathname) {
-		if (deck_is_node(pathname))
-			return open_deck_hidraw(flags);
-		if (deck_redirect(pathname, deck_path))
-			pathname = deck_path.c_str();
-	}
-
 
 	if (pathname) {
 		if (strstr(pathname, "/dev/input/event")) {
@@ -579,15 +203,6 @@ EXPORT int openat(int dirfd, const char *pathname, int flags, ...) {
 
     if (!my_openat)
     	*(void **)&my_openat = dlsym(RTLD_NEXT, "openat");
-	// DroidDeck-deck
-	std::string deck_path;
-	if (pathname) {
-		if (deck_is_node(pathname))
-			return open_deck_hidraw(flags);
-		if (deck_redirect(pathname, deck_path))
-			pathname = deck_path.c_str();
-	}
-
     
     if (pathname) {
         if (strstr(pathname, "/dev/input/event")) {
@@ -615,11 +230,6 @@ EXPORT int openat(int dirfd, const char *pathname, int flags, ...) {
 EXPORT int stat(const char *pathname, struct stat *statbuf) {
 	if (!my_stat)
 		*(void **)&my_stat = dlsym(RTLD_NEXT, "stat");
-	// DroidDeck-deck
-	std::string deck_path;
-	if (deck_redirect(pathname, deck_path))
-		pathname = deck_path.c_str();
-
 
      const char *event = nullptr;
      int event_number = -1;
@@ -694,10 +304,6 @@ EXPORT int ioctl(int fd, int op, ...) {
 	va_start(va, op);
 	argp = va_arg(va, void *);
 	va_end(va);
-
-		// DroidDeck-deck: ioctl hidraw milik pad Deck
-	if (DeckFd *deck_fd = deck_find(fd))
-		return ioctl_deck(*deck_fd, (unsigned)op, argp);
 
 	auto controller = controller_map.find(fd);
 	if (controller == controller_map.end()) {
@@ -872,9 +478,6 @@ EXPORT int ioctl(int fd, int op, ...) {
 EXPORT int close(int fd) {
 	if (!my_close)
 		*(void **)&my_close = dlsym(RTLD_NEXT, "close");
-	// DroidDeck-deck
-	deck_forget(fd);
-
 
 	auto controller = controller_map.find(fd);
 	if (controller != controller_map.end()) {

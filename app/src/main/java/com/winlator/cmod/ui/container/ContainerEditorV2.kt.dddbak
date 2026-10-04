@@ -223,8 +223,6 @@ private class ContainerEditorStateV2(
     var boxPreset by mutableStateOf(editing?.box64Preset ?: Box64Preset.COMPATIBILITY)
 
     var ddUi by mutableStateOf(editing?.getExtra("droiddeckUi", "") ?: "")  // DD-UI-SELECT
-    var ddDeck by mutableStateOf(editing?.getExtra("droiddeckDeck", "") ?: "")  // DroidDeck-deck
-    var ddDeckEvdev by mutableStateOf(editing?.getExtra("droiddeckDeckEvdev", "") ?: "")  // DroidDeck-deck
     var exclusive by mutableStateOf(editing?.isExclusiveXInput ?: true)
     var xinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0 } ?: true)
     var dinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()) != 0 } ?: false)
@@ -318,7 +316,7 @@ private class ContainerEditorStateV2(
         renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXBackPressure,
         displayXPrecisePresentation, graphicsDriver, graphicsConfig,
-        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
+        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi,
         syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
@@ -492,8 +490,6 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.putExtra("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
         container.putExtra("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
         container.putExtra("droiddeckUi", state.ddUi.ifBlank { null })  // DD-UI-SELECT
-        container.putExtra("droiddeckDeck", state.ddDeck.ifBlank { null })  // DroidDeck-deck
-        container.putExtra("droiddeckDeckEvdev", state.ddDeckEvdev.ifBlank { null })  // DroidDeck-deck
         container.saveData()
         applyMouseWarp(container)
     }
@@ -563,9 +559,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("oboeExclusive", if (state.oboeExclusive) "1" else "0")
                     .put("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
                     .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
-                    .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
-                    .put("droiddeckDeck", state.ddDeck)  // DroidDeck-deck
-                    .put("droiddeckDeckEvdev", state.ddDeckEvdev))
+                    .put("droiddeckUi", state.ddUi))  // DD-UI-SELECT
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
@@ -1058,10 +1052,6 @@ private fun ContainerCategoryV2(
             }
             SettingsCard {  // DD-UI-SELECT
                 SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_CONTAINER) { s.ddUi = it }
-                SettingsDivider()  // DroidDeck-deck
-                SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_CONTAINER) { s.ddDeck = it }
-                SettingsDivider()
-                SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_CONTAINER) { s.ddDeckEvdev = it }
             }
         }
 
@@ -1210,16 +1200,3 @@ private val DD_UI_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
     "1" to "DroidDeck"
 )
 // ---- end DD-UI-SELECT ----
-
-// ---- DroidDeck-deck ----
-private val DD_DECK_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (Off)",
-    "1" to "On",
-    "0" to "Off"
-)
-private val DD_DECK_EVDEV_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (On)",
-    "1" to "On",
-    "0" to "Off (hidraw only)"
-)
-// ---- end DroidDeck-deck ----

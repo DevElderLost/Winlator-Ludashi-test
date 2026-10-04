@@ -90,7 +90,6 @@ public final class DDController {
         pendingUiOverride = null;
         installRailItem();
         applyMode();
-        attachDeck(act, rootView); // DroidDeck-deck
     }
 
     // ------------------------------------------------------------------ mode
@@ -139,19 +138,12 @@ public final class DDController {
     private static final DDOnScreenControls.Sink padSink = new DDOnScreenControls.Sink() {
         @Override public void onPad(GamepadState state) {
             WinHandler wh = winHandler();
-            // DroidDeck-deck: mode pad Deck menulis file state; evdev tetap dikirim bila dipilih
-            if (DDDeck.isSessionActive()) {
-                DDDeck.updatePad(state);
-                if (!DDDeck.isAlsoEvdev()) return;
-            }
             if (wh != null) wh.sendDroidDeckGamepadState(state);
         }
 
         // Tombol Steam: hotkey overlay Steam (Shift+Tab). Hanya terkirim bila ada window yang menerima.
         @Override public void onGuide(boolean down) {
             if (xServer == null) return;
-            // DroidDeck-deck: pada mode pad Deck, Guide adalah tombol Steam
-            if (DDDeck.isSessionActive()) { DDDeck.setGuide(down); return; }
             if (down) {
                 xServer.injectKeyPress(XKeycode.KEY_SHIFT_L);
                 xServer.injectKeyPress(XKeycode.KEY_TAB);
@@ -403,21 +395,6 @@ public final class DDController {
         openMenuLegacy();
     }
     // ---- end DD-SIDEBAR-FIX ----
-
-    // DroidDeck-deck
-    private static DDDeckControlsView deckView;
-
-    private static void attachDeck(Activity act, FrameLayout rootView) {
-        deckView = null;
-        DDDeck.setSessionActive(false);
-        if (!DDDeck.isWanted()) return;
-        if (DDDeck.prepare(act).isEmpty()) return;  // gagal menyiapkan: tetap pakai jalur biasa
-        DDDeck.setSessionActive(true);
-        deckView = new DDDeckControlsView(act, DDPrefs.read(act).tint);
-        rootView.addView(deckView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        final Activity a = act;
-        DDDeck.startMotion(act, () -> a.getWindowManager().getDefaultDisplay().getRotation());
-    }
 
     private static void reloadControls() { if (controls != null) controls.reload(); }
 

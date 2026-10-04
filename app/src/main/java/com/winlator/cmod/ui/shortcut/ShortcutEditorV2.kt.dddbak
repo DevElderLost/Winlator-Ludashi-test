@@ -237,8 +237,6 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
 
     var controlsProfile by mutableStateOf(shortcut.getExtra("controlsProfile", "0"))
     var ddUi by mutableStateOf(shortcut.getExtra("droiddeckUi", ""))  // DD-UI-SELECT
-    var ddDeck by mutableStateOf(shortcut.getExtra("droiddeckDeck", ""))  // DroidDeck-deck
-    var ddDeckEvdev by mutableStateOf(shortcut.getExtra("droiddeckDeckEvdev", ""))  // DroidDeck-deck
     var fullscreen by mutableStateOf(shortcut.getExtra("fullscreenStretched", "0") == "1")
     private var inputType by mutableIntStateOf(shortcut.getExtra("inputType", container.getInputType().toString()).toIntOrNull() ?: container.getInputType())
     var exclusive by mutableStateOf(shortcut.getExtra("exclusiveXInput").let { if (it.isBlank()) container.isExclusiveXInput() else it == "1" })
@@ -1191,10 +1189,6 @@ private fun ShortcutCategoryV2(
                 }
                 SettingsDivider()
                 SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_SHORTCUT) { s.ddUi = it; s.extra("droiddeckUi", it.ifBlank { null }) }  // DD-UI-SELECT
-                SettingsDivider()  // DroidDeck-deck
-                SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_SHORTCUT) { s.ddDeck = it; s.extra("droiddeckDeck", it.ifBlank { null }) }
-                SettingsDivider()
-                SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_SHORTCUT) { s.ddDeckEvdev = it; s.extra("droiddeckDeckEvdev", it.ifBlank { null }) }
                 SettingsDivider()
                 SettingToggle("Exclusive Input", s.exclusive) {
                     s.exclusive = it
@@ -1540,16 +1534,3 @@ private val DD_UI_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
     "1" to "DroidDeck"
 )
 // ---- end DD-UI-SELECT ----
-
-// ---- DroidDeck-deck ----
-private val DD_DECK_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
-    "" to "Use container setting",
-    "1" to "On",
-    "0" to "Off"
-)
-private val DD_DECK_EVDEV_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
-    "" to "Use container setting",
-    "1" to "On",
-    "0" to "Off (hidraw only)"
-)
-// ---- end DroidDeck-deck ----

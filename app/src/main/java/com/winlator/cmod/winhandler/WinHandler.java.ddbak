@@ -616,22 +616,6 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
         }
     }
 
-    // ---- DroidDeck-port: slot pad terpisah untuk kontrol layar DroidDeck (tidak menyentuh slot OSC bawaan) ----
-    private static final int DD_DEVICE_ID = -7001;
-
-    public void sendDroidDeckGamepadState(GamepadState state) {
-        if (state == null) return;
-        int slot = assignSlot(DD_DEVICE_ID);
-        if (slot >= 0 && writers[slot] != null) {
-            writers[slot].writeGamepadState(state);
-        }
-    }
-
-    public void releaseDroidDeckGamepad() {
-        releaseSlot(DD_DEVICE_ID);
-    }
-    // ---- end DroidDeck-port ----
-
     private int assignSlot(int deviceId) {
         Integer existing = deviceToSlot.get(deviceId);
         if (existing != null)

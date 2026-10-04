@@ -67,6 +67,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -1168,7 +1171,22 @@ private fun ShortcutCategoryV2(
 
         "Input" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SettingsCard {
-                SettingMappedChoice("Controls Profile", s.controlsProfile, profiles) { s.controlsProfile = it; s.extra("controlsProfile", it.takeUnless { id -> id == "0" }) }
+                // DD-UI-EXCLUSIVE: Controls Profile (UI Winlator) nonaktif saat Virtual Control UI = DroidDeck
+                val winlatorUiInactive = s.ddUi == "1"
+                Box(Modifier.fillMaxWidth().alpha(if (winlatorUiInactive) 0.38f else 1f)) {
+                    SettingMappedChoice("Controls Profile", s.controlsProfile, profiles) { s.controlsProfile = it; s.extra("controlsProfile", it.takeUnless { id -> id == "0" }) }
+                    if (winlatorUiInactive) {
+                        Box(Modifier.matchParentSize().pointerInput(Unit) { detectTapGestures { } })
+                    }
+                }
+                if (winlatorUiInactive) {
+                    Text(
+                        "Inactive while Virtual Control UI is DroidDeck",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                    )
+                }
                 SettingsDivider()
                 SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_SHORTCUT) { s.ddUi = it; s.extra("droiddeckUi", it.ifBlank { null }) }  // DD-UI-SELECT
                 SettingsDivider()

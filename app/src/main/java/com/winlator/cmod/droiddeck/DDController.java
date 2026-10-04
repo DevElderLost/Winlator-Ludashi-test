@@ -68,6 +68,13 @@ public final class DDController {
     }
     // ---- end DD-UI-SELECT ----
 
+    // ---- DD-UI-EXCLUSIVE: hanya satu UI kontrol yang aktif ----
+    /** true jika v adalah overlay kontrol Winlator in-game dan UI DroidDeck sedang aktif (Winlator harus tetap tersembunyi). */
+    public static boolean isWinlatorControlsSuppressed(View v) {
+        return v != null && v == winlatorControls && activity != null && isControlsEnabled();
+    }
+    // ---- end DD-UI-EXCLUSIVE ----
+
     private DDController() {}
 
     public static void install(Activity act, FrameLayout rootView, XServer server, View winlatorControlsView) {
@@ -113,7 +120,12 @@ public final class DDController {
             WinHandler wh = winHandler();
             if (wh != null) wh.releaseDroidDeckGamepad();
             if (winlatorControls != null && winlatorHidden) {
-                winlatorControls.setVisibility(savedWinlatorVisibility);
+                int restoreVisibility = savedWinlatorVisibility;  // DD-UI-EXCLUSIVE
+                if (winlatorControls instanceof com.winlator.cmod.widget.InputControlsView
+                        && ((com.winlator.cmod.widget.InputControlsView) winlatorControls).getProfile() != null) {
+                    restoreVisibility = View.VISIBLE;  // profil Winlator sedang dipakai -> tampilkan lagi
+                }
+                winlatorControls.setVisibility(restoreVisibility);
                 winlatorHidden = false;
             }
         }

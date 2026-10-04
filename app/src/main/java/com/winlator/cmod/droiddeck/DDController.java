@@ -192,7 +192,19 @@ public final class DDController {
 
     // ------------------------------------------------------------------ menu
 
-    public static void openMenu() {
+    public static void openMenu() {  // DD-COMPOSE-SETTINGS
+        if (activity == null) return;
+        try {
+            DDSettingsComposeDialog.show(activity);
+            return;
+        } catch (Throwable t) {
+            android.util.Log.w("DDController", "Panel Compose gagal dibuka, pakai menu lama", t);
+        }
+        openMenuLegacy();
+    }
+
+    /** Menu AlertDialog lama, hanya fallback kalau panel Compose gagal. */
+    private static void openMenuLegacy() {
         if (activity == null) return;
         final boolean on = DDPrefs.isEnabled(activity);
         String[] items = {
@@ -218,6 +230,43 @@ public final class DDController {
                 }
             }).show();
     }
+
+    // ---- DD-COMPOSE-SETTINGS: jembatan untuk DDSettingsComposeDialog (Kotlin) ----
+    public static boolean isKeyboardShown() { return keyboard != null; }
+
+    public static void setKeyboardShown(boolean show) {
+        if (show) showKeyboard(); else hideKeyboard();
+    }
+
+    public static void setControlsEnabled(boolean on) {
+        if (activity == null) return;
+        DDPrefs.setEnabled(activity, on);
+        applyMode();
+    }
+
+    public static void refreshControls() { reloadControls(); }
+
+    public static void openLayoutEditor() { startEditor(); }
+
+    public static void resetLayoutPrefs() {
+        if (activity == null) return;
+        if (controls != null) controls.resetLayout();
+        else if (root != null) DDPrefs.resetLayout(activity, root.getWidth(), root.getHeight());
+        reloadControls();
+    }
+
+    public static void resetMappingPrefs() {
+        if (activity == null) return;
+        DDPrefs.resetMapping(activity);
+        reloadControls();
+    }
+
+    public static void resetEverything() {
+        if (activity == null) return;
+        DDPrefs.resetAll(activity);
+        reloadControls();
+    }
+    // ---- end DD-COMPOSE-SETTINGS ----
 
     private static void reloadControls() { if (controls != null) controls.reload(); }
 

@@ -133,6 +133,12 @@ static void library_init() {
 
 	vibration_enabled = getenv("FAKE_EVDEV_VIBRATION") && atoi(getenv("FAKE_EVDEV_VIBRATION"));
 	Logger::init();
+	// Diagnostik: tampilkan apakah env Deck sampai ke proses ini (tiap proses Wine mencetak sekali)
+	Logger::log("deck: init pid=%d FAKE_EVDEV_DECK=%s STATE=%s DEVDIR=%s HIDRAW=%s\n", (int) getpid(),
+		getenv("FAKE_EVDEV_DECK") ? getenv("FAKE_EVDEV_DECK") : "(unset)",
+		getenv("FAKE_DECK_STATE") ? "set" : "(unset)",
+		getenv("FAKE_DECK_DEVDIR") ? "set" : "(unset)",
+		getenv("PROTON_ENABLE_HIDRAW") ? getenv("PROTON_ENABLE_HIDRAW") : "(unset)");
 }
   
 __attribute__((visibility("hidden"))) 
@@ -593,6 +599,11 @@ EXPORT DIR *opendir(const char *name) {
     if (deck_redirect(name, redirected)) name = redirected.c_str();
     const bool dev_dir = deck_enabled() && deck_is_dev_dir(name);
     DIR *d = real(name);
+    if (deck_is_dev_dir(name)) {
+        static std::atomic<int> seen{0};
+        if (seen.fetch_add(1) < 3)
+            Logger::log("deck: opendir(%s) -> %s (errno %d) deck_enabled=%d\n", name, d ? "ok" : "FAIL", d ? 0 : errno, (int) deck_enabled());
+    }
     if (!d && dev_dir && deck_dev_denied()) {
         if (const char *fallback = deck_dev_fallback()) {
             d = real(fallback);

@@ -126,6 +126,8 @@ void send_vibration(int strong, int weak, uint16_t duration_ms, uint16_t slot) {
   syscall(SYS_close, sock);
 }
 
+static void deck_snapshot_env();
+
 __attribute__((constructor))
 static void library_init() {
 	if (!hook_dir)
@@ -133,6 +135,7 @@ static void library_init() {
 
 	vibration_enabled = getenv("FAKE_EVDEV_VIBRATION") && atoi(getenv("FAKE_EVDEV_VIBRATION"));
 	Logger::init();
+	deck_snapshot_env();  // salin env Deck sekarang; environ proses Wine bisa berubah/ dikosongkan setelah ini
 	// Diagnostik: tampilkan apakah env Deck sampai ke proses ini (tiap proses Wine mencetak sekali)
 	Logger::log("deck: init pid=%d FAKE_EVDEV_DECK=%s STATE=%s DEVDIR=%s HIDRAW=%s\n", (int) getpid(),
 		getenv("FAKE_EVDEV_DECK") ? getenv("FAKE_EVDEV_DECK") : "(unset)",
@@ -191,7 +194,28 @@ struct DeckFd {
 static std::mutex &deck_mutex() { static auto *m = new std::mutex(); return *m; }
 static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std::unordered_map<int, DeckFd *>(); return *m; }
 
+// Snapshot env Deck yang diambil saat library dimuat. Log menunjukkan FAKE_EVDEV_DECK=1 saat constructor
+// berjalan, tetapi deck_enabled()=0 ketika winebus memanggil opendir(/dev): environ proses Wine tidak
+// bisa dipercaya setelah startup, jadi nilai awal itulah yang dipakai.
+static const char *const DECK_ENV_NAMES[] = {"FAKE_EVDEV_DECK", "FAKE_DECK_STATE", "FAKE_DECK_SYSFS_DIR",
+                                              "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS"};
+static constexpr int DECK_ENV_COUNT = sizeof(DECK_ENV_NAMES) / sizeof(DECK_ENV_NAMES[0]);
+static char *deck_env_snapshot[DECK_ENV_COUNT];
+static bool deck_env_snapped = false;
+
+static void deck_snapshot_env() {
+    for (int i = 0; i < DECK_ENV_COUNT; i++) {
+        const char *v = getenv(DECK_ENV_NAMES[i]);
+        deck_env_snapshot[i] = (v && *v) ? strdup(v) : nullptr;
+    }
+    deck_env_snapped = true;
+}
+
 static const char *deck_env(const char *name) {
+    if (deck_env_snapped) {
+        for (int i = 0; i < DECK_ENV_COUNT; i++)
+            if (!strcmp(name, DECK_ENV_NAMES[i]) && deck_env_snapshot[i]) return deck_env_snapshot[i];
+    }
     const char *v = getenv(name);
     return v && *v ? v : nullptr;
 }
@@ -201,7 +225,7 @@ enum { DS_SYSFS = 1, DS_OPEN = 2, DS_CLOSE = 3, DS_FSET = 4, DS_FGET = 5, DS_UNH
 
 static uint32_t *deck_status_map() {
     static uint32_t *map = []() -> uint32_t * {
-        const char *path = getenv("FAKE_DECK_STATUS");
+        const char *path = deck_env("FAKE_DECK_STATUS");
         if (!path || !*path) return nullptr;
         int fd = syscall(SYS_openat, AT_FDCWD, path, O_RDWR | O_CLOEXEC);
         if (fd < 0) return nullptr;
@@ -223,8 +247,11 @@ static void deck_stat_set(int idx, uint32_t value) {
 
 static bool deck_enabled() {
     static int on = -1;
-    if (on < 0) on = deck_env("FAKE_EVDEV_DECK") && atoi(getenv("FAKE_EVDEV_DECK")) ? 1 : 0;
-    return on == 1;
+    if (on == 1) return true;
+    const char *v = deck_env("FAKE_EVDEV_DECK");
+    const int now = (v && atoi(v)) ? 1 : 0;
+    if (deck_env_snapped) on = now;  // cache hanya setelah snapshot ada; sebelumnya jangan membekukan nilai 0
+    return now == 1;
 }
 
 static inline void deck_put16(uint8_t *at, int v) { at[0] = v & 0xff; at[1] = (v >> 8) & 0xff; }
@@ -602,7 +629,7 @@ EXPORT DIR *opendir(const char *name) {
     if (deck_is_dev_dir(name)) {
         static std::atomic<int> seen{0};
         if (seen.fetch_add(1) < 3)
-            Logger::log("deck: opendir(%s) -> %s (errno %d) deck_enabled=%d\n", name, d ? "ok" : "FAIL", d ? 0 : errno, (int) deck_enabled());
+            Logger::log("deck: opendir(%s) -> %s (errno %d) deck_enabled=%d live_env=%s\n", name, d ? "ok" : "FAIL", d ? 0 : errno, (int) deck_enabled(), getenv("FAKE_EVDEV_DECK") ? getenv("FAKE_EVDEV_DECK") : "(unset)");
     }
     if (!d && dev_dir && deck_dev_denied()) {
         if (const char *fallback = deck_dev_fallback()) {

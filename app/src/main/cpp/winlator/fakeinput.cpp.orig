@@ -45,7 +45,6 @@
 #include <time.h>
 #include <limits.h>
 #include <linux/hidraw.h>
-#include <cerrno>
 #define EXPORT __attribute__((visibility("default"))) extern "C"
 
 std::unordered_map<int, const char *> controller_map;
@@ -432,17 +431,11 @@ static bool deck_is_node(const char *path) {
     return path && deck_enabled() && !strcmp(path, DECK_NODE);
 }
 
-// v2: menjadi true setelah ada akses ke /sys atau /run/udev; hanya sesudah itu path relatif terhadap dirfd diresolusi
-// lewat /proc/self/fd (libudev/sd-device menelusuri sysfs per komponen dengan openat/fstatat/readlinkat).
-static std::atomic<bool> deck_hot{false};
-
 // Pohon sysfs Deck (ditulis DDDeck.java) mencerminkan path absolutnya di bawah FAKE_DECK_SYSFS_DIR.
 static bool deck_redirect(const char *path, std::string &out) {
     if (!path || path[0] != '/' || !deck_enabled()) return false;
     const char *root = deck_env("FAKE_DECK_SYSFS_DIR");
     if (!root) return false;
-    if (!deck_hot.load(std::memory_order_relaxed) && (!strncmp(path, "/sys", 4) || !strncmp(path, "/run/udev", 9)))
-        deck_hot.store(true, std::memory_order_relaxed);
     static const char *kPrefixes[] = {"/sys/devices/droiddeck", "/sys/class/hidraw", "/sys/bus/hid",
                                       "/sys/bus/usb", "/sys/dev/char/240:16", "/run/udev/data/c240:16"};
     for (const char *prefix : kPrefixes) {
@@ -476,104 +469,11 @@ static size_t deck_strip_root(char *buf, size_t length) {
     return length;
 }
 
-// ---- DroidDeck-deck v2: /dev/hidraw16 sebagai char device, listing /dev, resolusi dirfd ----
-// Mengapa: libudev/hidapi mencocokkan perangkat lewat st_rdev (240:16) dan mode S_IFCHR, dan mode
-// DisableUdevd di winebus memindai direktori /dev untuk "hidraw*". Node palsu ini tidak ada di rootfs.
-static void deck_fill_stat(struct stat *st) {
-    memset(st, 0, sizeof(*st));
-    st->st_mode = S_IFCHR | 0660;
-    st->st_rdev = makedev(DECK_MAJOR, DECK_MINOR);
-    st->st_nlink = 1;
-    st->st_uid = getuid();
-    st->st_gid = getgid();
-    st->st_blksize = 4096;
-    st->st_ino = 0x44444b01;
-    struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-    st->st_atim = now;
-    st->st_mtim = now;
-    st->st_ctim = now;
-    static std::atomic<bool> noted{false};
-    if (!noted.exchange(true))
-        Logger::log("deck: stat %s answered as char device %u:%u\n", DECK_NODE, DECK_MAJOR, DECK_MINOR);
-}
-
-// Path absolut untuk (dirfd, path). Path relatif hanya diresolusi bila deck_hot dan dirfd bukan AT_FDCWD.
-static bool deck_abs_path(int dirfd, const char *path, std::string &out) {
-    if (!path) return false;
-    if (path[0] == '/') { out = path; return true; }
-    if (dirfd == AT_FDCWD || !deck_hot.load(std::memory_order_relaxed)) return false;
-    char link[64], dir[PATH_MAX];
-    snprintf(link, sizeof(link), "/proc/self/fd/%d", dirfd);
-    ssize_t n = syscall(SYS_readlinkat, AT_FDCWD, link, dir, sizeof(dir) - 1);
-    if (n <= 0) return false;
-    dir[n] = '\0';
-    size_t kept = deck_strip_root(dir, (size_t)n);  // fd di pohon palsu dikembalikan ke bentuk /sys/...
-    dir[kept] = '\0';
-    if (dir[0] != '/') return false;
-    out = dir;
-    if (out.back() != '/') out += '/';
-    out += path;
-    return true;
-}
-
-// Listing /dev: sisipkan "hidraw16" di akhir tiap DIR* yang dibuka dari /dev.
-static std::mutex &deck_dir_mutex() { static auto *m = new std::mutex(); return *m; }
-static std::unordered_map<DIR *, bool> &deck_dev_dirs() { static auto *m = new std::unordered_map<DIR *, bool>(); return *m; }
-
-static bool deck_is_dev_dir(const char *path) { return path && (!strcmp(path, "/dev") || !strcmp(path, "/dev/")); }
-
-static void deck_dev_track(DIR *d) {
-    if (!d) return;
-    {
-        std::lock_guard<std::mutex> guard(deck_dir_mutex());
-        deck_dev_dirs()[d] = false;
-    }
-    static std::atomic<bool> noted{false};
-    if (!noted.exchange(true)) Logger::log("deck: /dev listing will include %s\n", strrchr(DECK_NODE, '/') + 1);
-}
-
-static bool deck_dev_take(DIR *d) {
-    std::lock_guard<std::mutex> guard(deck_dir_mutex());
-    auto it = deck_dev_dirs().find(d);
-    if (it == deck_dev_dirs().end() || it->second) return false;
-    it->second = true;
-    return true;
-}
-
-static void deck_fill_dirent(struct dirent *e) {
-    memset(e, 0, sizeof(*e));
-    e->d_ino = 0x44444b01;
-    e->d_type = DT_CHR;
-    e->d_reclen = sizeof(*e);
-    strncpy(e->d_name, strrchr(DECK_NODE, '/') + 1, sizeof(e->d_name) - 1);
-}
-
-static int deck_scandir_inject(struct dirent ***namelist, int count, int (*filter)(const struct dirent *),
-                               int (*compar)(const struct dirent **, const struct dirent **)) {
-    struct dirent probe;
-    deck_fill_dirent(&probe);
-    if (filter && !filter(&probe)) return count;
-    for (int i = 0; i < count; i++)
-        if (!strcmp((*namelist)[i]->d_name, probe.d_name)) return count;
-    struct dirent *copy = (struct dirent *)malloc(sizeof(probe));
-    if (!copy) return count;
-    memcpy(copy, &probe, sizeof(probe));
-    struct dirent **grown = (struct dirent **)realloc(*namelist, sizeof(*grown) * (size_t)(count + 1));
-    if (!grown) { free(copy); return count; }
-    grown[count] = copy;
-    *namelist = grown;
-    if (compar) qsort(grown, (size_t)count + 1, sizeof(*grown), (int (*)(const void *, const void *))compar);
-    return count + 1;
-}
-
 EXPORT DIR *opendir(const char *name) {
     static auto real = reinterpret_cast<DIR *(*)(const char *)>(dlsym(RTLD_NEXT, "opendir"));
     std::string redirected;
     if (deck_redirect(name, redirected)) name = redirected.c_str();
-    DIR *d = real(name);
-    if (d && deck_enabled() && deck_is_dev_dir(name)) deck_dev_track(d);
-    return d;
+    return real(name);
 }
 
 EXPORT ssize_t readlink(const char *path, char *buf, size_t size) {
@@ -588,7 +488,6 @@ EXPORT ssize_t readlink(const char *path, char *buf, size_t size) {
 EXPORT int lstat(const char *path, struct stat *st) {
     static auto real = reinterpret_cast<int (*)(const char *, struct stat *)>(dlsym(RTLD_NEXT, "lstat"));
     std::string redirected;
-    if (st && deck_is_node(path)) { deck_fill_stat(st); return 0; }
     if (deck_redirect(path, redirected)) path = redirected.c_str();
     return real(path, st);
 }
@@ -596,7 +495,6 @@ EXPORT int lstat(const char *path, struct stat *st) {
 EXPORT int access(const char *path, int mode) {
     static auto real = reinterpret_cast<int (*)(const char *, int)>(dlsym(RTLD_NEXT, "access"));
     std::string redirected;
-    if (deck_is_node(path)) return 0;
     if (deck_redirect(path, redirected)) path = redirected.c_str();
     return real(path, mode);
 }
@@ -639,170 +537,6 @@ EXPORT int fstatfs(int fd, struct statfs *buf) {
     return result;
 }
 // ---- end DroidDeck-deck ----
-
-// Hook tambahan v2. Nama C++ unik + asm label = nama simbol asli, jadi tidak bentrok dengan prototipe di header.
-#define DECK_HOOK extern "C" __attribute__((visibility("default")))
-
-struct DeckStatxTs { int64_t tv_sec; uint32_t tv_nsec; int32_t reserved; };
-struct DeckStatx {  // tata letak struct statx kernel (256 byte)
-    uint32_t stx_mask, stx_blksize;
-    uint64_t stx_attributes;
-    uint32_t stx_nlink, stx_uid, stx_gid;
-    uint16_t stx_mode, spare0;
-    uint64_t stx_ino, stx_size, stx_blocks, stx_attributes_mask;
-    DeckStatxTs stx_atime, stx_btime, stx_ctime, stx_mtime;
-    uint32_t stx_rdev_major, stx_rdev_minor, stx_dev_major, stx_dev_minor;
-    uint64_t stx_mnt_id;
-    uint32_t stx_dio_mem_align, stx_dio_offset_align;
-    uint64_t spare3[12];
-};
-static_assert(sizeof(DeckStatx) == 256, "DeckStatx harus 256 byte");
-
-static void deck_fill_statx(DeckStatx *sx) {
-    struct stat st;
-    deck_fill_stat(&st);
-    memset(sx, 0, sizeof(*sx));
-    sx->stx_mask = 0x7ff;  // STATX_BASIC_STATS
-    sx->stx_blksize = (uint32_t)st.st_blksize;
-    sx->stx_nlink = (uint32_t)st.st_nlink;
-    sx->stx_uid = st.st_uid;
-    sx->stx_gid = st.st_gid;
-    sx->stx_mode = (uint16_t)st.st_mode;
-    sx->stx_ino = st.st_ino;
-    sx->stx_rdev_major = DECK_MAJOR;
-    sx->stx_rdev_minor = DECK_MINOR;
-    sx->stx_atime.tv_sec = sx->stx_mtime.tv_sec = sx->stx_ctime.tv_sec = st.st_atim.tv_sec;
-    sx->stx_atime.tv_nsec = sx->stx_mtime.tv_nsec = sx->stx_ctime.tv_nsec = (uint32_t)st.st_atim.tv_nsec;
-}
-
-DECK_HOOK int deck_hook_stat64(const char *path, void *buf) __asm__("stat64");
-int deck_hook_stat64(const char *path, void *buf) { return stat(path, (struct stat *)buf); }
-
-DECK_HOOK int deck_hook_lstat64(const char *path, void *buf) __asm__("lstat64");
-int deck_hook_lstat64(const char *path, void *buf) { return lstat(path, (struct stat *)buf); }
-
-DECK_HOOK int deck_hook_fstat64(int fd, void *buf) __asm__("fstat64");
-int deck_hook_fstat64(int fd, void *buf) { return fstat(fd, (struct stat *)buf); }
-
-static int deck_fstatat_impl(int dirfd, const char *path, void *buf, int flags) {
-    if (deck_enabled() && buf) {
-        if (path && !*path && (flags & AT_EMPTY_PATH) && deck_find(dirfd)) {
-            deck_fill_stat((struct stat *)buf);
-            return 0;
-        }
-        std::string abs, red;
-        if (deck_abs_path(dirfd, path, abs)) {
-            if (abs == DECK_NODE) { deck_fill_stat((struct stat *)buf); return 0; }
-            if (deck_redirect(abs.c_str(), red))
-                return (int)syscall(SYS_newfstatat, AT_FDCWD, red.c_str(), buf, flags);
-        }
-    }
-    return (int)syscall(SYS_newfstatat, dirfd, path, buf, flags);
-}
-
-DECK_HOOK int deck_hook_fstatat(int dirfd, const char *path, void *buf, int flags) __asm__("fstatat");
-int deck_hook_fstatat(int dirfd, const char *path, void *buf, int flags) { return deck_fstatat_impl(dirfd, path, buf, flags); }
-
-DECK_HOOK int deck_hook_fstatat64(int dirfd, const char *path, void *buf, int flags) __asm__("fstatat64");
-int deck_hook_fstatat64(int dirfd, const char *path, void *buf, int flags) { return deck_fstatat_impl(dirfd, path, buf, flags); }
-
-DECK_HOOK int deck_hook_statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) __asm__("statx");
-int deck_hook_statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) {
-    if (deck_enabled() && buf) {
-        if (path && !*path && (flags & AT_EMPTY_PATH) && deck_find(dirfd)) {
-            deck_fill_statx((DeckStatx *)buf);
-            return 0;
-        }
-        std::string abs, red;
-        if (deck_abs_path(dirfd, path, abs)) {
-            if (abs == DECK_NODE) { deck_fill_statx((DeckStatx *)buf); return 0; }
-            if (deck_redirect(abs.c_str(), red))
-                return (int)syscall(SYS_statx, AT_FDCWD, red.c_str(), flags, mask, buf);
-        }
-    }
-    return (int)syscall(SYS_statx, dirfd, path, flags, mask, buf);
-}
-
-DECK_HOOK int deck_hook_faccessat(int dirfd, const char *path, int mode, int flags) __asm__("faccessat");
-int deck_hook_faccessat(int dirfd, const char *path, int mode, int flags) {
-    std::string abs, red;
-    if (deck_enabled() && deck_abs_path(dirfd, path, abs)) {
-        if (abs == DECK_NODE) return 0;
-        if (deck_redirect(abs.c_str(), red)) { dirfd = AT_FDCWD; path = red.c_str(); }
-    }
-    if (flags) {
-        long r = syscall(SYS_faccessat2, dirfd, path, mode, flags);
-        if (r == 0 || errno != ENOSYS) return (int)r;
-    }
-    return (int)syscall(SYS_faccessat, dirfd, path, mode);
-}
-
-DECK_HOOK ssize_t deck_hook_readlinkat(int dirfd, const char *path, char *buf, size_t size) __asm__("readlinkat");
-ssize_t deck_hook_readlinkat(int dirfd, const char *path, char *buf, size_t size) {
-    std::string abs, red;
-    if (deck_enabled() && deck_abs_path(dirfd, path, abs) && deck_redirect(abs.c_str(), red)) {
-        dirfd = AT_FDCWD;
-        path = red.c_str();
-    }
-    ssize_t result = syscall(SYS_readlinkat, dirfd, path, buf, size);
-    if (result > 0 && deck_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
-    return result;
-}
-
-DECK_HOOK struct dirent *deck_hook_readdir(DIR *d) __asm__("readdir");
-struct dirent *deck_hook_readdir(DIR *d) {
-    static auto real = reinterpret_cast<struct dirent *(*)(DIR *)>(dlsym(RTLD_NEXT, "readdir"));
-    struct dirent *e = real(d);
-    if (e || !deck_enabled() || !deck_dev_take(d)) return e;
-    static thread_local struct dirent fake;
-    deck_fill_dirent(&fake);
-    return &fake;
-}
-
-DECK_HOOK struct dirent64 *deck_hook_readdir64(DIR *d) __asm__("readdir64");
-struct dirent64 *deck_hook_readdir64(DIR *d) {
-    static auto real = reinterpret_cast<struct dirent64 *(*)(DIR *)>(dlsym(RTLD_NEXT, "readdir64"));
-    struct dirent64 *e = real(d);
-    if (e || !deck_enabled() || !deck_dev_take(d)) return e;
-    static thread_local struct dirent64 fake;
-    deck_fill_dirent(reinterpret_cast<struct dirent *>(&fake));
-    return &fake;
-}
-
-DECK_HOOK void deck_hook_rewinddir(DIR *d) __asm__("rewinddir");
-void deck_hook_rewinddir(DIR *d) {
-    static auto real = reinterpret_cast<void (*)(DIR *)>(dlsym(RTLD_NEXT, "rewinddir"));
-    real(d);
-    if (!deck_enabled()) return;
-    std::lock_guard<std::mutex> guard(deck_dir_mutex());
-    auto it = deck_dev_dirs().find(d);
-    if (it != deck_dev_dirs().end()) it->second = false;
-}
-
-DECK_HOOK int deck_hook_closedir(DIR *d) __asm__("closedir");
-int deck_hook_closedir(DIR *d) {
-    static auto real = reinterpret_cast<int (*)(DIR *)>(dlsym(RTLD_NEXT, "closedir"));
-    if (deck_enabled()) {
-        std::lock_guard<std::mutex> guard(deck_dir_mutex());
-        deck_dev_dirs().erase(d);
-    }
-    return real(d);
-}
-
-DECK_HOOK int deck_hook_open64(const char *path, int flags, ...) __asm__("open64");
-int deck_hook_open64(const char *path, int flags, ...) {
-    mode_t mode = 0;
-    if (flags & O_CREAT) { va_list va; va_start(va, flags); mode = va_arg(va, mode_t); va_end(va); }
-    return open(path, flags, mode);
-}
-
-DECK_HOOK int deck_hook_openat64(int dirfd, const char *path, int flags, ...) __asm__("openat64");
-int deck_hook_openat64(int dirfd, const char *path, int flags, ...) {
-    mode_t mode = 0;
-    if (flags & O_CREAT) { va_list va; va_start(va, flags); mode = va_arg(va, mode_t); va_end(va); }
-    return openat(dirfd, path, flags, mode);
-}
-// ---- end DroidDeck-deck v2 ----
 
 EXPORT int open(const char *pathname, int flags, ...) {
     va_list va;
@@ -878,20 +612,12 @@ EXPORT int openat(int dirfd, const char *pathname, int flags, ...) {
     if (!my_openat)
     	*(void **)&my_openat = dlsym(RTLD_NEXT, "openat");
 	// DroidDeck-deck
-	std::string deck_path, deck_abs;
+	std::string deck_path;
 	if (pathname) {
 		if (deck_is_node(pathname))
 			return open_deck_hidraw(flags);
-		if (deck_redirect(pathname, deck_path)) {
+		if (deck_redirect(pathname, deck_path))
 			pathname = deck_path.c_str();
-		} else if (pathname[0] != '/' && deck_enabled() && deck_abs_path(dirfd, pathname, deck_abs)) {
-			if (deck_is_node(deck_abs.c_str()))
-				return open_deck_hidraw(flags);
-			if (deck_redirect(deck_abs.c_str(), deck_path)) {
-				pathname = deck_path.c_str();
-				dirfd = AT_FDCWD;
-			}
-		}
 	}
 
     
@@ -923,10 +649,6 @@ EXPORT int stat(const char *pathname, struct stat *statbuf) {
 		*(void **)&my_stat = dlsym(RTLD_NEXT, "stat");
 	// DroidDeck-deck
 	std::string deck_path;
-	if (statbuf && deck_is_node(pathname)) {
-		deck_fill_stat(statbuf);
-		return 0;
-	}
 	if (deck_redirect(pathname, deck_path))
 		pathname = deck_path.c_str();
 
@@ -959,10 +681,6 @@ EXPORT int fstat(int fd, struct stat *buf) {
     	*(void **)&my_fstat = dlsym(RTLD_NEXT, "fstat");
 
     int ret = my_fstat(fd, buf);
-    if (ret == 0 && deck_enabled() && deck_find(fd)) {  // fd Deck adalah socketpair; tampilkan sebagai char device 240:16
-        deck_fill_stat(buf);
-        return ret;
-    }
 
     auto controller = controller_map.find(fd);
     if (controller != controller_map.end()) {
@@ -975,8 +693,6 @@ EXPORT int fstat(int fd, struct stat *buf) {
 EXPORT int scandir(const char *dirp, struct dirent ***namelist, int(*filter)(const struct dirent *), int(*compar)(const struct dirent **, const struct dirent **)) {
 	if (!my_scandir)
 		*(void **)&my_scandir = dlsym(RTLD_NEXT, "scandir");
-
-	const bool deck_dev = deck_enabled() && deck_is_dev_dir(dirp);
 	
 	if (dirp) {
 	    if (!strcmp(dirp, "/dev/input")) {
@@ -984,13 +700,7 @@ EXPORT int scandir(const char *dirp, struct dirent ***namelist, int(*filter)(con
 	    }
     }
 
-	int result = my_scandir(dirp, namelist, filter, compar);
-	if (result >= 0 && deck_dev) {
-		result = deck_scandir_inject(namelist, result, filter, compar);
-		static std::atomic<bool> noted{false};
-		if (!noted.exchange(true)) Logger::log("deck: scandir(/dev) now includes hidraw16\n");
-	}
-	return result;
+	return my_scandir(dirp, namelist, filter, compar);
 }
 
 EXPORT int inotify_add_watch(int fd, const char *pathname, uint32_t mask) {
@@ -1276,9 +986,6 @@ EXPORT ssize_t write(int fd, const void *buf, size_t count) {
   if (!my_write)
     *(void **)&my_write = dlsym(RTLD_NEXT, "write");
 
-  // Output report ke Deck (haptik/rumble) dibuang: tak ada pembaca di sisi peer, buffer socketpair akan penuh lalu write memblokir.
-  if (deck_enabled() && deck_find(fd)) return (ssize_t)count;
-
   auto controller = controller_map.find(fd);
   if (controller != controller_map.end()) {
     if (count == sizeof(struct input_event)) {
@@ -1297,11 +1004,6 @@ EXPORT ssize_t write(int fd, const void *buf, size_t count) {
 }
 
 EXPORT ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
-  if (deck_enabled() && deck_find(fd)) {
-    ssize_t total = 0;
-    for (int i = 0; i < iovcnt; i++) total += (ssize_t)iov[i].iov_len;
-    return total;
-  }
   auto controller = controller_map.find(fd);
   if (controller != controller_map.end()) {
     uint16_t slot = (uint16_t)get_event_number(controller->second);

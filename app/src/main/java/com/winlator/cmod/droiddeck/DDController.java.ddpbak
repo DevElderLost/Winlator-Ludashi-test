@@ -419,39 +419,6 @@ public final class DDController {
         DDDeck.startMotion(act, () -> a.getWindowManager().getDefaultDisplay().getRotation());
     }
 
-    // DroidDeck-bp: overlay Controller Test di atas game (tab Status memperlihatkan apakah Steam menemukan pad)
-    private static DDControllerTestView testOverlay;
-
-    private static android.view.View findDrawer(android.view.View v) {
-        if (v instanceof androidx.drawerlayout.widget.DrawerLayout) return v;
-        if (v instanceof android.view.ViewGroup) {
-            android.view.ViewGroup g = (android.view.ViewGroup) v;
-            for (int i = 0; i < g.getChildCount(); i++) {
-                android.view.View found = findDrawer(g.getChildAt(i));
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    public static void openControllerTest() {
-        if (activity == null || root == null || testOverlay != null) return;
-        android.view.View drawer = findDrawer(activity.getWindow().getDecorView());
-        if (drawer != null) ((androidx.drawerlayout.widget.DrawerLayout) drawer).closeDrawers();
-        testOverlay = new DDControllerTestView(activity, new DDControllerTestView.Host() {
-            @Override public void close() { closeControllerTest(); }
-            @Override public void toggleControls() {}
-            @Override public boolean controlsVisible() { return true; }
-            @Override public boolean standalone() { return false; }
-        });
-        root.addView(testOverlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
-    public static void closeControllerTest() {
-        if (testOverlay != null && root != null) root.removeView(testOverlay);
-        testOverlay = null;
-    }
-
     private static void reloadControls() { if (controls != null) controls.reload(); }
 
     private static void appearanceMenu() {

@@ -52,15 +52,10 @@ public final class DDDeck implements SensorEventListener {
     public static final String EXTRA_EVDEV = "droiddeckDeckEvdev";
     private static volatile boolean wanted = false;
     private static volatile boolean alsoEvdev = true;
-    // DroidDeck-fix: evdev dipaksa aktif sampai terbukti Wine punya UDEV (hidraw hanya terbaca bila ada UDEV)
-    private static volatile boolean forceEvdev = true;
-    private static volatile int udevState = -1;  // -1 belum diketahui, 0 tanpa UDEV, 1 ada UDEV
-    private static final java.util.Map<String, Boolean> UDEV_CACHE = new java.util.HashMap<>();
     private static volatile boolean sessionActive = false;
 
     private static final DDDeck INSTANCE = new DDDeck();
     private static MappedByteBuffer map;
-    private static MappedByteBuffer statusMap;  // DroidDeck-bp
     private static File root;
 
     // Keadaan yang digabung menjadi satu laporan.
@@ -96,70 +91,7 @@ public final class DDDeck implements SensorEventListener {
     /** Dibaca dari pengaturan game/container; aman dipanggil berulang dan dari urutan mana pun. */
     public static void configureLaunch(Container container, Shortcut shortcut) {
         wanted = resolve(extra(shortcut, container, EXTRA_DECK, true), extra(shortcut, container, EXTRA_DECK, false), false);
-        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true)
-            || forceEvdev;  // DroidDeck-fix
-    }
-
-    /** Versi dengan jalur runtime Wine: memutuskan apakah pilihan "hidraw only" boleh dihormati. */
-    public static void configureLaunch(Container container, Shortcut shortcut, String winePath) {
-        boolean udev = wineHasUdev(winePath);
-        udevState = udev ? 1 : 0;
-        forceEvdev = !udev;
-        Log.i(TAG, "Wine UDEV: " + (udev ? "ada" : "tidak ada / tak terdeteksi") + " (" + winePath + ") -> evdev "
-            + (forceEvdev ? "dipaksa aktif" : "mengikuti setting"));
-        configureLaunch(container, shortcut);
-    }
-
-    /** -1 belum diketahui, 0 Wine tanpa UDEV, 1 Wine dengan UDEV. */
-    public static int udevState() { return udevState; }
-
-    /**
-     * true hanya bila SEMUA winebus.so di runtime memuat "libudev"; tanpa itu winebus mencetak
-     * "UDEV support not compiled in!" dan tidak pernah mengenumerasi hidraw.
-     */
-    public static boolean wineHasUdev(String winePath) {
-        if (winePath == null || winePath.isEmpty()) return false;
-        synchronized (UDEV_CACHE) {
-            Boolean cached = UDEV_CACHE.get(winePath);
-            if (cached != null) return cached;
-        }
-        java.util.List<File> found = new java.util.ArrayList<>();
-        collect(new File(winePath), "winebus.so", 7, found);
-        boolean all = !found.isEmpty();
-        for (File f : found) if (!fileContains(f, "libudev")) { all = false; break; }
-        synchronized (UDEV_CACHE) { UDEV_CACHE.put(winePath, all); }
-        return all;
-    }
-
-    private static void collect(File dir, String name, int depth, java.util.List<File> out) {
-        File[] kids = dir.listFiles();
-        if (kids == null) return;
-        for (File k : kids) {
-            if (k.isDirectory()) { if (depth > 0) collect(k, name, depth - 1, out); }
-            else if (k.getName().equals(name)) out.add(k);
-        }
-    }
-
-    private static boolean fileContains(File f, String needle) {
-        byte[] pat = needle.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-        byte[] buf = new byte[1 << 16];
-        int keep = pat.length - 1, have = 0;
-        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
-            int n;
-            while ((n = in.read(buf, have, buf.length - have)) > 0) {
-                int total = have + n;
-                for (int i = 0; i + pat.length <= total; i++) {
-                    int j = 0;
-                    while (j < pat.length && buf[i + j] == pat[j]) j++;
-                    if (j == pat.length) return true;
-                }
-                have = Math.min(keep, total);
-                System.arraycopy(buf, total - have, buf, 0, have);
-            }
-        } catch (IOException e) {
-            return false;
-        }
-        return false;
+        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true);
     }
 
     /** Pad Deck diminta untuk sesi ini (hasil configureLaunch). */
@@ -189,17 +121,6 @@ public final class DDDeck implements SensorEventListener {
                 buildSysfs();
                 publish();
             }
-            // DroidDeck-bp: file penghitung status yang ditulis libfakeinput (dibaca layar uji)
-            File statusFile = new File(base, "status.bin");
-            if (statusMap == null) {
-                try (RandomAccessFile sraf = new RandomAccessFile(statusFile, "rw")) {
-                    sraf.setLength(64);
-                    statusMap = sraf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, 64);
-                }
-                statusMap.order(ByteOrder.LITTLE_ENDIAN);
-                for (int i = 0; i < 16; i++) statusMap.putInt(i * 4, 0);
-            }
-            env.put("FAKE_DECK_STATUS", statusFile.getAbsolutePath());
             env.put("FAKE_EVDEV_DECK", "1");
             env.put("FAKE_DECK_STATE", state.getAbsolutePath());
             env.put("FAKE_DECK_SYSFS_DIR", root.getAbsolutePath());
@@ -381,78 +302,6 @@ public final class DDDeck implements SensorEventListener {
         }
         publish();
     }
-
-    // ---- DroidDeck-bp: data untuk layar uji ----
-
-    /** Salinan keadaan pad Deck saat ini (unit laporan: stik/pad/trigger/gyro dalam hitungan mentah). */
-    public static final class Snapshot {
-        public int low, high;
-        public final short[] sticks = new short[4], trig = new short[2], pads = new short[4],
-            pressure = new short[2], accel = new short[3], gyro = new short[3];
-    }
-
-    public static Snapshot snapshot() {
-        Snapshot s = new Snapshot();
-        synchronized (DDDeck.class) {
-            s.low = padLow | extraLow;
-            s.high = extraHigh;
-            System.arraycopy(sticks, 0, s.sticks, 0, 4);
-            System.arraycopy(trig, 0, s.trig, 0, 2);
-            System.arraycopy(pads, 0, s.pads, 0, 4);
-            System.arraycopy(pressure, 0, s.pressure, 0, 2);
-            System.arraycopy(accel, 0, s.accel, 0, 3);
-            System.arraycopy(gyro, 0, s.gyro, 0, 3);
-        }
-        return s;
-    }
-
-    private static void put16(byte[] r, int at, int v) { r[at] = (byte) v; r[at + 1] = (byte) (v >> 8); }
-    private static void put32(byte[] r, int at, int v) { for (int i = 0; i < 4; i++) r[at + i] = (byte) (v >> (8 * i)); }
-
-    /** Laporan input 64-byte yang dibaca klien dari /dev/hidraw16 (tata letak sama dengan libfakeinput). */
-    public static byte[] buildReport(int packet) {
-        Snapshot s = snapshot();
-        byte[] r = new byte[64];
-        r[0] = 0x01;
-        r[2] = 0x09;
-        r[3] = 64;
-        put32(r, 4, packet);
-        put32(r, 8, s.low);
-        put32(r, 12, s.high);
-        for (int i = 0; i < 4; i++) put16(r, 16 + i * 2, s.pads[i]);
-        for (int i = 0; i < 3; i++) { put16(r, 24 + i * 2, s.accel[i]); put16(r, 30 + i * 2, s.gyro[i]); }
-        put16(r, 44, s.trig[0]);
-        put16(r, 46, s.trig[1]);
-        for (int i = 0; i < 4; i++) put16(r, 48 + i * 2, s.sticks[i]);
-        put16(r, 56, s.pressure[0]);
-        put16(r, 58, s.pressure[1]);
-        return r;
-    }
-
-    public static final int ST_SYSFS = 1, ST_OPEN = 2, ST_CLOSE = 3, ST_FSET = 4, ST_FGET = 5, ST_UNHANDLED = 6,
-        ST_REPORTS = 7, ST_LASTFEATURE = 8;
-
-    /** Penghitung dari libfakeinput; -1 bila file status belum disiapkan. */
-    public static int status(int index) {
-        MappedByteBuffer m = statusMap;
-        return m == null ? -1 : m.getInt(index * 4);
-    }
-
-    public static boolean hasStatus() { return statusMap != null; }
-
-    public static void resetStatus() {
-        MappedByteBuffer m = statusMap;
-        if (m != null) for (int i = 0; i < 16; i++) m.putInt(i * 4, 0);
-    }
-
-    /** Pohon sysfs Deck sudah ada di disk (dibuat prepare()). */
-    public static boolean sysfsReady() {
-        return root != null && new File(root, "sys/class/hidraw/" + NODE).exists();
-    }
-
-    public static boolean stateReady() { return map != null; }
-    public static boolean motionRunning() { return INSTANCE.thread != null; }
-    // ---- end DroidDeck-bp ----
 
     // --------------------------------------------------------------- motion
 

@@ -349,8 +349,6 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
             }
 
             SettingsCard {
-                DDActionRow("Controller Test") { safe { DDController.openControllerTest() } }  // DroidDeck-bp
-                SettingsDivider()
                 DDActionRow("Edit layout") { safe { DDController.panelEditLayout() } }
                 SettingsDivider()
                 DDActionRow("Reset layout") { safe { DDController.panelResetLayout() }; DDSidebarPanel.bump() }

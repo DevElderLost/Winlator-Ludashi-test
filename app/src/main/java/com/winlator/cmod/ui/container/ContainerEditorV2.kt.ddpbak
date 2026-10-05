@@ -1062,11 +1062,6 @@ private fun ContainerCategoryV2(
                 SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_CONTAINER) { s.ddDeck = it }
                 SettingsDivider()
                 SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_CONTAINER) { s.ddDeckEvdev = it }
-                SettingsDivider()  // DroidDeck-bp
-                TextButton(
-                    onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Controller Test (Big Picture style)") }
             }
         }
 
@@ -1225,6 +1220,6 @@ private val DD_DECK_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
 private val DD_DECK_EVDEV_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
     "" to "Default (On)",
     "1" to "On",
-    "0" to "Off (hidraw only; dipaksa On bila Wine tanpa UDEV)"
+    "0" to "Off (hidraw only)"
 )
 // ---- end DroidDeck-deck ----

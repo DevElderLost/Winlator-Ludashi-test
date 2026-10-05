@@ -52,10 +52,6 @@ public final class DDDeck implements SensorEventListener {
     public static final String EXTRA_EVDEV = "droiddeckDeckEvdev";
     private static volatile boolean wanted = false;
     private static volatile boolean alsoEvdev = true;
-    // DroidDeck-fix: evdev dipaksa aktif sampai terbukti Wine punya UDEV (hidraw hanya terbaca bila ada UDEV)
-    private static volatile boolean forceEvdev = true;
-    private static volatile int udevState = -1;  // -1 belum diketahui, 0 tanpa UDEV, 1 ada UDEV
-    private static final java.util.Map<String, Boolean> UDEV_CACHE = new java.util.HashMap<>();
     private static volatile boolean sessionActive = false;
 
     private static final DDDeck INSTANCE = new DDDeck();
@@ -96,70 +92,7 @@ public final class DDDeck implements SensorEventListener {
     /** Dibaca dari pengaturan game/container; aman dipanggil berulang dan dari urutan mana pun. */
     public static void configureLaunch(Container container, Shortcut shortcut) {
         wanted = resolve(extra(shortcut, container, EXTRA_DECK, true), extra(shortcut, container, EXTRA_DECK, false), false);
-        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true)
-            || forceEvdev;  // DroidDeck-fix
-    }
-
-    /** Versi dengan jalur runtime Wine: memutuskan apakah pilihan "hidraw only" boleh dihormati. */
-    public static void configureLaunch(Container container, Shortcut shortcut, String winePath) {
-        boolean udev = wineHasUdev(winePath);
-        udevState = udev ? 1 : 0;
-        forceEvdev = !udev;
-        Log.i(TAG, "Wine UDEV: " + (udev ? "ada" : "tidak ada / tak terdeteksi") + " (" + winePath + ") -> evdev "
-            + (forceEvdev ? "dipaksa aktif" : "mengikuti setting"));
-        configureLaunch(container, shortcut);
-    }
-
-    /** -1 belum diketahui, 0 Wine tanpa UDEV, 1 Wine dengan UDEV. */
-    public static int udevState() { return udevState; }
-
-    /**
-     * true hanya bila SEMUA winebus.so di runtime memuat "libudev"; tanpa itu winebus mencetak
-     * "UDEV support not compiled in!" dan tidak pernah mengenumerasi hidraw.
-     */
-    public static boolean wineHasUdev(String winePath) {
-        if (winePath == null || winePath.isEmpty()) return false;
-        synchronized (UDEV_CACHE) {
-            Boolean cached = UDEV_CACHE.get(winePath);
-            if (cached != null) return cached;
-        }
-        java.util.List<File> found = new java.util.ArrayList<>();
-        collect(new File(winePath), "winebus.so", 7, found);
-        boolean all = !found.isEmpty();
-        for (File f : found) if (!fileContains(f, "libudev")) { all = false; break; }
-        synchronized (UDEV_CACHE) { UDEV_CACHE.put(winePath, all); }
-        return all;
-    }
-
-    private static void collect(File dir, String name, int depth, java.util.List<File> out) {
-        File[] kids = dir.listFiles();
-        if (kids == null) return;
-        for (File k : kids) {
-            if (k.isDirectory()) { if (depth > 0) collect(k, name, depth - 1, out); }
-            else if (k.getName().equals(name)) out.add(k);
-        }
-    }
-
-    private static boolean fileContains(File f, String needle) {
-        byte[] pat = needle.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-        byte[] buf = new byte[1 << 16];
-        int keep = pat.length - 1, have = 0;
-        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
-            int n;
-            while ((n = in.read(buf, have, buf.length - have)) > 0) {
-                int total = have + n;
-                for (int i = 0; i + pat.length <= total; i++) {
-                    int j = 0;
-                    while (j < pat.length && buf[i + j] == pat[j]) j++;
-                    if (j == pat.length) return true;
-                }
-                have = Math.min(keep, total);
-                System.arraycopy(buf, total - have, buf, 0, have);
-            }
-        } catch (IOException e) {
-            return false;
-        }
-        return false;
+        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true);
     }
 
     /** Pad Deck diminta untuk sesi ini (hasil configureLaunch). */

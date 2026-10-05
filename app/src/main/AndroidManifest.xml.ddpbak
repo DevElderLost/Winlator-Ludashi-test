@@ -136,12 +136,5 @@
 
         <meta-data android:name="com.samsung.android.multidisplay.keep_process_alive" android:value="false"/>
         <meta-data android:name="android.allow_multiple_resumed_activities" android:value="true" />
-        <activity
-            android:name="com.winlator.cmod.droiddeck.DDControllerTestActivity"
-            android:theme="@style/AppThemeFullscreen"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
-            android:exported="false" /> <!-- DroidDeck-bp -->
-
     </application>
 </manifest>

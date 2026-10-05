@@ -126,7 +126,9 @@ public final class DDDeck implements SensorEventListener {
         java.util.List<File> found = new java.util.ArrayList<>();
         collect(new File(winePath), "winebus.so", 7, found);
         boolean all = !found.isEmpty();
-        for (File f : found) if (!fileContains(f, "libudev")) { all = false; break; }
+        // Build glibc memuat "libudev" (dlopen). Build NDK (winebus-test) men-link libudev-zero statis sehingga
+        // string itu tidak ada; di sana pertanda UDEV aktif adalah TIDAKnya pesan "not compiled in" (hanya ada di cabang #else).
+        for (File f : found) if (!fileContains(f, "libudev") && fileContains(f, "UDEV support not compiled in")) { all = false; break; }
         synchronized (UDEV_CACHE) { UDEV_CACHE.put(winePath, all); }
         return all;
     }

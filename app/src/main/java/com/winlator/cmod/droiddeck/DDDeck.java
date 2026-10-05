@@ -200,9 +200,14 @@ public final class DDDeck implements SensorEventListener {
                 for (int i = 0; i < 16; i++) statusMap.putInt(i * 4, 0);
             }
             env.put("FAKE_DECK_STATUS", statusFile.getAbsolutePath());
+            File devDir = new File(base, "devdir");  // pengganti /dev yang ditolak SELinux (opendir/inotify)
+            devDir.mkdirs();
             env.put("FAKE_EVDEV_DECK", "1");
             env.put("FAKE_DECK_STATE", state.getAbsolutePath());
             env.put("FAKE_DECK_SYSFS_DIR", root.getAbsolutePath());
+            env.put("FAKE_DECK_DEVDIR", devDir.getAbsolutePath());
+            // winebus (Proton) membuang hidraw yang tidak ada di allowlist -> "deferring to a different backend"
+            env.put("PROTON_ENABLE_HIDRAW", "0x28de/0x1205");
         } catch (Exception e) {
             Log.w(TAG, "Deck pad tidak bisa disiapkan: " + e);
             env.clear();

@@ -567,12 +567,40 @@ static int deck_scandir_inject(struct dirent ***namelist, int count, int (*filte
     return count + 1;
 }
 
+// Folder kosong pengganti /dev. Di Android (SELinux untrusted_app) opendir("/dev") dan
+// inotify_add_watch("/dev") ditolak EACCES, sehingga winebus ("Unable to open /dev: Permission
+// denied") tidak pernah melihat hidraw16 walau node-nya disuntikkan ke listing.
+static const char *deck_dev_fallback() {
+    static std::string path;
+    static std::once_flag once;
+    std::call_once(once, []() {
+        const char *dir = deck_env("FAKE_DECK_DEVDIR");
+        if (dir) {
+            path = dir;
+        } else if (const char *root = deck_env("FAKE_DECK_SYSFS_DIR")) {
+            path = std::string(root) + "/../devdir";
+        }
+        if (!path.empty()) syscall(SYS_mkdirat, AT_FDCWD, path.c_str(), 0755);
+    });
+    return path.empty() ? nullptr : path.c_str();
+}
+
+static bool deck_dev_denied() { return errno == EACCES || errno == EPERM || errno == ENOENT; }
+
 EXPORT DIR *opendir(const char *name) {
     static auto real = reinterpret_cast<DIR *(*)(const char *)>(dlsym(RTLD_NEXT, "opendir"));
     std::string redirected;
     if (deck_redirect(name, redirected)) name = redirected.c_str();
+    const bool dev_dir = deck_enabled() && deck_is_dev_dir(name);
     DIR *d = real(name);
-    if (d && deck_enabled() && deck_is_dev_dir(name)) deck_dev_track(d);
+    if (!d && dev_dir && deck_dev_denied()) {
+        if (const char *fallback = deck_dev_fallback()) {
+            d = real(fallback);
+            static std::atomic<bool> noted{false};
+            if (d && !noted.exchange(true)) Logger::log("deck: opendir(/dev) denied, using %s\n", fallback);
+        }
+    }
+    if (d && dev_dir) deck_dev_track(d);
     return d;
 }
 
@@ -1006,7 +1034,16 @@ EXPORT int inotify_add_watch(int fd, const char *pathname, uint32_t mask) {
     	}
     }
 
-    return my_inotify_add_watch(fd, pathname, mask);
+    int watch = my_inotify_add_watch(fd, pathname, mask);
+    if (watch < 0 && pathname && deck_enabled() && deck_is_dev_dir(pathname) && deck_dev_denied()) {
+        // winebus: create_inotify() memantau /dev untuk hidraw baru; arahkan ke folder pengganti.
+        if (const char *fallback = deck_dev_fallback()) {
+            watch = my_inotify_add_watch(fd, fallback, mask);
+            static std::atomic<bool> noted{false};
+            if (watch >= 0 && !noted.exchange(true)) Logger::log("deck: inotify(/dev) denied, watching %s\n", fallback);
+        }
+    }
+    return watch;
 }
 
 EXPORT int ioctl(int fd, int op, ...) {

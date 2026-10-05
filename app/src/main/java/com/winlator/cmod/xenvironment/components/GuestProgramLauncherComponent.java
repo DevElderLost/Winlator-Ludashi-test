@@ -448,7 +448,13 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         com.winlator.cmod.droiddeck.DDDeck.configureLaunch(container, shortcut, wineInfo != null ? wineInfo.path : null);  // DroidDeck-fix
         if (com.winlator.cmod.droiddeck.DDDeck.isWanted()) {
             for (java.util.Map.Entry<String, String> deckEnv : com.winlator.cmod.droiddeck.DDDeck.prepare(environment.getContext()).entrySet()) {
-                execEnvVars.put(deckEnv.getKey(), deckEnv.getValue());
+                String key = deckEnv.getKey(), value = deckEnv.getValue();
+                if ("PROTON_ENABLE_HIDRAW".equals(key)) {
+                    String existing = execEnvVars.get(key);  // daftar vid/pid dari pengguna tidak ditimpa
+                    if (existing != null && !existing.isEmpty() && !existing.toLowerCase().contains(value)) value = existing + "," + value;
+                    else if (existing != null && existing.toLowerCase().contains(value)) value = existing;
+                }
+                execEnvVars.put(key, value);
             }
         }
 

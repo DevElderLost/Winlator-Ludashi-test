@@ -623,6 +623,13 @@ static bool deck_dev_denied() { return errno == EACCES || errno == EPERM || errn
 EXPORT DIR *opendir(const char *name) {
     static auto real = reinterpret_cast<DIR *(*)(const char *)>(dlsym(RTLD_NEXT, "opendir"));
     std::string redirected;
+    // DroidDeck-devinput: winebus (direct mode) memakai opendir("/dev/input"); di Android ditolak EACCES.
+    // Samakan dengan scandir/open/inotify: arahkan ke folder node evdev palsu.
+    if (name && hook_dir && (!strcmp(name, "/dev/input") || !strcmp(name, "/dev/input/"))) {
+        static std::atomic<bool> noted{false};
+        if (!noted.exchange(true)) Logger::log("deck: opendir(/dev/input) -> %s\n", hook_dir);
+        name = hook_dir;
+    }
     if (deck_redirect(name, redirected)) name = redirected.c_str();
     const bool dev_dir = deck_enabled() && deck_is_dev_dir(name);
     DIR *d = real(name);

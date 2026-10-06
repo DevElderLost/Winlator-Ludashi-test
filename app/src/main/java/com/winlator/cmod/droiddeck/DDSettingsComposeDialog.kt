@@ -219,6 +219,28 @@ private fun DDSettingsPanel(activity: Activity, onClose: () -> Unit, onEditLayou
                 )
 
                 HorizontalDivider()
+                SectionTitle("Sensitivity")
+                Text("Stick sensitivity", style = MaterialTheme.typography.labelLarge)
+                ChoiceRow(
+                    options = DDPrefs.SENSITIVITIES.map { "$it%" },
+                    selectedIndex = DDPrefs.SENSITIVITIES.indexOf(s.stickSens),
+                    onSelect = { i ->
+                        DDPrefs.setStickSens(activity, DDPrefs.SENSITIVITIES[i])
+                        refresh()
+                    }
+                )
+
+                Text("Trackpad sensitivity (mouse)", style = MaterialTheme.typography.labelLarge)
+                ChoiceRow(
+                    options = DDPrefs.SENSITIVITIES.map { "$it%" },
+                    selectedIndex = DDPrefs.SENSITIVITIES.indexOf(s.padSens),
+                    onSelect = { i ->
+                        DDPrefs.setPadSens(activity, DDPrefs.SENSITIVITIES[i])
+                        refresh()
+                    }
+                )
+
+                HorizontalDivider()
                 SectionTitle("Behaviour")
                 SwitchRow(
                     title = "Double-tap stick = L3/R3 click",

@@ -19,6 +19,7 @@ public final class DDPrefs {
     };
     public static final int[] OPACITIES = {40, 60, 80, 100};
     public static final int[] SIZES = {80, 90, 100, 110, 125};
+    public static final int[] SENSITIVITIES = {50, 75, 100, 125, 150, 200};  // persen; 100 = bawaan
 
     public static final String[] MAPPABLE_IDS = {"a", "b", "x", "y", "lb", "rb", "lt", "rt", "select", "start", "guide"};
     public static final String[] MAPPABLE_NAMES = {
@@ -35,7 +36,7 @@ public final class DDPrefs {
     };
 
     public static final class Settings {
-        public int tint, opacity, size;
+        public int tint, opacity, size, stickSens = 100, padSens = 100;
         public boolean stickClick, adaptiveSticks;
         public final Map<String, String> mapping = new HashMap<>();
     }
@@ -62,6 +63,10 @@ public final class DDPrefs {
         s.opacity = has(OPACITIES, op) ? op : 100;
         int sz = sp.getInt("size", 100);
         s.size = has(SIZES, sz) ? sz : 100;
+        int ss = sp.getInt("stickSens", 100);
+        s.stickSens = has(SENSITIVITIES, ss) ? ss : 100;
+        int ps = sp.getInt("padSens", 100);
+        s.padSens = has(SENSITIVITIES, ps) ? ps : 100;
         s.stickClick = sp.getBoolean("stickClick", true);
         s.adaptiveSticks = sp.getBoolean("adaptiveSticks", true);
         for (String id : MAPPABLE_IDS) s.mapping.put(id, target(c, id));
@@ -86,6 +91,8 @@ public final class DDPrefs {
     public static void setTint(Context c, int tint) { p(c).edit().putInt("tint", tint).apply(); }
     public static void setOpacity(Context c, int v) { p(c).edit().putInt("opacity", v).apply(); }
     public static void setSize(Context c, int v) { p(c).edit().putInt("size", v).apply(); }
+    public static void setStickSens(Context c, int v) { p(c).edit().putInt("stickSens", v).apply(); }
+    public static void setPadSens(Context c, int v) { p(c).edit().putInt("padSens", v).apply(); }
     public static void setStickClick(Context c, boolean on) { p(c).edit().putBoolean("stickClick", on).apply(); }
     public static void setAdaptiveSticks(Context c, boolean on) { p(c).edit().putBoolean("adaptiveSticks", on).apply(); }
 

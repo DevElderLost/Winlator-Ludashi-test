@@ -210,6 +210,8 @@ public final class DDDeck implements SensorEventListener {
             env.put("FAKE_DECK_DEVDIR", devDir.getAbsolutePath());
             // winebus (Proton) membuang hidraw yang tidak ada di allowlist -> "deferring to a different backend"
             env.put("PROTON_ENABLE_HIDRAW", "0x28de/0x1205");
+            // Game berbasis SDL (>= 2.28): driver HIDAPI Steam Deck membaca hidraw sendiri (gyro, trackpad, L4/R4/L5/R5)
+            env.put("SDL_JOYSTICK_HIDAPI_STEAMDECK", "1");
         } catch (Exception e) {
             Log.w(TAG, "Deck pad tidak bisa disiapkan: " + e);
             env.clear();
@@ -357,6 +359,32 @@ public final class DDDeck implements SensorEventListener {
         publish();
     }
 
+    /** Pendengar trackpad untuk jalur evdev (dipasang DDController): meniru pemetaan bawaan Steam Deck tanpa klien Steam. */
+    public interface PadListener {
+        void onPad(boolean right, boolean touching, float x, float y);
+        void onClick(boolean right, boolean down);
+    }
+
+    private static volatile PadListener padListener;
+
+    public static void setPadListener(PadListener l) { padListener = l; }
+
+    /** Wine sudah membuka /dev/hidraw16 (penghitung ST_OPEN dari libfakeinput; direset tiap peluncuran). */
+    public static boolean isHidrawDetected() { return status(ST_OPEN) > 0; }
+
+    /**
+     * Ada klien native (driver SDL Steam Deck, Steam, dsb.) yang mengirim feature report ke pad Deck, yaitu
+     * "lizard mode" dimatikan dan klien itu yang memegang pad. Penghitung ST_FSET naik hanya untuk SET feature.
+     */
+    public static boolean isHidrawClientActive() { return status(ST_FSET) > 0; }
+
+    /**
+     * evdev aktif bila dipilih/dipaksa, atau selama hidraw belum terdeteksi, agar pad tidak diam-diam mati.
+     * Begitu klien native memegang pad Deck, evdev (dan pemetaan trackpad ke mouse/D-pad) dimatikan supaya
+     * game tidak menerima input ganda, seperti Steam yang menyembunyikan pad fisik saat Steam Input aktif.
+     */
+    public static boolean isEvdevActive() { return !isHidrawClientActive() && (alsoEvdev || !isHidrawDetected()); }
+
     /** Jari di (atau lepas dari) satu trackpad pada x, y dalam -1..1, y ke atas. */
     public static void setPad(boolean right, boolean touching, float x, float y) {
         synchronized (DDDeck.class) {
@@ -367,6 +395,8 @@ public final class DDDeck implements SensorEventListener {
             pads[at + 1] = touching ? axis(y) : 0;
         }
         publish();
+        PadListener l = padListener;
+        if (l != null) l.onPad(right, touching, x, y);
     }
 
     public static void setClick(boolean right, boolean down) {
@@ -376,6 +406,8 @@ public final class DDDeck implements SensorEventListener {
             pressure[right ? 1 : 0] = down ? Short.MAX_VALUE : 0;
         }
         publish();
+        PadListener l = padListener;
+        if (l != null) l.onClick(right, down);
     }
 
     public static void releaseAll() {
@@ -387,6 +419,13 @@ public final class DDDeck implements SensorEventListener {
             java.util.Arrays.fill(pressure, (short) 0);
         }
         publish();
+        PadListener l = padListener;
+        if (l != null) {
+            l.onPad(false, false, 0f, 0f);
+            l.onPad(true, false, 0f, 0f);
+            l.onClick(false, false);
+            l.onClick(true, false);
+        }
     }
 
     // ---- DroidDeck-bp: data untuk layar uji ----

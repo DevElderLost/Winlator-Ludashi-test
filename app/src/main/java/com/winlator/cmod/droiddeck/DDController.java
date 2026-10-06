@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.Color;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,6 +18,7 @@ import android.widget.TextView;
 import com.winlator.cmod.R;
 import com.winlator.cmod.inputcontrols.GamepadState;
 import com.winlator.cmod.winhandler.WinHandler;
+import com.winlator.cmod.xserver.Pointer;
 import com.winlator.cmod.xserver.XKeycode;
 import com.winlator.cmod.xserver.XServer;
 
@@ -142,9 +145,10 @@ public final class DDController {
             // DroidDeck-deck: mode pad Deck menulis file state; evdev tetap dikirim bila dipilih
             if (DDDeck.isSessionActive()) {
                 DDDeck.updatePad(state);
-                if (!DDDeck.isAlsoEvdev()) return;
+                if (!DDDeck.isEvdevActive()) return;
             }
-            if (wh != null) wh.sendDroidDeckGamepadState(state);
+            padBase.copy(state);  // simpan agar D-pad trackpad bisa digabung
+            if (wh != null) wh.sendDroidDeckGamepadState(withPadDpad());
         }
 
         // Tombol Steam: hotkey overlay Steam (Shift+Tab). Hanya terkirim bila ada window yang menerima.
@@ -404,15 +408,105 @@ public final class DDController {
     }
     // ---- end DD-SIDEBAR-FIX ----
 
+    // ---- DroidDeck-evdev: trackpad Deck di jalur evdev ----
+    // Pemetaan bawaan Steam Deck: trackpad kanan = mouse (klik pad = klik kiri); trackpad kiri = D-pad,
+    // arah dipilih dari posisi jari saat pad diklik ("D-Pad requires click"). Hanya aktif saat evdev aktif;
+    // pada jalur hidraw murni, Steam yang menangani trackpad.
+    private static final float PAD_MOUSE_PX = 450f;   // piksel kursor per satuan pad (-1..1) pada sensitivitas 100%
+    private static final float PAD_DPAD_DEAD = 0.30f; // klik di tengah pad tidak menekan arah apa pun
+    private static final long PAD_DPAD_HOLD_MS = 80L;
+    private static final Handler padHandler = new Handler(Looper.getMainLooper());
+    private static final GamepadState padBase = new GamepadState();
+    private static final GamepadState padOut = new GamepadState();
+    private static final boolean[] padDpad = new boolean[4];  // atas, kanan, bawah, kiri (urutan GamepadState.dpad)
+    private static boolean mouseTouching, mouseLeftDown;
+    private static float mouseLastX, mouseLastY, mouseRemX, mouseRemY, padGain = 1f, leftPadX, leftPadY;
+    private static final Runnable releaseDpad = () -> {
+        java.util.Arrays.fill(padDpad, false);
+        pushPadState();
+    };
+
+    private static GamepadState withPadDpad() {
+        padOut.copy(padBase);
+        for (int i = 0; i < 4; i++) if (padDpad[i]) padOut.dpad[i] = true;
+        return padOut;
+    }
+
+    private static void pushPadState() {
+        WinHandler wh = winHandler();
+        if (wh != null && DDDeck.isEvdevActive()) wh.sendDroidDeckGamepadState(withPadDpad());
+    }
+
+    private static void moveMouse(boolean touching, float x, float y) {
+        if (!touching) { mouseTouching = false; mouseRemX = 0f; mouseRemY = 0f; return; }
+        if (!mouseTouching) {  // jari baru menyentuh: titik awal + sensitivitas terkini dari pengaturan
+            mouseTouching = true;
+            mouseLastX = x; mouseLastY = y;
+            mouseRemX = 0f; mouseRemY = 0f;
+            if (activity != null) padGain = DDPrefs.read(activity).padSens / 100f;
+            return;
+        }
+        mouseRemX += (x - mouseLastX) * PAD_MOUSE_PX * padGain;
+        mouseRemY += -(y - mouseLastY) * PAD_MOUSE_PX * padGain;  // y pad ke atas, layar ke bawah
+        mouseLastX = x; mouseLastY = y;
+        int dx = (int) mouseRemX, dy = (int) mouseRemY;
+        if (dx == 0 && dy == 0) return;
+        mouseRemX -= dx; mouseRemY -= dy;
+        if (xServer != null) xServer.injectPointerMoveDelta(dx, dy);
+    }
+
+    private static void clickMouse(boolean down) {
+        if (xServer == null || mouseLeftDown == down) return;
+        mouseLeftDown = down;
+        if (down) xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
+        else xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+    }
+
+    private static void clickDpad(boolean down) {
+        if (!down) return;  // dilepas oleh timer agar tekanan cukup lama terbaca game
+        if (Math.hypot(leftPadX, leftPadY) < PAD_DPAD_DEAD) return;
+        int dir;
+        if (Math.abs(leftPadX) >= Math.abs(leftPadY)) dir = leftPadX > 0f ? 1 : 3;
+        else dir = leftPadY > 0f ? 0 : 2;
+        padHandler.removeCallbacks(releaseDpad);
+        java.util.Arrays.fill(padDpad, false);
+        padDpad[dir] = true;
+        pushPadState();
+        padHandler.postDelayed(releaseDpad, PAD_DPAD_HOLD_MS);
+    }
+
+    private static void stopEvdevPad() {
+        padHandler.removeCallbacks(releaseDpad);
+        java.util.Arrays.fill(padDpad, false);
+        mouseTouching = false;
+        if (mouseLeftDown) clickMouse(false);
+    }
+
+    private static final DDDeck.PadListener evdevPadListener = new DDDeck.PadListener() {
+        @Override public void onPad(boolean right, boolean touching, float x, float y) {
+            if (!DDDeck.isEvdevActive()) { stopEvdevPad(); return; }
+            if (right) moveMouse(touching, x, y);
+            else if (touching) { leftPadX = x; leftPadY = y; }
+        }
+
+        @Override public void onClick(boolean right, boolean down) {
+            if (!DDDeck.isEvdevActive()) return;
+            if (right) clickMouse(down); else clickDpad(down);
+        }
+    };
+
     // DroidDeck-deck
     private static DDDeckControlsView deckView;
 
     private static void attachDeck(Activity act, FrameLayout rootView) {
         deckView = null;
         DDDeck.setSessionActive(false);
+        DDDeck.setPadListener(null);
+        stopEvdevPad();
         if (!DDDeck.isWanted()) return;
         if (DDDeck.prepare(act).isEmpty()) return;  // gagal menyiapkan: tetap pakai jalur biasa
         DDDeck.setSessionActive(true);
+        DDDeck.setPadListener(evdevPadListener);
         deckView = new DDDeckControlsView(act, DDPrefs.read(act).tint);
         rootView.addView(deckView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         final Activity a = act;

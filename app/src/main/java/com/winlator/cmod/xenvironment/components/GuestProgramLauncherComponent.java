@@ -449,6 +449,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (com.winlator.cmod.droiddeck.DDDeck.isWanted()) {
             for (java.util.Map.Entry<String, String> deckEnv : com.winlator.cmod.droiddeck.DDDeck.prepare(environment.getContext()).entrySet()) {
                 String key = deckEnv.getKey(), value = deckEnv.getValue();
+                if (key.startsWith("SDL_")) {  // hint SDL yang sudah diatur pengguna tidak ditimpa
+                    String current = execEnvVars.get(key);
+                    if (current != null && !current.isEmpty()) continue;
+                }
                 if ("PROTON_ENABLE_HIDRAW".equals(key)) {
                     String existing = execEnvVars.get(key);  // daftar vid/pid dari pengguna tidak ditimpa
                     if (existing != null && !existing.isEmpty() && !existing.toLowerCase().contains(value)) value = existing + "," + value;
@@ -456,6 +460,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 }
                 execEnvVars.put(key, value);
             }
+            com.winlator.cmod.droiddeck.DDDeck.resetStatus();  // ST_OPEN dihitung dari nol untuk peluncuran ini
         }
 
         Log.d("GuestLauncher", "Final LD_PRELOAD: " + ld_preload);

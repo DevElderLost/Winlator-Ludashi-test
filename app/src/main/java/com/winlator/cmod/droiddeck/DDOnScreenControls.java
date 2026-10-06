@@ -660,6 +660,12 @@ public class DDOnScreenControls extends View {
         return true;
     }
 
+    /** Sensitivitas stik dari pengaturan: >100% mencapai defleksi penuh lebih cepat, <100% membatasi keluaran. */
+    private float sens(float v) {
+        float g = settings != null ? settings.stickSens / 100f : 1f;
+        return Math.max(-1f, Math.min(1f, v * g));
+    }
+
     private void apply() {
         if (sink == null || editing) { invalidate(); return; }
         Set<String> used = new HashSet<>();
@@ -670,8 +676,8 @@ public class DDOnScreenControls extends View {
                 if (settings.stickClick) used.add(click);
                 if (c.clicked) held.add(click);
                 if (!c.dirty) continue;
-                if (c.stick == 0) { state.thumbLX = c.kx / c.radius; state.thumbLY = c.ky / c.radius; }
-                else { state.thumbRX = c.kx / c.radius; state.thumbRY = c.ky / c.radius; }
+                if (c.stick == 0) { state.thumbLX = sens(c.kx / c.radius); state.thumbLY = sens(c.ky / c.radius); }
+                else { state.thumbRX = sens(c.kx / c.radius); state.thumbRY = sens(c.ky / c.radius); }
                 c.dirty = false;
             } else if (DDPrefs.OFF.equals(c.target)) {
                 // tersembunyi

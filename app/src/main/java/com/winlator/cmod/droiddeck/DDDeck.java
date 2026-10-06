@@ -47,13 +47,12 @@ public final class DDDeck implements SensorEventListener {
     // Mode ditentukan di Setting Container / Setting Shortcut (menu Input), bukan di sidebar in-game:
     //   extra "droiddeckDeck"      : "" = ikut container / default (mati), "1" = nyala, "0" = mati
     //   extra "droiddeckDeckEvdev" : "" = ikut container / default (nyala), "1" = nyala, "0" = hanya hidraw
+    //                                "0" TIDAK PERNAH dipaksa jadi nyala, walau hidraw tidak jalan (Wine tanpa UDEV / belum dibuka)
     // Shortcut mengalahkan container; container mengalahkan default.
     public static final String EXTRA_DECK = "droiddeckDeck";
     public static final String EXTRA_EVDEV = "droiddeckDeckEvdev";
     private static volatile boolean wanted = false;
     private static volatile boolean alsoEvdev = true;
-    // DroidDeck-fix: evdev dipaksa aktif sampai terbukti Wine punya UDEV (hidraw hanya terbaca bila ada UDEV)
-    private static volatile boolean forceEvdev = true;
     private static volatile int udevState = -1;  // -1 belum diketahui, 0 tanpa UDEV, 1 ada UDEV
     private static final java.util.Map<String, Boolean> UDEV_CACHE = new java.util.HashMap<>();
     private static volatile boolean sessionActive = false;
@@ -96,19 +95,20 @@ public final class DDDeck implements SensorEventListener {
     /** Dibaca dari pengaturan game/container; aman dipanggil berulang dan dari urutan mana pun. */
     public static void configureLaunch(Container container, Shortcut shortcut) {
         wanted = resolve(extra(shortcut, container, EXTRA_DECK, true), extra(shortcut, container, EXTRA_DECK, false), false);
-        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true)
-            || forceEvdev;  // DroidDeck-fix
+        // Off ("0") dihormati apa adanya: tidak ada lagi pemaksaan evdev bila hidraw tidak jalan.
+        alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true);
         DDSteamClient.configure(container, shortcut);  // DroidDeck-steam
     }
 
-    /** Versi dengan jalur runtime Wine: memutuskan apakah pilihan "hidraw only" boleh dihormati. */
+    /** Versi dengan jalur runtime Wine: mencatat apakah Wine punya UDEV (hanya info; tidak lagi memaksa evdev). */
     public static void configureLaunch(Container container, Shortcut shortcut, String winePath) {
         boolean udev = wineHasUdev(winePath);
         udevState = udev ? 1 : 0;
-        forceEvdev = !udev;
-        Log.i(TAG, "Wine UDEV: " + (udev ? "ada" : "tidak ada / tak terdeteksi") + " (" + winePath + ") -> evdev "
-            + (forceEvdev ? "dipaksa aktif" : "mengikuti setting"));
         configureLaunch(container, shortcut);
+        Log.i(TAG, "Wine UDEV: " + (udev ? "ada" : "tidak ada / tak terdeteksi") + " (" + winePath + ") -> evdev mengikuti setting ("
+            + (alsoEvdev ? "On" : "Off") + ")");
+        if (!udev && wanted && !alsoEvdev)
+            Log.w(TAG, "evdev Off dan Wine tanpa UDEV: hidraw tidak akan terlihat, pad Deck tidak mengirim input ke game");
     }
 
     /** -1 belum diketahui, 0 Wine tanpa UDEV, 1 Wine dengan UDEV. */
@@ -381,13 +381,14 @@ public final class DDDeck implements SensorEventListener {
     public static boolean isHidrawClientActive() { return status(ST_FSET) > 0; }
 
     /**
-     * evdev aktif bila dipilih/dipaksa, atau selama hidraw belum terdeteksi, agar pad tidak diam-diam mati.
+     * evdev aktif hanya bila dipilih (On / default). Bila pengguna memilih Off, evdev tidak dipaksa menyala
+     * walau hidraw belum terdeteksi atau tidak jalan (pengecualian: klien Steam virtual, lihat di bawah).
      * Begitu klien native memegang pad Deck, evdev (dan pemetaan trackpad ke mouse/D-pad) dimatikan supaya
      * game tidak menerima input ganda, seperti Steam yang menyembunyikan pad fisik saat Steam Input aktif.
      */
     public static boolean isEvdevActive() {
         // DroidDeck-steam: klien Steam virtual memakai jalur pad XInput ini sebagai keluarannya
-        return !isHidrawClientActive() && (alsoEvdev || !isHidrawDetected() || DDSteamClient.isEnabled());
+        return !isHidrawClientActive() && (alsoEvdev || DDSteamClient.isEnabled());
     }
 
     /** Jari di (atau lepas dari) satu trackpad pada x, y dalam -1..1, y ke atas. */

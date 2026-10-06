@@ -492,7 +492,9 @@ public class DDControllerTestView extends View {
         String verdict;
         int color;
         if (udev == 0) {
-            verdict = "Runtime Wine ini dibangun tanpa UDEV, jadi hidraw tidak akan pernah ditemukan. Game membaca pad lewat evdev (dipaksa aktif otomatis); fitur khas Deck (trackpad, grip, gyro) belum bisa dibaca game.";
+            verdict = DDDeck.isAlsoEvdev()
+                ? "Runtime Wine ini dibangun tanpa UDEV, jadi hidraw tidak akan pernah ditemukan. Game membaca pad lewat evdev; fitur khas Deck (trackpad, grip, gyro) belum bisa dibaca game."
+                : "Runtime Wine ini dibangun tanpa UDEV, jadi hidraw tidak akan pernah ditemukan, dan evdev di-Off (tidak dipaksa). Game tidak menerima input dari pad ini.";
             color = 0xFFFFC107;
         } else if (sysfs <= 0 && open <= 0) {
             verdict = "Belum ada proses guest yang mencari hidraw. Pastikan Steam Deck Pad = On dan klien Steam sudah berjalan. Jika sudah dan tetap 0, Wine tidak mengenumerasi hidraw (butuh libudev/patch winebus).";

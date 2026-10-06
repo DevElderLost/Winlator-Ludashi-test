@@ -1561,7 +1561,7 @@ private val DD_DECK_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
 private val DD_DECK_EVDEV_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
     "" to "Use container setting",
     "1" to "On",
-    "0" to "Off (hidraw only; dipaksa On bila Wine tanpa UDEV)"
+    "0" to "Off (hidraw only; tidak dipaksa On walau hidraw tidak jalan)"
 )
 // ---- end DroidDeck-deck ----
 

@@ -155,7 +155,11 @@ public final class DDController {
         @Override public void onGuide(boolean down) {
             if (xServer == null) return;
             // DroidDeck-deck: pada mode pad Deck, Guide adalah tombol Steam
-            if (DDDeck.isSessionActive()) { DDDeck.setGuide(down); return; }
+            if (DDDeck.isSessionActive()) {
+                DDDeck.setGuide(down);
+                // DroidDeck-steam: klien Steam virtual memegang pad -> tombol Steam membuka overlay (Shift+Tab)
+                if (!(DDSteamClient.isActive() && DDSteamClient.steamOverlayHotkey())) return;
+            }
             if (down) {
                 xServer.injectKeyPress(XKeycode.KEY_SHIFT_L);
                 xServer.injectKeyPress(XKeycode.KEY_TAB);
@@ -429,6 +433,7 @@ public final class DDController {
     private static GamepadState withPadDpad() {
         padOut.copy(padBase);
         for (int i = 0; i < 4; i++) if (padDpad[i]) padOut.dpad[i] = true;
+        DDSteamClient.overlay(padOut);  // DroidDeck-steam
         return padOut;
     }
 
@@ -495,6 +500,40 @@ public final class DDController {
         }
     };
 
+    // DroidDeck-steam: keluaran klien Steam virtual (thread sensor/UI -> thread utama, digabung agar tidak membanjiri)
+    private static final java.util.concurrent.atomic.AtomicBoolean steamPushQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean steamMouseQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicInteger steamDx = new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger steamDy = new java.util.concurrent.atomic.AtomicInteger();
+
+    private static final DDSteamClient.Host steamHost = new DDSteamClient.Host() {
+        @Override public void pushPad() {
+            if (steamPushQueued.compareAndSet(false, true)) padHandler.post(() -> {
+                steamPushQueued.set(false);
+                pushPadState();
+            });
+        }
+
+        @Override public void mouseDelta(int dx, int dy) {
+            steamDx.addAndGet(dx);
+            steamDy.addAndGet(dy);
+            if (steamMouseQueued.compareAndSet(false, true)) padHandler.post(() -> {
+                steamMouseQueued.set(false);
+                int x = steamDx.getAndSet(0), y = steamDy.getAndSet(0);
+                if ((x != 0 || y != 0) && xServer != null) xServer.injectPointerMoveDelta(x, y);
+            });
+        }
+
+        @Override public void mouseButton(final int which, final boolean down) {
+            padHandler.post(() -> {
+                if (xServer == null) return;
+                Pointer.Button b = which == 2 ? Pointer.Button.BUTTON_RIGHT
+                    : which == 3 ? Pointer.Button.BUTTON_MIDDLE : Pointer.Button.BUTTON_LEFT;
+                if (down) xServer.injectPointerButtonPress(b); else xServer.injectPointerButtonRelease(b);
+            });
+        }
+    };
+
     // DroidDeck-deck
     private static DDDeckControlsView deckView;
 
@@ -502,11 +541,13 @@ public final class DDController {
         deckView = null;
         DDDeck.setSessionActive(false);
         DDDeck.setPadListener(null);
+        DDSteamClient.setHost(null);  // DroidDeck-steam
         stopEvdevPad();
         if (!DDDeck.isWanted()) return;
         if (DDDeck.prepare(act).isEmpty()) return;  // gagal menyiapkan: tetap pakai jalur biasa
         DDDeck.setSessionActive(true);
         DDDeck.setPadListener(evdevPadListener);
+        DDSteamClient.setHost(steamHost);  // DroidDeck-steam
         deckView = new DDDeckControlsView(act, DDPrefs.read(act).tint);
         rootView.addView(deckView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         final Activity a = act;

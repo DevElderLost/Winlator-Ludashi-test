@@ -98,6 +98,7 @@ public final class DDDeck implements SensorEventListener {
         wanted = resolve(extra(shortcut, container, EXTRA_DECK, true), extra(shortcut, container, EXTRA_DECK, false), false);
         alsoEvdev = resolve(extra(shortcut, container, EXTRA_EVDEV, true), extra(shortcut, container, EXTRA_EVDEV, false), true)
             || forceEvdev;  // DroidDeck-fix
+        DDSteamClient.configure(container, shortcut);  // DroidDeck-steam
     }
 
     /** Versi dengan jalur runtime Wine: memutuskan apakah pilihan "hidraw only" boleh dihormati. */
@@ -347,7 +348,7 @@ public final class DDDeck implements SensorEventListener {
     }
 
     public static void setGuide(boolean down) { synchronized (DDDeck.class) { extraLow = down ? (extraLow | L_STEAM) : (extraLow & ~L_STEAM); } publish(); }
-    public static void setQam(boolean down) { synchronized (DDDeck.class) { extraHigh = down ? (extraHigh | H_QAM) : (extraHigh & ~H_QAM); } publish(); }
+    public static void setQam(boolean down) { synchronized (DDDeck.class) { extraHigh = down ? (extraHigh | H_QAM) : (extraHigh & ~H_QAM); } publish(); DDSteamClient.onDeckChanged(); }
 
     public static void setGrip(int grip, boolean down) {
         synchronized (DDDeck.class) {
@@ -357,6 +358,7 @@ public final class DDDeck implements SensorEventListener {
             else if (grip == GRIP_R5) extraLow = down ? (extraLow | L_R5) : (extraLow & ~L_R5);
         }
         publish();
+        DDSteamClient.onDeckChanged();  // DroidDeck-steam
     }
 
     /** Pendengar trackpad untuk jalur evdev (dipasang DDController): meniru pemetaan bawaan Steam Deck tanpa klien Steam. */
@@ -383,7 +385,10 @@ public final class DDDeck implements SensorEventListener {
      * Begitu klien native memegang pad Deck, evdev (dan pemetaan trackpad ke mouse/D-pad) dimatikan supaya
      * game tidak menerima input ganda, seperti Steam yang menyembunyikan pad fisik saat Steam Input aktif.
      */
-    public static boolean isEvdevActive() { return !isHidrawClientActive() && (alsoEvdev || !isHidrawDetected()); }
+    public static boolean isEvdevActive() {
+        // DroidDeck-steam: klien Steam virtual memakai jalur pad XInput ini sebagai keluarannya
+        return !isHidrawClientActive() && (alsoEvdev || !isHidrawDetected() || DDSteamClient.isEnabled());
+    }
 
     /** Jari di (atau lepas dari) satu trackpad pada x, y dalam -1..1, y ke atas. */
     public static void setPad(boolean right, boolean touching, float x, float y) {
@@ -395,6 +400,7 @@ public final class DDDeck implements SensorEventListener {
             pads[at + 1] = touching ? axis(y) : 0;
         }
         publish();
+        DDSteamClient.onDeckChanged();  // DroidDeck-steam: sentuhan trackpad kanan mengaktifkan gyro
         PadListener l = padListener;
         if (l != null) l.onPad(right, touching, x, y);
     }
@@ -419,6 +425,7 @@ public final class DDDeck implements SensorEventListener {
             java.util.Arrays.fill(pressure, (short) 0);
         }
         publish();
+        DDSteamClient.onDeckChanged();  // DroidDeck-steam
         PadListener l = padListener;
         if (l != null) {
             l.onPad(false, false, 0f, 0f);
@@ -555,12 +562,15 @@ public final class DDDeck implements SensorEventListener {
         } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             target = accel; scale = 16384f / SensorManager.GRAVITY_EARTH;
         } else return;
+        short gyroPitch = 0, gyroYaw = 0;
         synchronized (DDDeck.class) {   // bingkai layar (kanan, atas, ke pemain) -> Deck (kanan, menjauh, atas)
             target[0] = counts(x * scale);
             target[1] = counts(-z * scale);
             target[2] = counts(y * scale);
+            if (target == gyro) { gyroPitch = gyro[0]; gyroYaw = gyro[2]; }
         }
         publish();
+        if (target == gyro) DDSteamClient.onGyro(gyroPitch, gyroYaw, event.timestamp);  // DroidDeck-steam
     }
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {}

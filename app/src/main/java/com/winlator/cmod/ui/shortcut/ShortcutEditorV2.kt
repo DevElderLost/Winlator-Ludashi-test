@@ -239,6 +239,8 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
     var ddUi by mutableStateOf(shortcut.getExtra("droiddeckUi", ""))  // DD-UI-SELECT
     var ddDeck by mutableStateOf(shortcut.getExtra("droiddeckDeck", ""))  // DroidDeck-deck
     var ddDeckEvdev by mutableStateOf(shortcut.getExtra("droiddeckDeckEvdev", ""))  // DroidDeck-deck
+    var ddSteam by mutableStateOf(shortcut.getExtra("droiddeckSteam", ""))  // DroidDeck-steam
+    var ddGrips by mutableStateOf(shortcut.getExtra("droiddeckGrips", ""))  // DroidDeck-steam
     var fullscreen by mutableStateOf(shortcut.getExtra("fullscreenStretched", "0") == "1")
     private var inputType by mutableIntStateOf(shortcut.getExtra("inputType", container.getInputType().toString()).toIntOrNull() ?: container.getInputType())
     var exclusive by mutableStateOf(shortcut.getExtra("exclusiveXInput").let { if (it.isBlank()) container.isExclusiveXInput() else it == "1" })
@@ -1195,6 +1197,10 @@ private fun ShortcutCategoryV2(
                 SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_SHORTCUT) { s.ddDeck = it; s.extra("droiddeckDeck", it.ifBlank { null }) }
                 SettingsDivider()
                 SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_SHORTCUT) { s.ddDeckEvdev = it; s.extra("droiddeckDeckEvdev", it.ifBlank { null }) }
+                SettingsDivider()  // DroidDeck-steam
+                SettingMappedChoice("Deck Pad: virtual Steam client", s.ddSteam, DD_STEAM_CHOICES_SHORTCUT) { s.ddSteam = it; s.extra("droiddeckSteam", it.ifBlank { null }) }
+                SettingsDivider()
+                SettingMappedChoice("Deck Pad: back buttons L4/R4/L5/R5", s.ddGrips, DD_GRIPS_CHOICES_SHORTCUT) { s.ddGrips = it; s.extra("droiddeckGrips", it.ifBlank { null }) }
                 SettingsDivider()  // DroidDeck-bp
                 TextButton(
                     onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
@@ -1558,3 +1564,21 @@ private val DD_DECK_EVDEV_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
     "0" to "Off (hidraw only; dipaksa On bila Wine tanpa UDEV)"
 )
 // ---- end DroidDeck-deck ----
+
+// ---- DroidDeck-steam ----
+private val DD_STEAM_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
+    "" to "Use container setting",
+    "0" to "Off",
+    "1" to "On, gyro off",
+    "2" to "On, gyro -> mouse while right pad touched",
+    "3" to "On, gyro -> mouse always",
+    "4" to "On, gyro -> right stick while right pad touched",
+    "5" to "On, gyro -> right stick always"
+)
+private val DD_GRIPS_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
+    "" to "Use container setting",
+    "1" to "L4=X  R4=A  L5=Y  R5=B",
+    "2" to "L4=L3  R4=R3  L5=LB  R5=RB",
+    "3" to "L4=Back  R4=Start  L5=L3  R5=R3"
+)
+// ---- end DroidDeck-steam ----

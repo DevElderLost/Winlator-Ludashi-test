@@ -382,13 +382,14 @@ public final class DDDeck implements SensorEventListener {
 
     /**
      * evdev aktif hanya bila dipilih (On / default). Bila pengguna memilih Off, evdev tidak dipaksa menyala
-     * walau hidraw belum terdeteksi atau tidak jalan (pengecualian: klien Steam virtual, lihat di bawah).
+     * oleh apa pun: bukan karena hidraw belum terdeteksi/tidak jalan, bukan pula oleh klien Steam virtual.
      * Begitu klien native memegang pad Deck, evdev (dan pemetaan trackpad ke mouse/D-pad) dimatikan supaya
      * game tidak menerima input ganda, seperti Steam yang menyembunyikan pad fisik saat Steam Input aktif.
      */
     public static boolean isEvdevActive() {
-        // DroidDeck-steam: klien Steam virtual memakai jalur pad XInput ini sebagai keluarannya
-        return !isHidrawClientActive() && (alsoEvdev || DDSteamClient.isEnabled());
+        // Off dihormati mutlak. Akibatnya keluaran klien Steam virtual (gyro/trackpad -> mouse/stick) yang lewat
+        // jalur pad XInput ini tidak tersalurkan selama evdev Off.
+        return !isHidrawClientActive() && alsoEvdev;
     }
 
     /** Jari di (atau lepas dari) satu trackpad pada x, y dalam -1..1, y ke atas. */

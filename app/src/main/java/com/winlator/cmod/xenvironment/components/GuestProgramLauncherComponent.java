@@ -446,6 +446,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         execEnvVars.put("FAKE_EVDEV_VIBRATION", "1");
         // DroidDeck-deck: pad Steam Deck (hidraw) bila diminta di Setting Container/Shortcut
         com.winlator.cmod.droiddeck.DDDeck.configureLaunch(container, shortcut, wineInfo != null ? wineInfo.path : null);  // DroidDeck-fix
+        // evdev Off + Deck Pad On: /dev/input di Wine = folder ini, jadi tanpa event0 Wine tidak membuat pad evdev sama sekali (hidraw saja)
+        if (com.winlator.cmod.droiddeck.DDDeck.isWanted() && !com.winlator.cmod.droiddeck.DDDeck.isAlsoEvdev()) {
+            if (event0.exists() && !event0.delete()) Log.w("GuestLauncher", "event0 tidak bisa dihapus; pad evdev tetap terlihat oleh Wine");
+        }
         if (com.winlator.cmod.droiddeck.DDDeck.isWanted()) {
             for (java.util.Map.Entry<String, String> deckEnv : com.winlator.cmod.droiddeck.DDDeck.prepare(environment.getContext()).entrySet()) {
                 String key = deckEnv.getKey(), value = deckEnv.getValue();

@@ -111,6 +111,7 @@ public final class DDSteamClient {
         envSens = clean(env.get("DD_GYRO_SENS"));
         envSteamBtn = clean(env.get("DD_STEAM_BTN"));
         DDDeck.applyLaunchEnv(clean(env.get("DD_ACCEL")), clean(env.get("DD_GYRO")));  // DD_ACCEL=0 / DD_GYRO=0: sensor mati
+        DDDeck.setLatLog(clean(env.get("DD_LATLOG")));  // DD_LATLOG=1: log latensi (tag DDLAT)
         envGrip[0] = clean(env.get("DD_GRIP_L4"));
         envGrip[1] = clean(env.get("DD_GRIP_R4"));
         envGrip[2] = clean(env.get("DD_GRIP_L5"));

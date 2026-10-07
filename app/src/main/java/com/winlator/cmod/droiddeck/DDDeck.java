@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.system.Os;
 import android.util.Log;
 import android.view.Surface;
@@ -355,7 +356,20 @@ public final class DDDeck implements SensorEventListener {
             trig[1] = (short) (Math.max(0f, Math.min(1f, s.triggerR)) * 32767f);
         }
         publish();
+        if (latLog) {
+            int now = low;
+            if (now != lastLatLow) {   // hanya saat tombol berubah; cap waktu dinding ikut dari logcat
+                lastLatLow = now;
+                Log.i("DDLAT", "publish low=0x" + Integer.toHexString(now) + " up=" + SystemClock.uptimeMillis());
+            }
+        }
     }
+
+    // ---- pengukuran latensi (env DD_LATLOG=1): tag logcat "DDLAT" ----
+    private static volatile boolean latLog = false;
+    private static int lastLatLow = -1;
+    public static boolean latLogOn() { return latLog; }
+    public static void setLatLog(String v) { latLog = v != null && (v.trim().equals("1") || v.trim().equalsIgnoreCase("on")); }
 
     public static void setGuide(boolean down) { synchronized (DDDeck.class) { extraLow = down ? (extraLow | L_STEAM) : (extraLow & ~L_STEAM); } publish(); }
     public static void setQam(boolean down) { synchronized (DDDeck.class) { extraHigh = down ? (extraHigh | H_QAM) : (extraHigh & ~H_QAM); } publish(); DDSteamClient.onDeckChanged(); }

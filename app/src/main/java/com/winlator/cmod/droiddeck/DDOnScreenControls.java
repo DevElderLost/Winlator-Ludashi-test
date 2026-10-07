@@ -10,6 +10,8 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Build;
+import android.os.SystemClock;
+import android.util.Log;
 import android.util.DisplayMetrics;
 import android.view.DisplayCutout;
 import android.view.MotionEvent;
@@ -546,6 +548,15 @@ public class DDOnScreenControls extends View {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (editing) return onEditTouch(event);
+        if (DDDeck.latLogOn()) {
+            int am = event.getActionMasked();
+            if (am == MotionEvent.ACTION_DOWN || am == MotionEvent.ACTION_POINTER_DOWN
+                    || am == MotionEvent.ACTION_UP || am == MotionEvent.ACTION_POINTER_UP) {
+                // umur = lama event menunggu sebelum UI thread memprosesnya (sentuhan -> onTouchEvent)
+                Log.i("DDLAT", "touch act=" + am + " age_ms=" + (SystemClock.uptimeMillis() - event.getEventTime())
+                        + " up=" + SystemClock.uptimeMillis());
+            }
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN: {

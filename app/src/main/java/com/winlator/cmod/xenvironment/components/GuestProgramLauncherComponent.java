@@ -481,7 +481,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (this.envVars != null) {
             execEnvVars.putAll(this.envVars);
         }
-        com.winlator.cmod.droiddeck.DDSteamClient.applyLaunchEnv(execEnvVars);  // DroidDeck-steam
+        com.winlator.cmod.droiddeck.DDDeck.applyLaunchEnv(execEnvVars);
 
         boolean useDisplayX = shortcut != null
                 ? shortcut.getUseDisplayX()

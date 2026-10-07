@@ -225,8 +225,6 @@ private class ContainerEditorStateV2(
     var ddUi by mutableStateOf(editing?.getExtra("droiddeckUi", "") ?: "")  // DD-UI-SELECT
     var ddDeck by mutableStateOf(editing?.getExtra("droiddeckDeck", "") ?: "")  // DroidDeck-deck
     var ddDeckEvdev by mutableStateOf(editing?.getExtra("droiddeckDeckEvdev", "") ?: "")  // DroidDeck-deck
-    var ddSteam by mutableStateOf(editing?.getExtra("droiddeckSteam", "") ?: "")  // DroidDeck-steam
-    var ddGrips by mutableStateOf(editing?.getExtra("droiddeckGrips", "") ?: "")  // DroidDeck-steam
     var exclusive by mutableStateOf(editing?.isExclusiveXInput ?: true)
     var xinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0 } ?: true)
     var dinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()) != 0 } ?: false)
@@ -320,7 +318,7 @@ private class ContainerEditorStateV2(
         renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXBackPressure,
         displayXPrecisePresentation, graphicsDriver, graphicsConfig,
-        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev, ddSteam, ddGrips,
+        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
         syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
@@ -496,8 +494,6 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.putExtra("droiddeckUi", state.ddUi.ifBlank { null })  // DD-UI-SELECT
         container.putExtra("droiddeckDeck", state.ddDeck.ifBlank { null })  // DroidDeck-deck
         container.putExtra("droiddeckDeckEvdev", state.ddDeckEvdev.ifBlank { null })  // DroidDeck-deck
-        container.putExtra("droiddeckSteam", state.ddSteam.ifBlank { null })  // DroidDeck-steam
-        container.putExtra("droiddeckGrips", state.ddGrips.ifBlank { null })  // DroidDeck-steam
         container.saveData()
         applyMouseWarp(container)
     }
@@ -569,9 +565,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
                     .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
                     .put("droiddeckDeck", state.ddDeck)  // DroidDeck-deck
-                    .put("droiddeckDeckEvdev", state.ddDeckEvdev)
-                    .put("droiddeckSteam", state.ddSteam)  // DroidDeck-steam
-                    .put("droiddeckGrips", state.ddGrips))  // DroidDeck-steam
+                    .put("droiddeckDeckEvdev", state.ddDeckEvdev))
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
@@ -1068,10 +1062,6 @@ private fun ContainerCategoryV2(
                 SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_CONTAINER) { s.ddDeck = it }
                 SettingsDivider()
                 SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_CONTAINER) { s.ddDeckEvdev = it }
-                SettingsDivider()  // DroidDeck-steam
-                SettingMappedChoice("Deck Pad: virtual Steam client", s.ddSteam, DD_STEAM_CHOICES_CONTAINER) { s.ddSteam = it }
-                SettingsDivider()
-                SettingMappedChoice("Deck Pad: back buttons L4/R4/L5/R5", s.ddGrips, DD_GRIPS_CHOICES_CONTAINER) { s.ddGrips = it }
                 SettingsDivider()  // DroidDeck-bp
                 TextButton(
                     onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
@@ -1238,21 +1228,3 @@ private val DD_DECK_EVDEV_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
     "0" to "Off (hidraw only; tidak dipaksa On walau hidraw tidak jalan)"
 )
 // ---- end DroidDeck-deck ----
-
-// ---- DroidDeck-steam ----
-private val DD_STEAM_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (On, gyro -> right stick while right pad touched)",
-    "0" to "Off",
-    "1" to "On, gyro off",
-    "2" to "On, gyro -> mouse while right pad touched",
-    "3" to "On, gyro -> mouse always",
-    "4" to "On, gyro -> right stick while right pad touched",
-    "5" to "On, gyro -> right stick always"
-)
-private val DD_GRIPS_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (unmapped)",
-    "1" to "L4=X  R4=A  L5=Y  R5=B",
-    "2" to "L4=L3  R4=R3  L5=LB  R5=RB",
-    "3" to "L4=Back  R4=Start  L5=L3  R5=R3"
-)
-// ---- end DroidDeck-steam ----

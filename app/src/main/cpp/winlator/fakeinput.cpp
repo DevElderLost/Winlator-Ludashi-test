@@ -173,7 +173,9 @@ int get_event_number(const char *event) {
 static constexpr const char *DECK_NODE = "/dev/hidraw16";
 static constexpr unsigned DECK_MAJOR = 240, DECK_MINOR = 16;
 static constexpr int DECK_REPORT_BYTES = 64;
-static constexpr int DECK_INTERVAL_US = 4000;
+static constexpr int DECK_INTERVAL_US = 4000;       // jarak minimum antar laporan yang hanya berisi perubahan sensor (250 Hz)
+static constexpr int DECK_POLL_US_DEFAULT = 1000;   // seberapa sering state dicek (env FAKE_DECK_POLL_US, 250..8000)
+static constexpr int DECK_IDLE_US_DEFAULT = 40000;  // laporan penjaga saat tidak ada perubahan (env FAKE_DECK_IDLE_US, 4000..1000000)
 static constexpr const char *DECK_NAME = "Valve Software Steam Deck Controller";
 static constexpr const char *DECK_SERIAL = "DROIDDECK0001";
 static constexpr uint32_t DECK_STATE_MAGIC = 0x31534B44;  // "DKS1"
@@ -199,7 +201,7 @@ static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std:
 // berjalan, tetapi deck_enabled()=0 ketika winebus memanggil opendir(/dev): environ proses Wine tidak
 // bisa dipercaya setelah startup, jadi nilai awal itulah yang dipakai.
 static const char *const DECK_ENV_NAMES[] = {"FAKE_EVDEV_DECK", "FAKE_DECK_STATE", "FAKE_DECK_SYSFS_DIR",
-                                              "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS"};
+                                              "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS", "FAKE_DECK_POLL_US", "FAKE_DECK_IDLE_US"};
 static constexpr int DECK_ENV_COUNT = sizeof(DECK_ENV_NAMES) / sizeof(DECK_ENV_NAMES[0]);
 static char *deck_env_snapshot[DECK_ENV_COUNT];
 static bool deck_env_snapped = false;
@@ -265,9 +267,8 @@ static inline uint32_t deck_get32(const uint8_t *at) { return at[0] | (at[1] << 
 //   0 u32 magic | 8 u64 seq (ganjil = sedang ditulis) | 16 u32 tombol rendah | 20 u32 tombol tinggi
 //   24 i16 pad[4] (kiri X,Y kanan X,Y) | 32 i16 stik[4] (LX,LY,RX,RY; Y ke atas) | 40 u16 trigger[2]
 //   44 u16 tekanan pad[2] | 48 i16 accel[3] | 54 i16 gyro[3]
-static void deck_build_report(const uint8_t *state, uint8_t *report, uint32_t packet) {
-    uint8_t s[DECK_STATE_SIZE];
-    // Snapshot konsisten terakhir. Hanya dipakai satu thread laporan per DeckFd, jadi thread_local aman.
+// Snapshot konsisten terakhir dari file state (seqlock). Hanya dipakai satu thread laporan per DeckFd, jadi thread_local aman.
+static void deck_snapshot(const uint8_t *state, uint8_t *s) {
     static thread_local uint8_t last_good[DECK_STATE_SIZE];
     static thread_local bool have_last = false;
     bool have = false;
@@ -286,13 +287,22 @@ static void deck_build_report(const uint8_t *state, uint8_t *report, uint32_t pa
         else sched_yield();
     }
     if (have && deck_get32(s) == DECK_STATE_MAGIC) {
-        memcpy(last_good, s, sizeof(s));
+        memcpy(last_good, s, DECK_STATE_SIZE);
         have_last = true;
     } else if (!have && have_last) {
-        memcpy(s, last_good, sizeof(s));
+        memcpy(s, last_good, DECK_STATE_SIZE);
     } else {
-        memset(s, 0, sizeof(s));
+        memset(s, 0, DECK_STATE_SIZE);
     }
+}
+
+// Laporan state Deck (SDL controller_structs.h: ValveInReportHeader_t + SteamDeckStatePacket_t) dari snapshot state.
+// Tata letak file state (little endian):
+//   0 u32 magic | 8 u64 seq (ganjil = sedang ditulis) | 16 u32 tombol rendah | 20 u32 tombol tinggi
+//   24 i16 pad[4] (kiri X,Y kanan X,Y) | 32 i16 stik[4] (LX,LY,RX,RY; Y ke atas) | 40 u16 trigger[2]
+//   44 u16 tekanan pad[2] | 48 i16 accel[3] | 54 i16 gyro[3]
+// Byte 16..47 = masukan pemain (tombol, pad, stik, trigger); byte 48..59 = sensor gerak.
+static void deck_fill_report(const uint8_t *s, uint8_t *report, uint32_t packet) {
     memset(report, 0, DECK_REPORT_BYTES);
     report[0] = 0x01;                 // versi laporan
     report[2] = 0x09;                 // ID_CONTROLLER_DECK_STATE
@@ -312,18 +322,58 @@ static void deck_build_report(const uint8_t *state, uint8_t *report, uint32_t pa
     deck_put16(report + 58, deck_get16(s + 46));  // tekanan pad kanan
 }
 
+static inline int64_t deck_now_us() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+static int deck_env_int(const char *name, int fallback, int lo, int hi) {
+    const char *v = deck_env(name);
+    if (!v || !*v) return fallback;
+    long n = strtol(v, nullptr, 10);
+    return (int)std::min<long>(hi, std::max<long>(lo, n));
+}
+
+// Thread laporan berbasis perubahan (bukan lagi tiap 4 ms buta):
+//  - masukan pemain (tombol/stik/trigger/pad) berubah -> dikirim secepatnya (paling lambat satu siklus cek = FAKE_DECK_POLL_US);
+//  - hanya sensor gerak yang berubah -> dikirim paling cepat tiap DECK_INTERVAL_US (250 Hz seperti Deck asli);
+//  - tidak ada perubahan -> laporan penjaga tiap FAKE_DECK_IDLE_US.
+// Alasan: pembaca di sisi Wine (SDL HIDAPI -> hidclass) hanya mengambil sekitar satu laporan per siklus update, sedangkan
+// antrean per-handle hidclass berisi 32..64 laporan, FIFO. Laju kirim 250 Hz yang konstan memenuhi antrean itu sehingga
+// laporan baru (tombol baru ditekan) menunggu di belakang puluhan laporan lama yang identik = delay input 100+ ms.
+// Dengan laju diam yang rendah antrean kosong saat tombol ditekan, jadi laporannya langsung terbaca.
+// Bila send() gagal EAGAIN (pembaca belum mengambil laporan sebelumnya) laporan TIDAK dihitung terkirim; siklus berikutnya
+// membangun ulang dari state terbaru, jadi yang sampai selalu yang paling baru, tidak pernah yang basi.
 static void *deck_report_thread(void *arg) {
     DeckFd *deck = static_cast<DeckFd *>(arg);
+    const int poll_us = deck_env_int("FAKE_DECK_POLL_US", DECK_POLL_US_DEFAULT, 250, 8000);
+    const int idle_us = deck_env_int("FAKE_DECK_IDLE_US", DECK_IDLE_US_DEFAULT, DECK_INTERVAL_US, 1000000);
     uint32_t packet = 0;
+    uint8_t sent[DECK_STATE_SIZE];
+    bool have_sent = false;
+    int64_t last_send = 0;
     for (;;) {
-        uint8_t report[DECK_REPORT_BYTES];
-        deck_build_report(deck->state, report, ++packet);
-        if ((packet & 63) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
-        // Pembaca yang tertinggal kehilangan laporan, bukan menerima yang basi; pembaca yang menutup mengakhiri aliran.
-        if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0 &&
-            errno != EAGAIN && errno != EWOULDBLOCK)
-            break;
-        struct timespec interval = {0, DECK_INTERVAL_US * 1000L};
+        uint8_t s[DECK_STATE_SIZE];
+        deck_snapshot(deck->state, s);
+        const int64_t now = deck_now_us();
+        const bool input_changed = !have_sent || memcmp(s + 16, sent + 16, 32) != 0;
+        const bool motion_changed = have_sent && memcmp(s + 48, sent + 48, 12) != 0;
+        if (input_changed || (motion_changed && now - last_send >= DECK_INTERVAL_US) || now - last_send >= idle_us) {
+            uint8_t report[DECK_REPORT_BYTES];
+            deck_fill_report(s, report, packet + 1);
+            // Pembaca yang menutup mengakhiri aliran; pembaca yang tertinggal membuat laporan ini dicoba lagi dengan state terbaru.
+            if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) break;
+            } else {
+                packet++;
+                memcpy(sent, s, sizeof(sent));
+                have_sent = true;
+                last_send = now;
+                if ((packet & 15) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
+            }
+        }
+        struct timespec interval = {0, poll_us * 1000L};
         nanosleep(&interval, nullptr);
     }
     syscall(SYS_close, deck->peer);

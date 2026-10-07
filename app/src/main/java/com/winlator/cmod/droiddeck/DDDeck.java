@@ -72,7 +72,17 @@ public final class DDDeck implements SensorEventListener {
     private static final short[] gyro = new short[3];
     private static long seq = 0;
 
+    // Env container DD_ACCEL=0 / DD_GYRO=0 mematikan sensor itu (tidak didaftarkan ke SensorManager; 250 Hz -> 0 sampel).
+    // Nilai accel di laporan diganti gravitasi tetap (HP datar, 1 g) agar game yang membaca orientasi tidak mendapat nol;
+    // gyro diganti nol (diam).
+    private static volatile boolean accelDisabled = false, gyroDisabled = false;
+    private static final short[] ACCEL_REST = {0, -16384, 0};
+
     private HandlerThread thread;
+    private SensorManager sensorManager;
+    private Sensor accelSensor, gyroSensor;
+    private Handler motionHandler;
+    private boolean accelRegistered = false, gyroRegistered = false;
     private volatile boolean active;
     private java.util.function.IntSupplier rotation = () -> Surface.ROTATION_0;
 
@@ -528,9 +538,51 @@ public final class DDDeck implements SensorEventListener {
         thread = new HandlerThread("dd-deck-motion", android.os.Process.THREAD_PRIORITY_DISPLAY);
         thread.start();
         Handler h = new Handler(thread.getLooper());
+        sensorManager = sm; accelSensor = a; gyroSensor = g; motionHandler = h;
         active = true;
-        if (g != null) sm.registerListener(this, g, 4000, h);
-        if (a != null) sm.registerListener(this, a, 4000, h);
+        syncSensors();
+    }
+
+    /** Daftarkan/lepas accelerometer dan gyro sesuai accelDisabled/gyroDisabled; aman dari thread mana pun, berulang kali. */
+    private synchronized void syncSensors() {
+        if (sensorManager == null || thread == null) return;
+        if (accelSensor != null) {
+            if (accelDisabled && accelRegistered) {
+                sensorManager.unregisterListener(this, accelSensor);
+                accelRegistered = false;
+            } else if (!accelDisabled && !accelRegistered) {
+                sensorManager.registerListener(this, accelSensor, 4000, motionHandler);
+                accelRegistered = true;
+            }
+        }
+        if (gyroSensor != null) {
+            if (gyroDisabled && gyroRegistered) {
+                sensorManager.unregisterListener(this, gyroSensor);
+                gyroRegistered = false;
+            } else if (!gyroDisabled && !gyroRegistered) {
+                sensorManager.registerListener(this, gyroSensor, 4000, motionHandler);
+                gyroRegistered = true;
+            }
+        }
+        if (accelDisabled || gyroDisabled) {
+            synchronized (DDDeck.class) {
+                if (accelDisabled) System.arraycopy(ACCEL_REST, 0, accel, 0, 3);
+                if (gyroDisabled) java.util.Arrays.fill(gyro, (short) 0);
+            }
+            publish();
+        }
+    }
+
+    private static boolean isOff(String v) {
+        String s = v == null ? "" : v.trim();
+        return s.equals("0") || s.equalsIgnoreCase("off") || s.equalsIgnoreCase("false");
+    }
+
+    /** Dipanggil dari DDSteamClient.applyLaunchEnv dengan nilai env DD_ACCEL dan DD_GYRO ("0"/"off"/"false" = matikan). */
+    public static void applyLaunchEnv(String accelValue, String gyroValue) {
+        accelDisabled = isOff(accelValue);
+        gyroDisabled = isOff(gyroValue);
+        INSTANCE.syncSensors();
     }
 
     private void stop() {
@@ -538,6 +590,8 @@ public final class DDDeck implements SensorEventListener {
         if (t == null) return;
         thread = null;
         active = false;
+        accelRegistered = false;
+        gyroRegistered = false;
         new Handler(t.getLooper()).post(() -> {
             synchronized (DDDeck.class) { java.util.Arrays.fill(gyro, (short) 0); }
             publish();
@@ -548,6 +602,8 @@ public final class DDDeck implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (!active) return;
+        int type = event.sensor.getType();
+        if ((accelDisabled && type == Sensor.TYPE_ACCELEROMETER) || (gyroDisabled && type == Sensor.TYPE_GYROSCOPE)) return;
         float[] v = event.values;
         float x, y;
         switch (rotation.getAsInt()) {

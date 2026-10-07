@@ -341,16 +341,22 @@ static int deck_env_int(const char *name, int fallback, int lo, int hi) {
     return (int)std::min<long>(hi, std::max<long>(lo, n));
 }
 
-// Thread laporan berbasis perubahan (bukan lagi tiap 4 ms buta):
-//  - masukan pemain (tombol/stik/trigger/pad) berubah -> dikirim secepatnya (paling lambat satu siklus cek = FAKE_DECK_POLL_US);
-//  - hanya sensor gerak yang berubah -> dikirim paling cepat tiap DECK_INTERVAL_US (250 Hz seperti Deck asli);
+// Thread laporan berbasis perubahan, DISINKRONKAN dengan pembaca (Wine: winebus -> hidclass -> SDL).
+//  - masukan pemain (tombol/stik/trigger/pad) berubah -> dikirim secepatnya;
+//  - hanya sensor gerak yang berubah -> dikirim paling cepat tiap FAKE_DECK_MOTION_US;
 //  - tidak ada perubahan -> laporan penjaga tiap FAKE_DECK_IDLE_US.
-// Alasan: pembaca di sisi Wine (SDL HIDAPI -> hidclass) hanya mengambil sekitar satu laporan per siklus update, sedangkan
-// antrean per-handle hidclass berisi 32..64 laporan, FIFO. Laju kirim 250 Hz yang konstan memenuhi antrean itu sehingga
-// laporan baru (tombol baru ditekan) menunggu di belakang puluhan laporan lama yang identik = delay input 100+ ms.
-// Dengan laju diam yang rendah antrean kosong saat tombol ditekan, jadi laporannya langsung terbaca.
-// Bila send() gagal EAGAIN (pembaca belum mengambil laporan sebelumnya) laporan TIDAK dihitung terkirim; siklus berikutnya
-// membangun ulang dari state terbaru, jadi yang sampai selalu yang paling baru, tidak pernah yang basi.
+// Akar masalah delay "kadang cepat, lalu lambat, tombol seperti masih ditekan": pengirim dan pembaca tidak sinkron.
+// Pengirim mengisi socket (beberapa laporan muat walau SO_SNDBUF kecil, karena kernel memakai batas minimum) dan antrean
+// hidclass dengan laporan yang sama persis (penjaga 40 ms + analog + sensor), sedangkan pembaca hanya mengambil satu laporan
+// per siklus dan selalu yang TERLAMA lebih dulu. Hasilnya laporan "lepas tombol" mengantre di belakang laporan "tombol
+// ditekan" yang basi. Sekarang:
+//  1. Paling banyak SATU laporan boleh menunggu di socket (diukur lewat SIOCOUTQ). Selama pembaca belum mengambilnya, laporan
+//     berikutnya DITAHAN dan dibangun ulang dari state terbaru, jadi yang sampai selalu yang paling baru.
+//  2. Perubahan tombol yang terjadi saat pembaca masih sibuk tidak digabung begitu saja: tiap perubahan dicatat di antrean
+//     tepi kecil dan dikirim berurutan (tekan lalu lepas), supaya ketukan singkat tidak hilang dan tidak ada tombol "nyangkut".
+static constexpr unsigned long DECK_SIOCOUTQ = 0x5411;  // = SIOCOUTQ = TIOCOUTQ
+static constexpr int DECK_EDGE_MAX = 8;
+
 static void *deck_report_thread(void *arg) {
     DeckFd *deck = static_cast<DeckFd *>(arg);
     const int poll_us = deck_env_int("FAKE_DECK_POLL_US", DECK_POLL_US_DEFAULT, 250, 8000);
@@ -358,12 +364,18 @@ static void *deck_report_thread(void *arg) {
     const int analog_us = deck_env_int("FAKE_DECK_ANALOG_US", DECK_ANALOG_US_DEFAULT, 1000, 50000);
     const int motion_us = deck_env_int("FAKE_DECK_MOTION_US", DECK_MOTION_US_DEFAULT, DECK_INTERVAL_US, 100000);
     uint32_t packet = 0;
-    uint32_t n_btn = 0, n_analog = 0, n_motion = 0, n_idle = 0, n_eagain = 0;  // hitungan per detik untuk log
+    uint32_t n_btn = 0, n_analog = 0, n_motion = 0, n_idle = 0, n_eagain = 0, n_hold = 0;  // hitungan per detik untuk log
     int64_t stat_t = 0;
     uint8_t sent[DECK_STATE_SIZE];
     bool have_sent = false;
+    bool outq_ok = true;          // false bila kernel tidak mendukung SIOCOUTQ pada socket ini (kembali ke perilaku EAGAIN)
     int64_t last_send = 0;
     int64_t last_activity = 0;
+    // Tepi tombol yang sudah teramati tetapi belum terkirim (8 byte: tombol rendah + tinggi), urut waktu.
+    uint8_t edges[DECK_EDGE_MAX][8];
+    int edge_n = 0;
+    uint8_t seen_btn[8];
+    bool have_seen = false;
     // Android memberi thread latar timer slack besar (bisa puluhan ms) sehingga nanosleep(1 ms) molor dan tekanan tombol
     // terlambat terbaca. Pasang slack minimum untuk thread ini saja.
     prctl(PR_SET_TIMERSLACK, 1000UL, 0, 0, 0);
@@ -371,44 +383,81 @@ static void *deck_report_thread(void *arg) {
         uint8_t s[DECK_STATE_SIZE];
         deck_snapshot(deck->state, s);
         const int64_t now = deck_now_us();
-        // Tombol berubah -> kirim segera. Analog (stik/trigger/pad) dan sensor gerak berubah terus saat dipakai, jadi dibatasi
-        // lajunya dan digabung (siklus berikutnya selalu membangun dari state terbaru). Tanpa batas ini setiap sampel
-        // sentuhan/sensor menjadi laporan sendiri; pembaca di Wine (winebus -> hidclass -> SDL) yang lebih lambat membuat
-        // laporan lama menumpuk dan tetap mengalir setelah jari dilepas sehingga input berikutnya ikut tertunda.
-        const bool button_changed = !have_sent || memcmp(s + 16, sent + 16, 8) != 0;
+        // Catat setiap perubahan tombol segera saat teramati, sekalipun pembaca masih sibuk.
+        if (!have_seen || memcmp(s + 16, seen_btn, 8) != 0) {
+            if (have_seen) {
+                if (edge_n == DECK_EDGE_MAX) {  // penuh (pembaca macet): buang yang tertua, yang terbaru tetap
+                    memmove(edges[0], edges[1], 8 * (DECK_EDGE_MAX - 1));
+                    edge_n--;
+                }
+                memcpy(edges[edge_n++], s + 16, 8);
+            }
+            memcpy(seen_btn, s + 16, 8);
+            have_seen = true;
+            last_activity = now;
+        }
+        // Berapa byte (truesize) masih menunggu dibaca pembaca; 0 = pembaca sudah mengambil semuanya.
+        int queued = 0;
+        bool reader_busy = false;
+        if (outq_ok) {
+            if (syscall(SYS_ioctl, deck->peer, DECK_SIOCOUTQ, &queued) < 0) outq_ok = false;
+            else reader_busy = queued > 0;
+        }
+        const bool first = !have_sent;
+        const bool button_pending = edge_n > 0 || first;
         const bool analog_changed = have_sent && memcmp(s + 24, sent + 24, 24) != 0;
         const bool motion_changed = have_sent && memcmp(s + 48, sent + 48, 12) != 0;
         const int64_t since = now - last_send;
         bool retry_fast = false;
-        if (button_changed || analog_changed) last_activity = now;
+        if (analog_changed) last_activity = now;
         const bool due_analog = analog_changed && since >= analog_us;
         const bool due_motion = motion_changed && since >= motion_us;
         const bool due_idle = since >= idle_us;
-        if (button_changed || due_analog || due_motion || due_idle) {
-            uint8_t report[DECK_REPORT_BYTES];
-            deck_fill_report(s, report, packet + 1);
-            // Pembaca yang menutup mengakhiri aliran; pembaca yang tertinggal membuat laporan ini dicoba lagi dengan state terbaru.
-            if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) break;
-                n_eagain++;
-                retry_fast = true;  // pembaca belum mengambil laporan lama: coba lagi segera dengan state terbaru
+        if (button_pending || due_analog || due_motion || due_idle) {
+            if (reader_busy) {
+                // Pembaca belum mengambil laporan sebelumnya: jangan menumpuk. Cek lagi sebentar lagi dengan state terbaru.
+                n_hold++;
+                retry_fast = true;
             } else {
-                packet++;
-                if (button_changed) n_btn++; else if (due_analog) n_analog++; else if (due_motion) n_motion++; else n_idle++;
-                memcpy(sent, s, sizeof(sent));
-                have_sent = true;
-                last_send = now;
-                if ((packet & 15) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
+                uint8_t report[DECK_REPORT_BYTES];
+                uint8_t out[DECK_STATE_SIZE];
+                memcpy(out, s, sizeof(out));
+                if (edge_n > 0) {  // kirim tepi tombol tertua; analog/sensor tetap dari state terbaru
+                    memcpy(out + 16, edges[0], 8);
+                }
+                deck_fill_report(out, report, packet + 1);
+                if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
+                    // Pembaca yang menutup mengakhiri aliran; EAGAIN = socket penuh, coba lagi dengan state terbaru.
+                    if (errno != EAGAIN && errno != EWOULDBLOCK) break;
+                    n_eagain++;
+                    retry_fast = true;
+                } else {
+                    packet++;
+                    if (edge_n > 0) {
+                        n_btn++;
+                        memmove(edges[0], edges[1], 8 * (DECK_EDGE_MAX - 1));
+                        edge_n--;
+                        if (edge_n > 0) retry_fast = true;  // masih ada tepi menunggu: kirim begitu pembaca mengambil yang ini
+                    } else if (first) n_btn++;
+                    else if (due_analog) n_analog++;
+                    else if (due_motion) n_motion++;
+                    else n_idle++;
+                    memcpy(sent, out, sizeof(sent));
+                    have_sent = true;
+                    last_send = now;
+                    if ((packet & 15) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
+                }
             }
         }
-        if (now - stat_t >= 1000000) {  // satu baris log per detik, hanya bila ada kiriman nyata atau EAGAIN
-            if (n_btn + n_analog + n_motion + n_eagain > 0)
-                Logger::log("deck: kirim/dtk tombol=%u analog=%u gerak=%u idle=%u eagain=%u\n", n_btn, n_analog, n_motion, n_idle, n_eagain);
-            n_btn = n_analog = n_motion = n_idle = n_eagain = 0;
+        if (now - stat_t >= 1000000) {  // satu baris log per detik, hanya bila ada kiriman nyata, EAGAIN, atau penundaan
+            if (n_btn + n_analog + n_motion + n_eagain + n_hold > 0)
+                Logger::log("deck: kirim/dtk tombol=%u analog=%u gerak=%u idle=%u eagain=%u tahan=%u antre_tepi=%d outq=%s\n",
+                            n_btn, n_analog, n_motion, n_idle, n_eagain, n_hold, edge_n, outq_ok ? "ok" : "tidak-didukung");
+            n_btn = n_analog = n_motion = n_idle = n_eagain = n_hold = 0;
             stat_t = now;
         }
         // Cek rapat (250 us) selama masih ada aktivitas input atau kiriman tertahan; hemat daya saat diam (FAKE_DECK_POLL_US).
-        const bool active = retry_fast || now - last_activity < DECK_ACTIVE_US;
+        const bool active = retry_fast || edge_n > 0 || now - last_activity < DECK_ACTIVE_US;
         const int wait_us = active ? std::min(poll_us, DECK_FAST_US) : poll_us;
         struct timespec interval = {0, wait_us * 1000L};
         nanosleep(&interval, nullptr);

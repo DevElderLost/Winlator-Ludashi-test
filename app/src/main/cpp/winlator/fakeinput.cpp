@@ -43,6 +43,7 @@
 #include <sys/syscall.h>
 #include <pthread.h>
 #include <time.h>
+#include <sched.h>
 #include <limits.h>
 #include <linux/hidraw.h>
 #include <cerrno>
@@ -266,15 +267,32 @@ static inline uint32_t deck_get32(const uint8_t *at) { return at[0] | (at[1] << 
 //   44 u16 tekanan pad[2] | 48 i16 accel[3] | 54 i16 gyro[3]
 static void deck_build_report(const uint8_t *state, uint8_t *report, uint32_t packet) {
     uint8_t s[DECK_STATE_SIZE];
+    // Snapshot konsisten terakhir. Hanya dipakai satu thread laporan per DeckFd, jadi thread_local aman.
+    static thread_local uint8_t last_good[DECK_STATE_SIZE];
+    static thread_local bool have_last = false;
     bool have = false;
-    for (int attempt = 0; attempt < 4 && !have; attempt++) {
+    // Penulis (DDDeck.publish) bisa tertahan di tengah penulisan (seq ganjil) selama beberapa ms bila thread-nya
+    // di-preempt; sensor menulis ~500x/detik. Dulu 4 percobaan tanpa jeda lalu state di-nol-kan, sehingga satu
+    // laporan berisi semua tombol lepas dan stik di tengah (glitch tombol hilang 1 laporan). Sekarang: tunggu sebentar,
+    // lalu bila tetap gagal pakai snapshot konsisten terakhir, bukan nol.
+    for (int attempt = 0; attempt < 40 && !have; attempt++) {
         uint64_t seq = __atomic_load_n((const uint64_t *)(state + 8), __ATOMIC_ACQUIRE);
-        if (seq & 1) continue;
-        memcpy(s, state, DECK_STATE_SIZE);
-        __atomic_thread_fence(__ATOMIC_ACQUIRE);
-        if (seq == __atomic_load_n((const uint64_t *)(state + 8), __ATOMIC_RELAXED)) have = true;
+        if (!(seq & 1)) {
+            memcpy(s, state, DECK_STATE_SIZE);
+            __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            if (seq == __atomic_load_n((const uint64_t *)(state + 8), __ATOMIC_RELAXED)) { have = true; break; }
+        }
+        if (attempt >= 8) { struct timespec ts = {0, 50 * 1000L}; nanosleep(&ts, nullptr); }  // 50 us; total <= ~1.6 ms
+        else sched_yield();
     }
-    if (!have || deck_get32(s) != DECK_STATE_MAGIC) memset(s, 0, sizeof(s));
+    if (have && deck_get32(s) == DECK_STATE_MAGIC) {
+        memcpy(last_good, s, sizeof(s));
+        have_last = true;
+    } else if (!have && have_last) {
+        memcpy(s, last_good, sizeof(s));
+    } else {
+        memset(s, 0, sizeof(s));
+    }
     memset(report, 0, DECK_REPORT_BYTES);
     report[0] = 0x01;                 // versi laporan
     report[2] = 0x09;                 // ID_CONTROLLER_DECK_STATE

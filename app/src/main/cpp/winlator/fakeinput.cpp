@@ -44,6 +44,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <sched.h>
+#include <sys/prctl.h>
 #include <limits.h>
 #include <linux/hidraw.h>
 #include <cerrno>
@@ -175,6 +176,8 @@ static constexpr unsigned DECK_MAJOR = 240, DECK_MINOR = 16;
 static constexpr int DECK_REPORT_BYTES = 64;
 static constexpr int DECK_INTERVAL_US = 4000;       // jarak minimum antar laporan yang hanya berisi perubahan sensor (250 Hz)
 static constexpr int DECK_POLL_US_DEFAULT = 1000;   // seberapa sering state dicek (env FAKE_DECK_POLL_US, 250..8000)
+static constexpr int DECK_FAST_US = 250;            // interval cek saat ada aktivitas input (jendela DECK_ACTIVE_US)
+static constexpr int DECK_ACTIVE_US = 150000;       // lama tetap cepat setelah perubahan terakhir
 static constexpr int DECK_IDLE_US_DEFAULT = 40000;  // laporan penjaga saat tidak ada perubahan (env FAKE_DECK_IDLE_US, 4000..1000000)
 static constexpr const char *DECK_NAME = "Valve Software Steam Deck Controller";
 static constexpr const char *DECK_SERIAL = "DROIDDECK0001";
@@ -353,18 +356,25 @@ static void *deck_report_thread(void *arg) {
     uint8_t sent[DECK_STATE_SIZE];
     bool have_sent = false;
     int64_t last_send = 0;
+    int64_t last_activity = 0;
+    // Android memberi thread latar timer slack besar (bisa puluhan ms) sehingga nanosleep(1 ms) molor dan tekanan tombol
+    // terlambat terbaca. Pasang slack minimum untuk thread ini saja.
+    prctl(PR_SET_TIMERSLACK, 1000UL, 0, 0, 0);
     for (;;) {
         uint8_t s[DECK_STATE_SIZE];
         deck_snapshot(deck->state, s);
         const int64_t now = deck_now_us();
         const bool input_changed = !have_sent || memcmp(s + 16, sent + 16, 32) != 0;
         const bool motion_changed = have_sent && memcmp(s + 48, sent + 48, 12) != 0;
+        bool retry_fast = false;
+        if (input_changed) last_activity = now;
         if (input_changed || (motion_changed && now - last_send >= DECK_INTERVAL_US) || now - last_send >= idle_us) {
             uint8_t report[DECK_REPORT_BYTES];
             deck_fill_report(s, report, packet + 1);
             // Pembaca yang menutup mengakhiri aliran; pembaca yang tertinggal membuat laporan ini dicoba lagi dengan state terbaru.
             if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) break;
+                retry_fast = true;  // pembaca belum mengambil laporan lama: coba lagi segera dengan state terbaru
             } else {
                 packet++;
                 memcpy(sent, s, sizeof(sent));
@@ -373,7 +383,10 @@ static void *deck_report_thread(void *arg) {
                 if ((packet & 15) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
             }
         }
-        struct timespec interval = {0, poll_us * 1000L};
+        // Cek rapat (250 us) selama masih ada aktivitas input atau kiriman tertahan; hemat daya saat diam (FAKE_DECK_POLL_US).
+        const bool active = retry_fast || now - last_activity < DECK_ACTIVE_US;
+        const int wait_us = active ? std::min(poll_us, DECK_FAST_US) : poll_us;
+        struct timespec interval = {0, wait_us * 1000L};
         nanosleep(&interval, nullptr);
     }
     syscall(SYS_close, deck->peer);

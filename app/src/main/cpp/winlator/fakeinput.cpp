@@ -176,6 +176,8 @@ static constexpr unsigned DECK_MAJOR = 240, DECK_MINOR = 16;
 static constexpr int DECK_REPORT_BYTES = 64;
 static constexpr int DECK_INTERVAL_US = 4000;       // jarak minimum antar laporan yang hanya berisi perubahan sensor (250 Hz)
 static constexpr int DECK_POLL_US_DEFAULT = 1000;   // seberapa sering state dicek (env FAKE_DECK_POLL_US, 250..8000)
+static constexpr int DECK_ANALOG_US_DEFAULT = 4000; // jarak minimum laporan yang hanya berisi perubahan analog (stik/trigger/pad), env FAKE_DECK_ANALOG_US 1000..50000
+static constexpr int DECK_MOTION_US_DEFAULT = 8000; // jarak minimum laporan yang hanya berisi perubahan sensor gerak, env FAKE_DECK_MOTION_US 4000..100000
 static constexpr int DECK_FAST_US = 250;            // interval cek saat ada aktivitas input (jendela DECK_ACTIVE_US)
 static constexpr int DECK_ACTIVE_US = 150000;       // lama tetap cepat setelah perubahan terakhir
 static constexpr int DECK_IDLE_US_DEFAULT = 40000;  // laporan penjaga saat tidak ada perubahan (env FAKE_DECK_IDLE_US, 4000..1000000)
@@ -204,7 +206,8 @@ static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std:
 // berjalan, tetapi deck_enabled()=0 ketika winebus memanggil opendir(/dev): environ proses Wine tidak
 // bisa dipercaya setelah startup, jadi nilai awal itulah yang dipakai.
 static const char *const DECK_ENV_NAMES[] = {"FAKE_EVDEV_DECK", "FAKE_DECK_STATE", "FAKE_DECK_SYSFS_DIR",
-                                              "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS", "FAKE_DECK_POLL_US", "FAKE_DECK_IDLE_US"};
+                                              "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS", "FAKE_DECK_POLL_US", "FAKE_DECK_IDLE_US",
+                                              "FAKE_DECK_ANALOG_US", "FAKE_DECK_MOTION_US"};
 static constexpr int DECK_ENV_COUNT = sizeof(DECK_ENV_NAMES) / sizeof(DECK_ENV_NAMES[0]);
 static char *deck_env_snapshot[DECK_ENV_COUNT];
 static bool deck_env_snapped = false;
@@ -352,7 +355,11 @@ static void *deck_report_thread(void *arg) {
     DeckFd *deck = static_cast<DeckFd *>(arg);
     const int poll_us = deck_env_int("FAKE_DECK_POLL_US", DECK_POLL_US_DEFAULT, 250, 8000);
     const int idle_us = deck_env_int("FAKE_DECK_IDLE_US", DECK_IDLE_US_DEFAULT, DECK_INTERVAL_US, 1000000);
+    const int analog_us = deck_env_int("FAKE_DECK_ANALOG_US", DECK_ANALOG_US_DEFAULT, 1000, 50000);
+    const int motion_us = deck_env_int("FAKE_DECK_MOTION_US", DECK_MOTION_US_DEFAULT, DECK_INTERVAL_US, 100000);
     uint32_t packet = 0;
+    uint32_t n_btn = 0, n_analog = 0, n_motion = 0, n_idle = 0, n_eagain = 0;  // hitungan per detik untuk log
+    int64_t stat_t = 0;
     uint8_t sent[DECK_STATE_SIZE];
     bool have_sent = false;
     int64_t last_send = 0;
@@ -364,24 +371,41 @@ static void *deck_report_thread(void *arg) {
         uint8_t s[DECK_STATE_SIZE];
         deck_snapshot(deck->state, s);
         const int64_t now = deck_now_us();
-        const bool input_changed = !have_sent || memcmp(s + 16, sent + 16, 32) != 0;
+        // Tombol berubah -> kirim segera. Analog (stik/trigger/pad) dan sensor gerak berubah terus saat dipakai, jadi dibatasi
+        // lajunya dan digabung (siklus berikutnya selalu membangun dari state terbaru). Tanpa batas ini setiap sampel
+        // sentuhan/sensor menjadi laporan sendiri; pembaca di Wine (winebus -> hidclass -> SDL) yang lebih lambat membuat
+        // laporan lama menumpuk dan tetap mengalir setelah jari dilepas sehingga input berikutnya ikut tertunda.
+        const bool button_changed = !have_sent || memcmp(s + 16, sent + 16, 8) != 0;
+        const bool analog_changed = have_sent && memcmp(s + 24, sent + 24, 24) != 0;
         const bool motion_changed = have_sent && memcmp(s + 48, sent + 48, 12) != 0;
+        const int64_t since = now - last_send;
         bool retry_fast = false;
-        if (input_changed) last_activity = now;
-        if (input_changed || (motion_changed && now - last_send >= DECK_INTERVAL_US) || now - last_send >= idle_us) {
+        if (button_changed || analog_changed) last_activity = now;
+        const bool due_analog = analog_changed && since >= analog_us;
+        const bool due_motion = motion_changed && since >= motion_us;
+        const bool due_idle = since >= idle_us;
+        if (button_changed || due_analog || due_motion || due_idle) {
             uint8_t report[DECK_REPORT_BYTES];
             deck_fill_report(s, report, packet + 1);
             // Pembaca yang menutup mengakhiri aliran; pembaca yang tertinggal membuat laporan ini dicoba lagi dengan state terbaru.
             if (send(deck->peer, report, sizeof(report), MSG_DONTWAIT | MSG_NOSIGNAL) < 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) break;
+                n_eagain++;
                 retry_fast = true;  // pembaca belum mengambil laporan lama: coba lagi segera dengan state terbaru
             } else {
                 packet++;
+                if (button_changed) n_btn++; else if (due_analog) n_analog++; else if (due_motion) n_motion++; else n_idle++;
                 memcpy(sent, s, sizeof(sent));
                 have_sent = true;
                 last_send = now;
                 if ((packet & 15) == 0) deck_stat_set(DS_REPORTS, packet);  // DroidDeck-bp
             }
+        }
+        if (now - stat_t >= 1000000) {  // satu baris log per detik, hanya bila ada kiriman nyata atau EAGAIN
+            if (n_btn + n_analog + n_motion + n_eagain > 0)
+                Logger::log("deck: kirim/dtk tombol=%u analog=%u gerak=%u idle=%u eagain=%u\n", n_btn, n_analog, n_motion, n_idle, n_eagain);
+            n_btn = n_analog = n_motion = n_idle = n_eagain = 0;
+            stat_t = now;
         }
         // Cek rapat (250 us) selama masih ada aktivitas input atau kiriman tertahan; hemat daya saat diam (FAKE_DECK_POLL_US).
         const bool active = retry_fast || now - last_activity < DECK_ACTIVE_US;

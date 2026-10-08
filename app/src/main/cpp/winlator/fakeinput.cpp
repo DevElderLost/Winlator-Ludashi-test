@@ -534,6 +534,24 @@ static int deck_copy_string(unsigned op, void *argp, const char *value) {
     return (int)std::min(size, strlen(value) + 1);
 }
 
+// DroidDeck-rumble: slot khusus (bukan perangkat input Android) untuk rumble pad Deck virtual.
+// WinHandler memetakannya ke getar HP dan menghormati saklar Rumble di panel DroidDeck.
+static constexpr uint16_t DECK_RUMBLE_SLOT = 0xFFFF;
+static constexpr uint16_t DECK_RUMBLE_MAX_MS = 60000;  // rumble Deck tak punya durasi: jalan sampai ada perintah nol
+
+// ID_TRIGGER_RUMBLE_CMD (0xEB), layout SDL hidapi_steamdeck:
+// [0]=report id, [1]=tipe, [2]=panjang, [3]=rumbleType, [4..5]=intensity, [6..7]=motor kiri, [8..9]=motor kanan.
+static void deck_rumble_feature(const uint8_t *buf, size_t size) {
+    if (buf[1] != 0xEB || size < 10) return;
+    uint16_t left = (uint16_t)(buf[6] | (buf[7] << 8));
+    uint16_t right = (uint16_t)(buf[8] | (buf[9] << 8));
+    Logger::log("deck: rumble left=%u right=%u\n", (unsigned)left, (unsigned)right);
+    if (left == 0 && right == 0)
+        send_vibration(0, 0, 0, DECK_RUMBLE_SLOT);
+    else
+        send_vibration(left, right, DECK_RUMBLE_MAX_MS, DECK_RUMBLE_SLOT);
+}
+
 // Feature report: id 0 dulu, lalu pesan Valve (tipe, panjang, payload); jawaban seperti InputPlumber untuk Deck virtual.
 static int deck_feature(DeckFd &deck, unsigned op, uint8_t *buf, bool set) {
     size_t size = _IOC_SIZE(op);
@@ -544,6 +562,7 @@ static int deck_feature(DeckFd &deck, unsigned op, uint8_t *buf, bool set) {
     if (set) {
         deck.pending = buf[1];
         Logger::log("deck: feature 0x%02x set\n", buf[1]);
+        deck_rumble_feature(buf, size);  // DroidDeck-rumble
         deck_stat(DS_FSET);  // DroidDeck-bp
         deck_stat_set(DS_LASTFEATURE, buf[1]);
         return (int)size;

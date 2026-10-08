@@ -249,6 +249,16 @@ private fun DDSettingsPanel(activity: Activity, onClose: () -> Unit, onEditLayou
                         refresh()
                     }
                 )
+                SwitchRow(
+                    title = "Rumble",
+                    subtitle = "Phone vibration from game rumble",
+                    checked = s.rumble,
+                    onChange = { on ->
+                        DDPrefs.setRumble(activity, on)
+                        if (!on) (activity.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)?.cancel()
+                        refresh()
+                    }
+                )
 
                 HorizontalDivider()
                 Row(

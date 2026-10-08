@@ -294,6 +294,13 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
                     safe { DDPrefs.setAdaptiveSticks(activity, on) }
                     changed()
                 }
+                SettingsDivider()
+                SettingToggle("Rumble (phone vibration)", s.rumble) { on ->
+                    safe { DDPrefs.setRumble(activity, on) }
+                    // matikan: hentikan getar yang sedang berjalan
+                    if (!on) safe { (activity.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)?.cancel() }
+                    changed()
+                }
             }
 
             SettingsCard {

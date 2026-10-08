@@ -41,6 +41,7 @@ public final class DDPrefs {
     public static final class Settings {
         public int tint, opacity, size, stickSens = 100, padSens = 100;
         public boolean stickClick, adaptiveSticks;
+        public boolean rumble = true;  // DroidDeck-rumble: getar HP dari rumble pad virtual
         public final Map<String, String> mapping = new HashMap<>();
     }
 
@@ -77,6 +78,7 @@ public final class DDPrefs {
         s.padSens = has(SENSITIVITIES, ps) ? ps : 100;
         s.stickClick = sp.getBoolean("stickClick", true);
         s.adaptiveSticks = sp.getBoolean("adaptiveSticks", true);
+        s.rumble = sp.getBoolean("rumble", true);
         for (String id : MAPPABLE_IDS) s.mapping.put(id, target(c, id));
         return s;
     }
@@ -103,6 +105,8 @@ public final class DDPrefs {
     public static void setPadSens(Context c, int v) { p(c).edit().putInt("padSens", v).apply(); }
     public static void setStickClick(Context c, boolean on) { p(c).edit().putBoolean("stickClick", on).apply(); }
     public static void setAdaptiveSticks(Context c, boolean on) { p(c).edit().putBoolean("adaptiveSticks", on).apply(); }
+    public static boolean isRumbleEnabled(Context c) { return p(c).getBoolean("rumble", true); }
+    public static void setRumble(Context c, boolean on) { p(c).edit().putBoolean("rumble", on).apply(); }
 
     /** Posisi grup kontrol (pecahan 0..1 dari lebar/tinggi) untuk ukuran layar tertentu. */
     public static Map<String, float[]> layout(Context c, int width, int height) {

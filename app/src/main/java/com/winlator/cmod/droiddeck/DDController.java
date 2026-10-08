@@ -587,13 +587,14 @@ public final class DDController {
 
     private static void behaviourMenu() {
         DDPrefs.Settings s = DDPrefs.read(activity);
-        final boolean[] checked = {s.stickClick, s.adaptiveSticks};
+        final boolean[] checked = {s.stickClick, s.adaptiveSticks, s.rumble};
         new AlertDialog.Builder(activity).setTitle("Behaviour")
-            .setMultiChoiceItems(new String[]{"Double-tap stick = L3/R3 click", "Adaptive sticks (appear under finger)"}, checked,
+            .setMultiChoiceItems(new String[]{"Double-tap stick = L3/R3 click", "Adaptive sticks (appear under finger)", "Rumble (phone vibration)"}, checked,
                 (d, i, isChecked) -> checked[i] = isChecked)
             .setPositiveButton("OK", (d, w) -> {
                 DDPrefs.setStickClick(activity, checked[0]);
                 DDPrefs.setAdaptiveSticks(activity, checked[1]);
+                DDPrefs.setRumble(activity, checked[2]);
                 reloadControls();
             }).setNegativeButton("Cancel", null).show();
     }

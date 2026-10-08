@@ -403,10 +403,12 @@ public class WinHandler {
         }
     }
 
-    if (deviceId != null && deviceId.equals(OSC_DEVICE_ID)) {
-        // DroidDeck-rumble: saat DroidDeck aktif, saklar Rumble mengatur getar HP dari pad virtual
-        if (!shouldCancel && com.winlator.cmod.droiddeck.DDPrefs.isEnabled(activity)
-                && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity))
+    // DroidDeck-rumble: pad DroidDeck (DD_DEVICE_ID) bukan InputDevice Android, jadi getarnya lewat motor HP
+    // seperti OSC, dan dikendalikan saklar Rumble di panel DroidDeck.
+    boolean isDroidDeckPad = deviceId != null && deviceId.equals(DD_DEVICE_ID);
+    if (deviceId != null && (deviceId.equals(OSC_DEVICE_ID) || isDroidDeckPad)) {
+        if (!shouldCancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity)
+                && (isDroidDeckPad || com.winlator.cmod.droiddeck.DDPrefs.isEnabled(activity)))
             return;
         vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
     } else if (deviceId != null) {

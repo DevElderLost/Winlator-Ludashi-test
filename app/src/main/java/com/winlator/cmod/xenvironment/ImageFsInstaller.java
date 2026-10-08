@@ -15,6 +15,7 @@ import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.DownloadProgressDialog;
 import com.winlator.cmod.core.FileUtils;
 import com.winlator.cmod.core.PreloaderDialog;
+import com.winlator.cmod.core.SteamInputPatch;
 import com.winlator.cmod.core.TarCompressorUtils;
 import com.winlator.cmod.core.WineInfo;
 
@@ -56,6 +57,7 @@ public abstract class ImageFsInstaller {
         boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, archiveFile, outFile);
         if (!success) success = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, archiveFile, outFile);
         if (!success) FileUtils.delete(outFile);
+        else SteamInputPatch.applyToWineDir(context, outFile, version);  // steam-input-patch: winebus/setupapi Deck Pad
         return success;
     }
 
@@ -72,7 +74,7 @@ public abstract class ImageFsInstaller {
             final long contentLength = (long)(FileUtils.getSize(activity, version + ".tar.zst") * (100.0f / compressionRatio));
             AtomicLong totalSizeRef = new AtomicLong();
 
-            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, version + ".tar.zst", outFile, (file, size) -> {
+            boolean wineExtracted = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, version + ".tar.zst", outFile, (file, size) -> {
                 if (size > 0) {
                     long totalSize = totalSizeRef.addAndGet(size);
                     final int progress = (int)(((float)totalSize / contentLength) * 100);
@@ -80,6 +82,7 @@ public abstract class ImageFsInstaller {
                 }
                 return file;
             });
+            if (wineExtracted) SteamInputPatch.applyToWineDir(activity, outFile, version);  // steam-input-patch: winebus/setupapi Deck Pad
          }
     }
 

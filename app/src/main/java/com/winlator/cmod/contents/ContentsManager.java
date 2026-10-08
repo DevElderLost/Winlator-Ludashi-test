@@ -8,6 +8,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 
 import com.winlator.cmod.core.FileUtils;
+import com.winlator.cmod.core.SteamInputPatch;
 import com.winlator.cmod.core.TarCompressorUtils;
 
 import org.json.JSONArray;
@@ -232,6 +233,11 @@ public class ContentsManager {
                 return;
             }
             FileUtils.delete(installPath);
+        }
+
+        // steam-input-patch: tambahkan winebus/setupapi Deck Pad ke Proton sebelum dipindah ke contents/Proton/<verName>-<verCode>
+        if (profile.type == ContentProfile.ContentType.CONTENT_TYPE_PROTON) {
+            SteamInputPatch.applyToWineDir(context, tmpPath, profile.verName, profile.wineLibPath);
         }
 
         File parent = installPath.getParentFile();

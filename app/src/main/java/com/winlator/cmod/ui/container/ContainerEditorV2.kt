@@ -1059,9 +1059,9 @@ private fun ContainerCategoryV2(
             SettingsCard {  // DD-UI-SELECT
                 SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_CONTAINER) { s.ddUi = it }
                 SettingsDivider()  // DroidDeck-deck
-                SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_CONTAINER) { s.ddDeck = it }
+                SettingToggle("Steam Deck Pad (hidraw)", s.ddDeck == "1") { s.ddDeck = if (it) "1" else "0" }
                 SettingsDivider()
-                SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_CONTAINER) { s.ddDeckEvdev = it }
+                SettingToggle("Deck Pad: also normal controller (evdev)", s.ddDeckEvdev != "0") { s.ddDeckEvdev = if (it) "1" else "0" }
                 SettingsDivider()  // DroidDeck-bp
                 TextButton(
                     onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
@@ -1217,14 +1217,4 @@ private val DD_UI_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
 // ---- end DD-UI-SELECT ----
 
 // ---- DroidDeck-deck ----
-private val DD_DECK_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (Off)",
-    "1" to "On",
-    "0" to "Off"
-)
-private val DD_DECK_EVDEV_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
-    "" to "Default (On)",
-    "1" to "On",
-    "0" to "Off (hidraw only; tidak dipaksa On walau hidraw tidak jalan)"
-)
 // ---- end DroidDeck-deck ----

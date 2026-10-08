@@ -12,6 +12,9 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Kontrol khas Deck di layar (DeckControlsPanel.kt): dua trackpad, grip L4/R4/L5/R5 dan QAM.
  * Ketuk singkat pada trackpad = klik pad. Sentuhan di luar kontrol ini diteruskan ke kontrol di bawahnya.
@@ -35,9 +38,21 @@ public class DDDeckControlsView extends View {
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final int tint;
 
-    public DDDeckControlsView(Context context, int tint) {
+    // Mode edit layout: elemen bisa dipilih dan digeser, tidak ada input yang dikirim ke DDDeck.
+    // id 0..1 = trackpad kiri/kanan, id 2..6 = L4, L5, QAM, R5, R4 (urutan sama dengan btn[]).
+    private static final String[] KEYS = {"dk_padL", "dk_padR", "dk_L4", "dk_L5", "dk_qam", "dk_R5", "dk_R4"};
+    private final boolean editing;
+    private boolean ignoreSaved = false;
+    private int selected = -1, editPointer = -1;
+    private float grabX, grabY;
+    private Runnable onSelect;
+
+    public DDDeckControlsView(Context context, int tint) { this(context, tint, false); }
+
+    public DDDeckControlsView(Context context, int tint, boolean editing) {
         super(context);
         this.tint = tint;
+        this.editing = editing;
         for (int i = 0; i < BUTTONS; i++) btn[i] = new RectF();
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeWidth(dp(1.5f));
@@ -50,6 +65,14 @@ public class DDDeckControlsView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
+        relayout();
+    }
+
+    private RectF rect(int id) { return id < 2 ? pad[id] : btn[id - 2]; }
+
+    private void relayout() {
+        int w = getWidth(), h = getHeight();
+        if (w <= 0 || h <= 0) return;
         float side = Math.min(h * 0.30f, w * 0.15f);
         float cy = h - side * 0.5f - dp(10f);
         float gap = side * 0.15f;
@@ -61,6 +84,95 @@ public class DDDeckControlsView extends View {
         for (int i = 0; i < BUTTONS; i++) {
             btn[i].set(x, top, x + bw, top + bh);
             x += bw + bg;
+        }
+        if (!ignoreSaved) {
+            Map<String, float[]> saved = DDPrefs.layout(getContext(), w, h);
+            for (int id = 0; id < KEYS.length; id++) {
+                float[] v = saved.get(KEYS[id]);
+                if (v != null) moveCenter(id, v[0] * w, v[1] * h);
+            }
+        }
+        invalidate();
+    }
+
+    /** Pindahkan pusat elemen ke (cx, cy), ukuran tetap, dijaga tetap di dalam layar. */
+    private void moveCenter(int id, float cx, float cy) {
+        RectF r = rect(id);
+        float hw = r.width() / 2f, hh = r.height() / 2f, m = dp(4f);
+        cx = Math.max(hw + m, Math.min(getWidth() - hw - m, cx));
+        cy = Math.max(hh + m, Math.min(getHeight() - hh - m, cy));
+        r.set(cx - hw, cy - hh, cx + hw, cy + hh);
+    }
+
+    /** Dipanggil saat layout disimpan/direset dari luar (mode normal): baca ulang posisi tersimpan. */
+    public void reload() {
+        ignoreSaved = false;
+        relayout();
+    }
+
+    public void resetLayout() {
+        ignoreSaved = true;
+        selected = -1;
+        relayout();
+    }
+
+    /** Gabungkan posisi elemen Deck ke layout tersimpan (panggil SETELAH DDOnScreenControls.saveLayout). */
+    public void saveLayout() {
+        int w = getWidth(), h = getHeight();
+        if (w <= 0 || h <= 0) return;
+        Map<String, float[]> all = new HashMap<>(DDPrefs.layout(getContext(), w, h));
+        for (String k : KEYS) all.remove(k);
+        if (!ignoreSaved) {
+            for (int id = 0; id < KEYS.length; id++) {
+                RectF r = rect(id);
+                all.put(KEYS[id], new float[]{r.centerX() / w, r.centerY() / h});
+            }
+        }
+        if (all.isEmpty()) DDPrefs.resetLayout(getContext(), w, h);
+        else DDPrefs.setLayout(getContext(), w, h, all);
+    }
+
+    /** Dipanggil saat elemen Deck dipilih, supaya pilihan di view kontrol biasa dilepas. */
+    public void setOnSelectListener(Runnable r) { onSelect = r; }
+
+    public void clearSelection() {
+        if (selected != -1) { selected = -1; invalidate(); }
+    }
+
+    private int elementAt(float x, float y) {
+        int b = btnAt(x, y);
+        if (b >= 0) return b + 2;
+        return padAt(x, y);
+    }
+
+    private boolean onEditTouch(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN: {
+                int hit = elementAt(e.getX(), e.getY());
+                if (hit < 0) { clearSelection(); return false; }  // teruskan ke kontrol biasa di bawah
+                selected = hit;
+                editPointer = e.getPointerId(0);
+                RectF r = rect(hit);
+                grabX = r.centerX() - e.getX();
+                grabY = r.centerY() - e.getY();
+                if (onSelect != null) onSelect.run();
+                invalidate();
+                return true;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                if (selected < 0 || editPointer < 0) return false;
+                int at = e.findPointerIndex(editPointer);
+                if (at < 0) return true;
+                moveCenter(selected, e.getX(at) + grabX, e.getY(at) + grabY);
+                invalidate();
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                editPointer = -1;
+                return selected >= 0;
+            default:
+                return selected >= 0 && editPointer >= 0;
         }
     }
 
@@ -96,6 +208,7 @@ public class DDDeckControlsView extends View {
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent e) {
+        if (editing) return onEditTouch(e);
         int action = e.getActionMasked();
         int index = e.getActionIndex();
         int id = e.getPointerId(index);
@@ -171,6 +284,11 @@ public class DDDeckControlsView extends View {
             canvas.drawRoundRect(pad[i], dp(14f), dp(14f), fill);
             stroke.setColor(Color.argb(on ? 220 : 120, r, g, b));
             canvas.drawRoundRect(pad[i], dp(14f), dp(14f), stroke);
+            if (editing) {
+                text.setTextSize(dp(12f));
+                text.setColor(Color.WHITE);
+                canvas.drawText(i == 0 ? "L PAD" : "R PAD", pad[i].centerX(), pad[i].centerY() + text.getTextSize() * 0.35f, text);
+            }
         }
         text.setTextSize(dp(11f));
         for (int i = 0; i < BUTTONS; i++) {
@@ -180,6 +298,12 @@ public class DDDeckControlsView extends View {
             canvas.drawRoundRect(btn[i], dp(8f), dp(8f), stroke);
             text.setColor(Color.WHITE);
             canvas.drawText(NAMES[i], btn[i].centerX(), btn[i].centerY() + text.getTextSize() * 0.35f, text);
+        }
+        if (editing && selected >= 0) {
+            stroke.setColor(Color.WHITE);
+            RectF box = new RectF(rect(selected));
+            box.inset(-dp(5f), -dp(5f));
+            canvas.drawRoundRect(box, dp(16f), dp(16f), stroke);
         }
     }
 }

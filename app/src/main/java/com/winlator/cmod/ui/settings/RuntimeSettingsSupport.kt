@@ -28,12 +28,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -769,5 +774,35 @@ internal fun CpuSelectorRow(
                 }
             }
         }
+    }
+}
+
+/** Seekbar Compose (material3 Slider) dengan label dan nilai persen; nilai disimpan saat jari dilepas. */
+@Composable
+internal fun SettingSlider(
+    label: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    step: Int = 5,
+    onChanged: (Int) -> Unit
+) {
+    var current by remember(value) { mutableFloatStateOf(value.toFloat()) }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "${current.roundToInt()}%",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Slider(
+            value = current,
+            onValueChange = { current = ((it / step).roundToInt() * step).toFloat().coerceIn(min.toFloat(), max.toFloat()) },
+            onValueChangeFinished = { onChanged(current.roundToInt()) },
+            valueRange = min.toFloat()..max.toFloat(),
+            steps = ((max - min) / step - 1).coerceAtLeast(0)
+        )
     }
 }

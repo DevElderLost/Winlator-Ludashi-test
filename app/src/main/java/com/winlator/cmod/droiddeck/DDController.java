@@ -549,7 +549,10 @@ public final class DDController {
         testOverlay = null;
     }
 
-    private static void reloadControls() { if (controls != null) controls.reload(); }
+    private static void reloadControls() {
+        if (controls != null) controls.reload();
+        if (deckView != null) deckView.reload();  // posisi trackpad/grip/QAM ikut layout tersimpan
+    }
 
     private static void appearanceMenu() {
         String[] items = {"Tint", "Opacity", "Size"};
@@ -634,19 +637,26 @@ public final class DDController {
     private static void startEditor() {
         if (activity == null || root == null || editor != null) return;
         if (controls != null) controls.setVisibility(View.GONE);
+        if (deckView != null) { deckView.releaseAll(); deckView.setVisibility(View.GONE); }
         final DDOnScreenControls edit = new DDOnScreenControls(activity, null, true);
         editor = new FrameLayout(activity);
         editor.setBackgroundColor(Color.argb(150, 0, 0, 0));
         editor.setClickable(true);
         editor.addView(edit, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Trackpad, grip L4/R4/L5/R5 dan QAM ikut bisa digeser bila mode Deck aktif.
+        // View ini di atas; sentuhan yang tidak mengenai elemennya diteruskan ke kontrol biasa.
+        final DDDeckControlsView deckEdit = deckView != null ? new DDDeckControlsView(activity, DDPrefs.read(activity).tint, true) : null;
+        if (deckEdit != null) {
+            editor.addView(deckEdit, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            deckEdit.setOnSelectListener(edit::clearSelection);
+        }
 
         LinearLayout bar = new LinearLayout(activity);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.addView(editorButton("Save", v -> { edit.saveLayout(); stopEditor(); }));
-        bar.addView(editorButton("Reset", v -> edit.resetLayout()));
+        bar.addView(editorButton("Save", v -> { edit.saveLayout(); if (deckEdit != null) deckEdit.saveLayout(); stopEditor(); }));
+        bar.addView(editorButton("Reset", v -> { edit.resetLayout(); if (deckEdit != null) deckEdit.resetLayout(); }));
         bar.addView(editorButton("Cancel", v -> stopEditor()));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        lp.topMargin = (int) (8 * activity.getResources().getDisplayMetrics().density);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);  // tengah layar: kosong; atas-tengah dipakai grip L4/R4/L5/R5 dan QAM
         editor.addView(bar, lp);
         root.addView(editor, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
@@ -662,5 +672,6 @@ public final class DDController {
         if (editor != null && root != null) root.removeView(editor);
         editor = null;
         if (controls != null) { controls.setVisibility(View.VISIBLE); controls.reload(); }
+        if (deckView != null) { deckView.setVisibility(View.VISIBLE); deckView.reload(); }
     }
 }

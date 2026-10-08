@@ -53,6 +53,7 @@ import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import com.winlator.cmod.R
 import com.winlator.cmod.ui.settings.SettingChoice
+import com.winlator.cmod.ui.settings.SettingSlider
 import com.winlator.cmod.ui.settings.SettingToggle
 import com.winlator.cmod.ui.settings.SettingsCard
 import com.winlator.cmod.ui.settings.SettingsDivider
@@ -200,9 +201,6 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
         DDSidebarPanel.bump()
     }
 
-    val opacityLabels = DDPrefs.OPACITIES.map { "$it%" }
-    val sizeLabels = DDPrefs.SIZES.map { "$it%" }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // DD-SIDEBAR-MEASURE: horizontalScroll (baris Tint) dan verticalScroll melempar
         // IllegalStateException jika constraint tak-terbatas. Jaga LEBAR dan TINGGI.
@@ -275,20 +273,14 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
                     )
                 }
                 SettingsDivider()
-                SettingChoice("Opacity", "${s.opacity}%", opacityLabels) { picked ->
-                    val i = opacityLabels.indexOf(picked)
-                    if (i >= 0) {
-                        safe { DDPrefs.setOpacity(activity, DDPrefs.OPACITIES[i]) }
-                        changed()
-                    }
+                SettingSlider("Opacity", s.opacity, DDPrefs.OPACITY_MIN, DDPrefs.OPACITY_MAX, DDPrefs.OPACITY_STEP) { v ->
+                    safe { DDPrefs.setOpacity(activity, v) }
+                    changed()
                 }
                 SettingsDivider()
-                SettingChoice("Size", "${s.size}%", sizeLabels) { picked ->
-                    val i = sizeLabels.indexOf(picked)
-                    if (i >= 0) {
-                        safe { DDPrefs.setSize(activity, DDPrefs.SIZES[i]) }
-                        changed()
-                    }
+                SettingSlider("Size", s.size, DDPrefs.SIZE_MIN, DDPrefs.SIZE_MAX, DDPrefs.SIZE_STEP) { v ->
+                    safe { DDPrefs.setSize(activity, v) }
+                    changed()
                 }
             }
 

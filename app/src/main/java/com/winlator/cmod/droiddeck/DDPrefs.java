@@ -19,6 +19,9 @@ public final class DDPrefs {
     };
     public static final int[] OPACITIES = {40, 60, 80, 100};
     public static final int[] SIZES = {80, 90, 100, 110, 125};
+    // Rentang untuk slider (seekbar) Opacity/Size; OPACITIES/SIZES lama tetap dipakai dialog legacy di DDController.
+    public static final int OPACITY_MIN = 10, OPACITY_MAX = 100, OPACITY_STEP = 5;
+    public static final int SIZE_MIN = 50, SIZE_MAX = 150, SIZE_STEP = 5;
     public static final int[] SENSITIVITIES = {50, 75, 100, 125, 150, 200};  // persen; 100 = bawaan
 
     public static final String[] MAPPABLE_IDS = {"a", "b", "x", "y", "lb", "rb", "lt", "rt", "select", "start", "guide"};
@@ -55,14 +58,19 @@ public final class DDPrefs {
     public static boolean isEnabled(Context c) { return p(c).getBoolean("enabled", false); }
     public static void setEnabled(Context c, boolean on) { p(c).edit().putBoolean("enabled", on).apply(); }
 
+    private static int snap(int v, int min, int max, int step, int def) {
+        if (v < min || v > max) return def;
+        return Math.round(v / (float) step) * step;
+    }
+
     public static Settings read(Context c) {
         SharedPreferences sp = p(c);
         Settings s = new Settings();
         s.tint = sp.getInt("tint", STEAM_BLUE);
         int op = sp.getInt("opacity", 100);
-        s.opacity = has(OPACITIES, op) ? op : 100;
+        s.opacity = snap(op, OPACITY_MIN, OPACITY_MAX, OPACITY_STEP, 100);
         int sz = sp.getInt("size", 100);
-        s.size = has(SIZES, sz) ? sz : 100;
+        s.size = snap(sz, SIZE_MIN, SIZE_MAX, SIZE_STEP, 100);
         int ss = sp.getInt("stickSens", 100);
         s.stickSens = has(SENSITIVITIES, ss) ? ss : 100;
         int ps = sp.getInt("padSens", 100);

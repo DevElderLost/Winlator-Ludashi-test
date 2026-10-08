@@ -1192,9 +1192,13 @@ private fun ShortcutCategoryV2(
                 SettingsDivider()
                 SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_SHORTCUT) { s.ddUi = it; s.extra("droiddeckUi", it.ifBlank { null }) }  // DD-UI-SELECT
                 SettingsDivider()  // DroidDeck-deck
-                SettingMappedChoice("Steam Deck Pad (hidraw)", s.ddDeck, DD_DECK_CHOICES_SHORTCUT) { s.ddDeck = it; s.extra("droiddeckDeck", it.ifBlank { null }) }
+                SettingToggle("Steam Deck Pad (hidraw)", s.ddDeck.ifBlank { s.container.getExtra("droiddeckDeck", "") } == "1") {
+                    val v = if (it) "1" else "0"; s.ddDeck = v; s.extra("droiddeckDeck", v)
+                }
                 SettingsDivider()
-                SettingMappedChoice("Deck Pad: also normal controller", s.ddDeckEvdev, DD_DECK_EVDEV_CHOICES_SHORTCUT) { s.ddDeckEvdev = it; s.extra("droiddeckDeckEvdev", it.ifBlank { null }) }
+                SettingToggle("Deck Pad: also normal controller (evdev)", s.ddDeckEvdev.ifBlank { s.container.getExtra("droiddeckDeckEvdev", "") } != "0") {
+                    val v = if (it) "1" else "0"; s.ddDeckEvdev = v; s.extra("droiddeckDeckEvdev", v)
+                }
                 SettingsDivider()  // DroidDeck-bp
                 TextButton(
                     onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
@@ -1547,14 +1551,4 @@ private val DD_UI_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
 // ---- end DD-UI-SELECT ----
 
 // ---- DroidDeck-deck ----
-private val DD_DECK_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
-    "" to "Use container setting",
-    "1" to "On",
-    "0" to "Off"
-)
-private val DD_DECK_EVDEV_CHOICES_SHORTCUT: Map<String, String> = linkedMapOf(
-    "" to "Use container setting",
-    "1" to "On",
-    "0" to "Off (hidraw only; tidak dipaksa On walau hidraw tidak jalan)"
-)
 // ---- end DroidDeck-deck ----

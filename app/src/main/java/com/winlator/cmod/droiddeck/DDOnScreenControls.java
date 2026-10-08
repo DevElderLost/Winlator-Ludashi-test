@@ -169,8 +169,14 @@ public class DDOnScreenControls extends View {
         return Math.max(floor, Math.min(1f, heightMm / FULL_SIZE_HEIGHT_MM));
     }
 
+    /** Lepas pilihan elemen (dipakai editor saat elemen Deck yang dipilih). */
+    public void clearSelection() {
+        if (selected != null) { selected = null; invalidate(); }
+    }
+
     public void reload() {
         releaseAll();
+        ignoreSaved = false;  // setelah Reset, layout yang disimpan berikutnya harus berlaku lagi
         settings = DDPrefs.read(getContext());
         applySettings();
         relayout();

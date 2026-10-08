@@ -198,25 +198,14 @@ private fun DDSettingsPanel(activity: Activity, onClose: () -> Unit, onEditLayou
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Text("Opacity", style = MaterialTheme.typography.labelLarge)
-                ChoiceRow(
-                    options = DDPrefs.OPACITIES.map { "$it%" },
-                    selectedIndex = DDPrefs.OPACITIES.indexOf(s.opacity),
-                    onSelect = { i ->
-                        DDPrefs.setOpacity(activity, DDPrefs.OPACITIES[i])
-                        refresh()
-                    }
-                )
-
-                Text("Size", style = MaterialTheme.typography.labelLarge)
-                ChoiceRow(
-                    options = DDPrefs.SIZES.map { "$it%" },
-                    selectedIndex = DDPrefs.SIZES.indexOf(s.size),
-                    onSelect = { i ->
-                        DDPrefs.setSize(activity, DDPrefs.SIZES[i])
-                        refresh()
-                    }
-                )
+                com.winlator.cmod.ui.settings.SettingSlider("Opacity", s.opacity, DDPrefs.OPACITY_MIN, DDPrefs.OPACITY_MAX, DDPrefs.OPACITY_STEP) { v ->
+                    DDPrefs.setOpacity(activity, v)
+                    refresh()
+                }
+                com.winlator.cmod.ui.settings.SettingSlider("Size", s.size, DDPrefs.SIZE_MIN, DDPrefs.SIZE_MAX, DDPrefs.SIZE_STEP) { v ->
+                    DDPrefs.setSize(activity, v)
+                    refresh()
+                }
 
                 HorizontalDivider()
                 SectionTitle("Sensitivity")

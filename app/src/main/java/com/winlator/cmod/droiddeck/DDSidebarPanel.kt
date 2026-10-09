@@ -186,6 +186,8 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
     val enabled = remember(rev) { runCatching { DDController.panelControlsEnabled() }.getOrDefault(false) }
     val keyboard = remember(rev) { runCatching { DDController.panelKeyboardShown() }.getOrDefault(false) }
     var showMapping by remember { mutableStateOf(false) }
+    // DroidDeck-deckmap: bagian Deck hanya tampil bila fitur hidraw (Steam Deck Pad) aktif
+    val deckWanted = remember(rev) { runCatching { DDDeck.isWanted() }.getOrDefault(false) }
 
     if (s == null) {
         Text(
@@ -342,6 +344,78 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
                                 safe { DDPrefs.setTarget(activity, id, DDPrefs.TARGET_IDS[idx]) }
                                 changed()
                             }
+                        }
+                    }
+                    if (deckWanted) {
+                        SettingsDivider()
+                        Text(
+                            "Steam Deck buttons \u2192 gamepad (evdev)",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val deckLabels = DDPrefs.DECK_TARGET_NAMES.toList()
+                        DDPrefs.DECK_IDS.forEachIndexed { i, id ->
+                            SettingsDivider()
+                            val cur = DDPrefs.deckTarget(activity, id)
+                            val ci = DDPrefs.DECK_TARGET_IDS.indexOf(cur)
+                            SettingChoice(
+                                DDPrefs.DECK_NAMES[i],
+                                if (ci >= 0) DDPrefs.DECK_TARGET_NAMES[ci] else cur,
+                                deckLabels
+                            ) { picked ->
+                                val idx = deckLabels.indexOf(picked)
+                                if (idx >= 0) {
+                                    safe { DDPrefs.setDeckTarget(activity, id, DDPrefs.DECK_TARGET_IDS[idx]) }
+                                    changed()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (deckWanted) {
+                SettingsCard {
+                    val padLabels = DDPrefs.PAD_MODE_NAMES.toList()
+                    val padIdx = DDPrefs.PAD_MODE_IDS.indexOf(DDPrefs.padMode(activity))
+                    SettingChoice(
+                        "Right trackpad",
+                        if (padIdx >= 0) DDPrefs.PAD_MODE_NAMES[padIdx] else padLabels[0],
+                        padLabels
+                    ) { picked ->
+                        val idx = padLabels.indexOf(picked)
+                        if (idx >= 0) {
+                            safe { DDPrefs.setPadMode(activity, DDPrefs.PAD_MODE_IDS[idx]) }
+                            changed()
+                        }
+                    }
+                    SettingsDivider()
+                    val gyroLabels = DDPrefs.GYRO_NAMES.toList()
+                    val gyroId = DDPrefs.gyroMode(activity)
+                    val gyroIdx = DDPrefs.GYRO_IDS.indexOf(gyroId)
+                    SettingChoice(
+                        "Gyro \u2192 right stick",
+                        if (gyroIdx >= 0) DDPrefs.GYRO_NAMES[gyroIdx] else gyroLabels[0],
+                        gyroLabels
+                    ) { picked ->
+                        val idx = gyroLabels.indexOf(picked)
+                        if (idx >= 0) {
+                            safe { DDPrefs.setGyroMode(activity, DDPrefs.GYRO_IDS[idx]) }
+                            changed()
+                        }
+                    }
+                    if (gyroId != "off") {
+                        SettingsDivider()
+                        SettingSlider(
+                            "Gyro sensitivity",
+                            DDPrefs.gyroSens(activity),
+                            DDPrefs.GYRO_SENS_MIN,
+                            DDPrefs.GYRO_SENS_MAX,
+                            DDPrefs.GYRO_SENS_STEP
+                        ) { v ->
+                            safe { DDPrefs.setGyroSens(activity, v) }
+                            changed()
                         }
                     }
                 }

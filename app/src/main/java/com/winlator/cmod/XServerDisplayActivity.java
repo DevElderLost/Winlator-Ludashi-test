@@ -73,6 +73,7 @@ import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.core.EnvVars;
+import com.winlator.cmod.core.SteamSaveMemoryTask;
 import com.winlator.cmod.core.FileUtils;
 import com.winlator.cmod.core.GameSaveManager;
 import com.winlator.cmod.core.GPUInformation;
@@ -178,6 +179,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private String startupSelection;
     private WineInfo wineInfo;
     private final EnvVars envVars = new EnvVars();
+    private SteamSaveMemoryTask steamSaveMemoryTask;  // DroidDeck-steam
     private boolean firstTimeBoot = false;
     private SharedPreferences preferences;
     private OnExtractFileListener onExtractFileListener;
@@ -1039,6 +1041,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             winlatorLogcatLogger = null;
         }
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
+        if (steamSaveMemoryTask != null) { steamSaveMemoryTask.stop(); steamSaveMemoryTask = null; }  // DroidDeck-steam
         super.onDestroy();
     }
 
@@ -1237,6 +1240,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
                             ? shortcut.getExtra("fexcorePreset", container.getFEXCorePreset())
                             : container.getFEXCorePreset());
         }
+
+        applySteamClientTweaks();  // DroidDeck-steam
 
         if (overrideEnvVars != null) {
             envVars.putAll(overrideEnvVars);
@@ -2886,6 +2891,45 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
     }
 
+    // ---- DroidDeck-steam: perbaikan Steam client ala Winlator resmi, netral terhadap emulator (Box64/FEX) dan varian Wine ----
+    private static final String STEAM_CLIENT_ARGS = "-noshaders -nooverlay -no-browser -nocrashmonitor -no-shared-textures"
+            + " -cef-disable-gpu -cef-disable-gpu-compositing -cef-disable-gpu-sandbox -cef-disable-d3d11"
+            + " -cef-disable-sandbox -no-cef-sandbox -cef-disable-seccomp-sandbox";
+    private static final String STEAM_OVERLAY_OVERRIDES = "gameoverlayrenderer,gameoverlayrenderer64,gameoverlayui.exe,"
+            + "gameoverlayui64.exe,x86launcher.exe,x64launcher.exe,dxsetup.exe=d";
+
+    private boolean steamClientTweaksEnabled() {
+        return preferences != null && preferences.getBoolean("steam_client_tweaks", true);
+    }
+
+    private boolean isSteamClientShortcut() {
+        return shortcut != null && "steam.exe".equalsIgnoreCase(getExecutable());
+    }
+
+    private String withSteamClientArgs(String filename, String execArgs) {
+        if (!steamClientTweaksEnabled() || !"steam.exe".equalsIgnoreCase(filename)) return execArgs;
+        String current = execArgs == null ? "" : execArgs;
+        StringBuilder add = new StringBuilder();
+        for (String flag : STEAM_CLIENT_ARGS.split(" ")) {
+            if (!current.contains(flag)) add.append(' ').append(flag);  // jangan menimpa argumen pengguna
+        }
+        return current + add;
+    }
+
+    private void applySteamClientTweaks() {
+        boolean steamSession = shortcut == null || isSteamClientShortcut();
+        if (steamSession && preferences != null && preferences.getBoolean("save_mem_on_run_from_steam", true)) {
+            if (steamSaveMemoryTask == null) steamSaveMemoryTask = new SteamSaveMemoryTask();
+            steamSaveMemoryTask.start();
+        }
+        if (!steamClientTweaksEnabled()) return;
+        envVars.put("FAKE_STEAM_RULES", "1");  // libfakeinput: aturan khusus steamwebhelper.exe
+        if (isSteamClientShortcut()) {
+            String existing = envVars.has("WINEDLLOVERRIDES") ? envVars.get("WINEDLLOVERRIDES") : "";
+            envVars.put("WINEDLLOVERRIDES", existing.isEmpty() ? STEAM_OVERLAY_OVERRIDES : existing + ";" + STEAM_OVERLAY_OVERRIDES);
+        }
+    }
+
     private String getWineStartCommand() {
 
         EnvVars envVars = getOverrideEnvVars();
@@ -2925,6 +2969,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     filename = filename.substring(0, spaceIndex);
                 }
 
+                execArgs = withSteamClientArgs(filename, execArgs);  // DroidDeck-steam
                 args += "/dir " + StringUtils.escapeDOSPath(exeDir) + " \"" + filename + "\"" + execArgs;
             }
         } else {
@@ -3119,6 +3164,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             return;
         int processId = window.getProcessId();
         String className = window.getClassName();
+        if ("steam.exe".equals(className)) return;  // DroidDeck-steam: jangan batasi CPU klien Steam
         int processAffinity = window.isWoW64() ? taskAffinityMaskWoW64 : taskAffinityMask;
 
         if (processId > 0) {

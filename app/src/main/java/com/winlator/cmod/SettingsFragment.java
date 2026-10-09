@@ -464,6 +464,8 @@ public class SettingsFragment extends Fragment {
                 preferences.getBoolean("pause_resume_wine", true),
                 preferences.getBoolean("remove_loading_bar_when_booting_games", false),
                 preferences.getBoolean("game_saves_all_shortcuts", false),
+                preferences.getBoolean("steam_client_tweaks", true),
+                preferences.getBoolean("save_mem_on_run_from_steam", true),
                 preferences.getBoolean("enable_wine_debug", false),
                 preferences.getString("wine_debug_channels", DEFAULT_WINE_DEBUG_CHANNELS),
                 preferences.getBoolean("enable_winlator_logs", false),

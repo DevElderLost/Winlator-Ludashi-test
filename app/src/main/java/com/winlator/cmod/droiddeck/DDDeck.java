@@ -390,6 +390,15 @@ public final class DDDeck implements SensorEventListener {
         void onClick(boolean right, boolean down);
     }
 
+    /** Pendengar gyro untuk jalur evdev (DroidDeck-deckmap): laju sudut rad/s pada bingkai layar (x ke kanan, y ke atas). */
+    public interface GyroListener {
+        void onGyro(float rateX, float rateY);
+    }
+
+    private static volatile GyroListener gyroListener;
+
+    public static void setGyroListener(GyroListener l) { gyroListener = l; }
+
     private static volatile PadListener padListener;
 
     public static void setPadListener(PadListener l) { padListener = l; }
@@ -627,6 +636,10 @@ public final class DDDeck implements SensorEventListener {
             default: x = v[0]; y = v[1]; break;
         }
         float z = v[2];
+        if (type == Sensor.TYPE_GYROSCOPE) {
+            GyroListener gl = gyroListener;
+            if (gl != null) gl.onGyro(x, y);  // DroidDeck-deckmap
+        }
         short[] target;
         float scale;
         if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {

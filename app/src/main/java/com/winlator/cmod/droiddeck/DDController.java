@@ -133,6 +133,19 @@ public final class DDController {
                 winlatorHidden = false;
             }
         }
+        applyDeckVisibility(on);  // DroidDeck-deckmap: satu UI kontrol; elemen Deck ikut hilang bila kontrol dimatikan
+    }
+
+    // DroidDeck-deckmap: elemen khas Deck (trackpad, grip, QAM) adalah bagian dari UI kontrol yang sama
+    private static void applyDeckVisibility(boolean on) {
+        if (deckView == null) return;
+        if (on) {
+            deckView.setVisibility(View.VISIBLE);
+            deckView.reload();
+        } else {
+            deckView.releaseAll();
+            deckView.setVisibility(View.GONE);
+        }
     }
 
     private static WinHandler winHandler() {
@@ -432,8 +445,138 @@ public final class DDController {
     private static GamepadState withPadDpad() {
         padOut.copy(padBase);
         for (int i = 0; i < 4; i++) if (padDpad[i]) padOut.dpad[i] = true;
+        for (int i = 0; i < deckExtraDown.length; i++) if (deckExtraDown[i]) applyExtraTarget(padOut, deckExtraTarget[i]);
+        if (rightPadStick) {
+            if (rightPadTouching) {  // y trackpad ke atas, stik layar ke bawah
+                padOut.thumbRX = clampAxis(padOut.thumbRX + rightPadX);
+                padOut.thumbRY = clampAxis(padOut.thumbRY - rightPadY);
+            }
+            if (rightPadClick) padOut.setPressed(9, true);  // klik trackpad = R3
+        }
+        if (gyroActive()) {
+            padOut.thumbRX = clampAxis(padOut.thumbRX + gyroOutX);
+            padOut.thumbRY = clampAxis(padOut.thumbRY + gyroOutY);
+        }
         return padOut;
     }
+
+    // ---- DroidDeck-deckmap: grip/QAM Deck, mode trackpad kanan dan gyro untuk jalur evdev ----
+    // Game XInput/DirectInput tidak bisa membaca pad Deck di hidraw (HID vendor), jadi tombol dan sensor khas Deck
+    // juga diteruskan ke pad evdev lewat pemetaan di panel samping (pengganti pemetaan Steam Input tanpa klien Steam).
+    private static final boolean[] deckExtraDown = new boolean[DDPrefs.DECK_IDS.length];
+    private static final String[] deckExtraTarget = new String[DDPrefs.DECK_IDS.length];
+    static { java.util.Arrays.fill(deckExtraTarget, DDPrefs.NONE); }
+    private static boolean deckGuideDown = false;
+    private static boolean rightPadStick = false, rightPadClick = false;
+    private static volatile boolean rightPadTouching = false;
+    private static float rightPadX = 0f, rightPadY = 0f;
+    private static volatile String gyroMode = "off";
+    private static volatile float gyroGain = 1f;
+    private static volatile float gyroOutX = 0f, gyroOutY = 0f;
+    private static float gyroSmoothX = 0f, gyroSmoothY = 0f;
+    private static float gyroPushedX = 0f, gyroPushedY = 0f;
+    private static volatile long gyroLastPush = 0L;
+    private static final Handler gyroHandler = new Handler(Looper.getMainLooper());
+    private static final java.util.concurrent.atomic.AtomicBoolean gyroPushPending = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static final float GYRO_FULL_RATE = 3.5f;  // rad/s (~200 derajat/dtk) = stik penuh pada sensitivitas 100%
+    private static final float GYRO_DEADZONE = 0.05f;  // rad/s
+
+    private static float clampAxis(float v) { return Math.max(-1f, Math.min(1f, v)); }
+
+    private static void loadDeckMap() {
+        if (activity == null) return;
+        for (int i = 0; i < deckExtraTarget.length; i++) deckExtraTarget[i] = DDPrefs.deckTarget(activity, DDPrefs.DECK_IDS[i]);
+        rightPadStick = "stick".equals(DDPrefs.padMode(activity));
+        if (!rightPadStick) rightPadClick = false;
+        gyroMode = DDPrefs.gyroMode(activity);
+        gyroGain = DDPrefs.gyroSens(activity) / 100f;
+    }
+
+    private static boolean gyroActive() {
+        String m = gyroMode;
+        return "always".equals(m) || ("pad".equals(m) && rightPadTouching);
+    }
+
+    private static void applyExtraTarget(GamepadState s, String target) {
+        if (target == null) return;
+        switch (target) {
+            case "a": s.setPressed(0, true); break;
+            case "b": s.setPressed(1, true); break;
+            case "x": s.setPressed(2, true); break;
+            case "y": s.setPressed(3, true); break;
+            case "lb": s.setPressed(4, true); break;
+            case "rb": s.setPressed(5, true); break;
+            case "select": s.setPressed(6, true); break;
+            case "start": s.setPressed(7, true); break;
+            case "l3": s.setPressed(8, true); break;
+            case "r3": s.setPressed(9, true); break;
+            case "lt": s.triggerL = 1f; break;
+            case "rt": s.triggerR = 1f; break;
+            case "up": s.dpad[0] = true; break;
+            case "right": s.dpad[1] = true; break;
+            case "down": s.dpad[2] = true; break;
+            case "left": s.dpad[3] = true; break;
+            default: break;  // none dan guide (guide ditangani setDeckGuide)
+        }
+    }
+
+    /** Dipanggil DDDeckControlsView: 0=L4, 1=L5, 2=QAM, 3=R5, 4=R4 (urutan DDPrefs.DECK_IDS). */
+    public static void onDeckExtra(int index, boolean down) {
+        if (index < 0 || index >= deckExtraDown.length) return;
+        deckExtraDown[index] = down;
+        if (!DDDeck.isEvdevActive()) return;
+        String target = deckExtraTarget[index];
+        if (target == null || DDPrefs.NONE.equals(target)) return;
+        if ("guide".equals(target)) { setDeckGuide(down); return; }
+        pushPadState();
+    }
+
+    private static void setDeckGuide(boolean down) {
+        if (xServer == null || deckGuideDown == down) return;
+        deckGuideDown = down;
+        if (down) {
+            xServer.injectKeyPress(XKeycode.KEY_SHIFT_L);
+            xServer.injectKeyPress(XKeycode.KEY_TAB);
+        } else {
+            xServer.injectKeyRelease(XKeycode.KEY_TAB);
+            xServer.injectKeyRelease(XKeycode.KEY_SHIFT_L);
+        }
+    }
+
+    private static float gyroShape(float rate) {
+        float a = Math.abs(rate);
+        if (a < GYRO_DEADZONE) return 0f;
+        float v = Math.min(1f, (a - GYRO_DEADZONE) * gyroGain / GYRO_FULL_RATE);
+        return rate < 0f ? -v : v;
+    }
+
+    private static final Runnable gyroPushRunnable = new Runnable() {
+        @Override public void run() {
+            gyroLastPush = android.os.SystemClock.uptimeMillis();
+            gyroPushPending.set(false);
+            gyroPushedX = gyroOutX;
+            gyroPushedY = gyroOutY;
+            if (DDDeck.isEvdevActive()) pushPadState();
+        }
+    };
+
+    // Dipanggil dari thread sensor. Layar diputar ke kanan/kiri (sumbu y) = menoleh; ke bawah/atas (sumbu x) = menunduk/mendongak.
+    private static final DDDeck.GyroListener gyroListener = new DDDeck.GyroListener() {
+        @Override public void onGyro(float rateX, float rateY) {
+            if ("off".equals(gyroMode)) return;
+            gyroSmoothX += (gyroShape(rateY) - gyroSmoothX) * 0.5f;
+            gyroSmoothY += (gyroShape(rateX) - gyroSmoothY) * 0.5f;
+            if (Math.abs(gyroSmoothX) < 0.002f) gyroSmoothX = 0f;
+            if (Math.abs(gyroSmoothY) < 0.002f) gyroSmoothY = 0f;
+            gyroOutX = gyroSmoothX;
+            gyroOutY = gyroSmoothY;
+            if (!gyroActive()) return;
+            if (gyroOutX == gyroPushedX && gyroOutY == gyroPushedY) return;
+            if (android.os.SystemClock.uptimeMillis() - gyroLastPush >= 8L && gyroPushPending.compareAndSet(false, true)) {
+                gyroHandler.post(gyroPushRunnable);
+            }
+        }
+    };
 
     private static void pushPadState() {
         WinHandler wh = winHandler();
@@ -483,18 +626,34 @@ public final class DDController {
         java.util.Arrays.fill(padDpad, false);
         mouseTouching = false;
         if (mouseLeftDown) clickMouse(false);
+        java.util.Arrays.fill(deckExtraDown, false);  // DroidDeck-deckmap
+        rightPadTouching = false; rightPadClick = false; rightPadX = 0f; rightPadY = 0f;
+        gyroSmoothX = 0f; gyroSmoothY = 0f; gyroOutX = 0f; gyroOutY = 0f;
+        setDeckGuide(false);
     }
 
     private static final DDDeck.PadListener evdevPadListener = new DDDeck.PadListener() {
         @Override public void onPad(boolean right, boolean touching, float x, float y) {
             if (!DDDeck.isEvdevActive()) { stopEvdevPad(); return; }
-            if (right) moveMouse(touching, x, y);
+            if (right) {
+                rightPadTouching = touching;
+                rightPadX = touching ? x : 0f;
+                rightPadY = touching ? y : 0f;
+                if (rightPadStick) pushPadState();  // DroidDeck-deckmap: trackpad kanan sebagai stik kanan
+                else {
+                    moveMouse(touching, x, y);
+                    if (!"off".equals(gyroMode)) pushPadState();  // gyro "saat trackpad disentuh" ikut berubah
+                }
+            }
             else if (touching) { leftPadX = x; leftPadY = y; }
         }
 
         @Override public void onClick(boolean right, boolean down) {
             if (!DDDeck.isEvdevActive()) return;
-            if (right) clickMouse(down); else clickDpad(down);
+            if (right) {
+                if (rightPadStick) { rightPadClick = down; pushPadState(); }  // klik trackpad = R3
+                else clickMouse(down);
+            } else clickDpad(down);
         }
     };
 
@@ -505,13 +664,17 @@ public final class DDController {
         deckView = null;
         DDDeck.setSessionActive(false);
         DDDeck.setPadListener(null);
+        DDDeck.setGyroListener(null);
         stopEvdevPad();
         if (!DDDeck.isWanted()) return;
         if (DDDeck.prepare(act).isEmpty()) return;  // gagal menyiapkan: tetap pakai jalur biasa
         DDDeck.setSessionActive(true);
         DDDeck.setPadListener(evdevPadListener);
+        DDDeck.setGyroListener(gyroListener);
+        loadDeckMap();
         deckView = new DDDeckControlsView(act, DDPrefs.read(act).tint);
         rootView.addView(deckView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        applyDeckVisibility(isControlsEnabled());  // DroidDeck-deckmap: satu UI kontrol
         final Activity a = act;
         DDDeck.startMotion(act, () -> a.getWindowManager().getDefaultDisplay().getRotation());
     }
@@ -550,6 +713,7 @@ public final class DDController {
     }
 
     private static void reloadControls() {
+        loadDeckMap();  // DroidDeck-deckmap
         if (controls != null) controls.reload();
         if (deckView != null) deckView.reload();  // posisi trackpad/grip/QAM ikut layout tersimpan
     }

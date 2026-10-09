@@ -108,6 +108,8 @@ data class SettingsModel(
     val pauseWine: Boolean,
     val removeLoadingBar: Boolean,
     val gameSavesAllShortcuts: Boolean,
+    val steamClientTweaks: Boolean,
+    val saveMemOnRunFromSteam: Boolean,
     val wineDebug: Boolean,
     val wineDebugChannels: String,
     val winlatorLogs: Boolean,
@@ -237,6 +239,23 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                         model.gameSavesAllShortcuts,
                         "Automatically detect and back up saves when any shortcut exits"
                     ) { callbacks.onBooleanChanged("game_saves_all_shortcuts", it) }
+                }
+            }
+
+            item("steam-client-title") { SectionTitle("STEAM CLIENT") }
+            item("steam-client") {
+                GroupCard {
+                    ToggleRow(
+                        "Steam client tweaks",
+                        model.steamClientTweaks,
+                        "Lean launch flags, overlay DLLs off and a lighter steamwebhelper (for Steam under emulation)"
+                    ) { callbacks.onBooleanChanged("steam_client_tweaks", it) }
+                    GroupDivider()
+                    ToggleRow(
+                        "Save memory when running from Steam",
+                        model.saveMemOnRunFromSteam,
+                        "Close steamwebhelper.exe while a heavy game started from Steam is running"
+                    ) { callbacks.onBooleanChanged("save_mem_on_run_from_steam", it) }
                 }
             }
 

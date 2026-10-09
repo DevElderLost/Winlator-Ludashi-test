@@ -130,6 +130,38 @@ void send_vibration(int strong, int weak, uint16_t duration_ms, uint16_t slot) {
 
 static void deck_snapshot_env();
 
+// DroidDeck-steam: aturan per proses seperti [steamwebhelper.exe] di default.box64rc Winlator resmi. Diset di constructor,
+// sebelum Wine/emulator membaca env, jadi berlaku untuk Box64 (proses sendiri) maupun wowbox64/FEX (di dalam proses Wine).
+// Hanya aktif bila peluncur memasang FAKE_STEAM_RULES=1 (opsi Steam client tweaks).
+static bool cmdline_has(const char *needle) {
+	int fd = (int) syscall(__NR_openat, AT_FDCWD, "/proc/self/cmdline", O_RDONLY | O_CLOEXEC, 0);
+	if (fd < 0) return false;
+	static char buf[8192];
+	ssize_t n = (ssize_t) syscall(__NR_read, fd, buf, sizeof(buf) - 1);
+	syscall(__NR_close, fd);
+	if (n <= 0) return false;
+	for (ssize_t i = 0; i < n; i++) {
+		if (buf[i] == 0) buf[i] = ' ';
+		else if (buf[i] >= 'A' && buf[i] <= 'Z') buf[i] = (char) (buf[i] + 32);
+	}
+	buf[n] = 0;
+	return strstr(buf, needle) != nullptr;
+}
+
+static void apply_steam_process_rules() {
+	const char *on = getenv("FAKE_STEAM_RULES");
+	if (!on || atoi(on) != 1) return;
+	if (!cmdline_has("steamwebhelper.exe")) return;
+	setenv("BOX64_DYNAREC_STRONGMEM", "1", 1);  // Box64
+	setenv("FEX_TSOENABLED", "1", 1);           // FEX
+	setenv("WINE_D3D_CONFIG", "renderer=gdi", 1);
+	const char *cur = getenv("WINEDLLOVERRIDES");
+	std::string overrides = (cur && *cur) ? std::string(cur) + ";" : std::string();
+	overrides += "d3d8,d3d9,d3d10,d3d10_1,d3d10core,d3d11,ddraw,dxgi=b";
+	setenv("WINEDLLOVERRIDES", overrides.c_str(), 1);
+	Logger::log("steam: aturan steamwebhelper.exe diterapkan pid=%d\n", (int) getpid());
+}
+
 __attribute__((constructor))
 static void library_init() {
 	if (!hook_dir)
@@ -137,6 +169,7 @@ static void library_init() {
 
 	vibration_enabled = getenv("FAKE_EVDEV_VIBRATION") && atoi(getenv("FAKE_EVDEV_VIBRATION"));
 	Logger::init();
+	apply_steam_process_rules();  // DroidDeck-steam
 	deck_snapshot_env();  // salin env Deck sekarang; environ proses Wine bisa berubah/ dikosongkan setelah ini
 	// Diagnostik: tampilkan apakah env Deck sampai ke proses ini (tiap proses Wine mencetak sekali)
 	Logger::log("deck: init pid=%d FAKE_EVDEV_DECK=%s STATE=%s DEVDIR=%s HIDRAW=%s\n", (int) getpid(),

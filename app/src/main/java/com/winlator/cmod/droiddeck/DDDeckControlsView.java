@@ -36,7 +36,9 @@ public class DDDeckControlsView extends View {
     private final boolean[] btnDown = new boolean[BUTTONS];
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG), text = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final int tint;
+    // DroidDeck-deckmap: warna, opacity dan ukuran sama dengan kontrol utama (DDOnScreenControls) dan panel samping
+    private DDPrefs.Settings settings;
+    private int idleFill, heldFill, idleStroke, heldStroke, idleText, padFill;
 
     // Mode edit layout: elemen bisa dipilih dan digeser, tidak ada input yang dikirim ke DDDeck.
     // id 0..1 = trackpad kiri/kanan, id 2..6 = L4, L5, QAM, R5, R4 (urutan sama dengan btn[]).
@@ -51,16 +53,42 @@ public class DDDeckControlsView extends View {
 
     public DDDeckControlsView(Context context, int tint, boolean editing) {
         super(context);
-        this.tint = tint;
         this.editing = editing;
         for (int i = 0; i < BUTTONS; i++) btn[i] = new RectF();
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeWidth(dp(1.5f));
         text.setTextAlign(Paint.Align.CENTER);
         text.setTypeface(Typeface.DEFAULT_BOLD);
+        applySettings();
     }
 
     private float dp(float v) { return v * getResources().getDisplayMetrics().density; }
+    private float scaled(float v) { return dp(v) * settings.size / 100f; }
+
+    /** Baca ulang Tint/Opacity/Size dari panel samping; rumus warna sama dengan DDOnScreenControls. */
+    private void applySettings() {
+        settings = DDPrefs.read(getContext());
+        final int t = settings.tint;
+        final float alpha = settings.opacity / 100f;
+        idleFill = shade(t, alpha, 80, 0.12f);
+        heldFill = shade(t, alpha, 160, 1f);
+        idleStroke = light(t, alpha, 150, 0.25f);
+        heldStroke = light(t, alpha, 230, 0.7f);
+        idleText = light(t, alpha, 210, 0.75f);
+        padFill = shade(t, alpha, 60, 0.12f);
+        stroke.setStrokeWidth(dp(1.5f));
+    }
+
+    private static int shade(int tint, float alpha, int a, float f) {
+        return Color.argb((int) (a * alpha), (int) (Color.red(tint) * f), (int) (Color.green(tint) * f), (int) (Color.blue(tint) * f));
+    }
+
+    private static int light(int tint, float alpha, int a, float f) {
+        return Color.argb((int) (a * alpha),
+            (int) (Color.red(tint) + (255 - Color.red(tint)) * f),
+            (int) (Color.green(tint) + (255 - Color.green(tint)) * f),
+            (int) (Color.blue(tint) + (255 - Color.blue(tint)) * f));
+    }
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -71,14 +99,15 @@ public class DDDeckControlsView extends View {
     private RectF rect(int id) { return id < 2 ? pad[id] : btn[id - 2]; }
 
     private void relayout() {
+        applySettings();
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
-        float side = Math.min(h * 0.30f, w * 0.15f);
+        float side = Math.min(h * 0.30f, w * 0.15f) * settings.size / 100f;
         float cy = h - side * 0.5f - dp(10f);
         float gap = side * 0.15f;
         pad[0].set(w / 2f - gap / 2f - side, cy - side / 2f, w / 2f - gap / 2f, cy + side / 2f);
         pad[1].set(w / 2f + gap / 2f, cy - side / 2f, w / 2f + gap / 2f + side, cy + side / 2f);
-        float bw = dp(44f), bh = dp(28f), bg = dp(6f);
+        float bw = scaled(44f), bh = scaled(28f), bg = scaled(6f);
         float total = BUTTONS * bw + (BUTTONS - 1) * bg;
         float x = w / 2f - total / 2f, top = dp(8f);
         for (int i = 0; i < BUTTONS; i++) {
@@ -195,6 +224,7 @@ public class DDDeckControlsView extends View {
             case 3: DDDeck.setGrip(DDDeck.GRIP_R5, down); break;
             default: DDDeck.setGrip(DDDeck.GRIP_R4, down); break;
         }
+        DDController.onDeckExtra(i, down);  // DroidDeck-deckmap: diteruskan juga ke pad evdev sesuai pemetaan panel
         invalidate();
     }
 
@@ -264,7 +294,11 @@ public class DDDeckControlsView extends View {
 
     public void releaseAll() {
         for (int p = 0; p < 2; p++) padPointer[p] = -1;
-        for (int b = 0; b < BUTTONS; b++) { btnPointer[b] = -1; btnDown[b] = false; }
+        for (int b = 0; b < BUTTONS; b++) {
+            if (btnDown[b]) DDController.onDeckExtra(b, false);
+            btnPointer[b] = -1;
+            btnDown[b] = false;
+        }
         DDDeck.releaseAll();
         invalidate();
     }
@@ -277,30 +311,31 @@ public class DDDeckControlsView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        int r = Color.red(tint), g = Color.green(tint), b = Color.blue(tint);
         for (int i = 0; i < 2; i++) {
             boolean on = padPointer[i] != -1;
-            fill.setColor(Color.argb(on ? 90 : 28, r, g, b));
+            fill.setColor(on ? heldFill : padFill);
             canvas.drawRoundRect(pad[i], dp(14f), dp(14f), fill);
-            stroke.setColor(Color.argb(on ? 220 : 120, r, g, b));
+            stroke.setColor(on ? heldStroke : idleStroke);
             canvas.drawRoundRect(pad[i], dp(14f), dp(14f), stroke);
             if (editing) {
                 text.setTextSize(dp(12f));
-                text.setColor(Color.WHITE);
+                text.setColor(idleText);
                 canvas.drawText(i == 0 ? "L PAD" : "R PAD", pad[i].centerX(), pad[i].centerY() + text.getTextSize() * 0.35f, text);
             }
         }
-        text.setTextSize(dp(11f));
         for (int i = 0; i < BUTTONS; i++) {
-            fill.setColor(Color.argb(btnDown[i] ? 140 : 40, r, g, b));
-            canvas.drawRoundRect(btn[i], dp(8f), dp(8f), fill);
-            stroke.setColor(Color.argb(btnDown[i] ? 230 : 130, r, g, b));
-            canvas.drawRoundRect(btn[i], dp(8f), dp(8f), stroke);
-            text.setColor(Color.WHITE);
+            boolean held = btnDown[i];
+            float corner = btn[i].height() * 0.55f;  // sama dengan tombol lebar di kontrol utama
+            fill.setColor(held ? heldFill : idleFill);
+            canvas.drawRoundRect(btn[i], corner, corner, fill);
+            stroke.setColor(held ? heldStroke : idleStroke);
+            canvas.drawRoundRect(btn[i], corner, corner, stroke);
+            text.setColor(held ? Color.WHITE : idleText);
+            text.setTextSize(btn[i].height() * 0.4f);
             canvas.drawText(NAMES[i], btn[i].centerX(), btn[i].centerY() + text.getTextSize() * 0.35f, text);
         }
         if (editing && selected >= 0) {
-            stroke.setColor(Color.WHITE);
+            stroke.setColor(heldStroke);
             RectF box = new RectF(rect(selected));
             box.inset(-dp(5f), -dp(5f));
             canvas.drawRoundRect(box, dp(16f), dp(16f), stroke);

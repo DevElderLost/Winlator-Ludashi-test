@@ -38,6 +38,23 @@ public final class DDPrefs {
         "D-pad up", "D-pad down", "D-pad left", "D-pad right", "Hidden"
     };
 
+    // DroidDeck-deckmap: grip/QAM Deck juga diteruskan ke pad evdev (game XInput tidak bisa membaca hidraw)
+    public static final String NONE = "none";
+    public static final String[] DECK_IDS = {"dk_L4", "dk_L5", "dk_qam", "dk_R5", "dk_R4"};  // urutan sama dengan tombol di DDDeckControlsView
+    public static final String[] DECK_NAMES = {"L4 (back grip)", "L5 (back grip)", "QAM (... button)", "R5 (back grip)", "R4 (back grip)"};
+    public static final String[] DECK_TARGET_IDS = {
+        NONE, "a", "b", "x", "y", "lb", "rb", "lt", "rt", "l3", "r3", "select", "start", "guide", "up", "down", "left", "right"
+    };
+    public static final String[] DECK_TARGET_NAMES = {
+        "Hidraw only", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "L3", "R3", "View", "Menu", "Steam",
+        "D-pad up", "D-pad down", "D-pad left", "D-pad right"
+    };
+    public static final String[] PAD_MODE_IDS = {"mouse", "stick"};
+    public static final String[] PAD_MODE_NAMES = {"Mouse", "Right stick"};
+    public static final String[] GYRO_IDS = {"off", "always", "pad"};
+    public static final String[] GYRO_NAMES = {"Off", "Always on", "While right pad touched"};
+    public static final int GYRO_SENS_MIN = 25, GYRO_SENS_MAX = 300, GYRO_SENS_STEP = 5;
+
     public static final class Settings {
         public int tint, opacity, size, stickSens = 100, padSens = 100;
         public boolean stickClick, adaptiveSticks;
@@ -91,10 +108,28 @@ public final class DDPrefs {
 
     public static void setTarget(Context c, String id, String target) { p(c).edit().putString("map." + id, target).apply(); }
 
+    private static String known(String[] list, String v, String def) {
+        for (String k : list) if (k.equals(v)) return v;
+        return def;
+    }
+
+    public static String deckTarget(Context c, String id) { return known(DECK_TARGET_IDS, p(c).getString("dkmap." + id, NONE), NONE); }
+    public static void setDeckTarget(Context c, String id, String target) { p(c).edit().putString("dkmap." + id, target).apply(); }
+    public static String padMode(Context c) { return known(PAD_MODE_IDS, p(c).getString("padMode", "mouse"), "mouse"); }
+    public static void setPadMode(Context c, String mode) { p(c).edit().putString("padMode", mode).apply(); }
+    public static String gyroMode(Context c) { return known(GYRO_IDS, p(c).getString("gyroMode", "off"), "off"); }
+    public static void setGyroMode(Context c, String mode) { p(c).edit().putString("gyroMode", mode).apply(); }
+    public static int gyroSens(Context c) {
+        int v = p(c).getInt("gyroSens", 100);
+        return snap(v, GYRO_SENS_MIN, GYRO_SENS_MAX, GYRO_SENS_STEP, 100);
+    }
+    public static void setGyroSens(Context c, int v) { p(c).edit().putInt("gyroSens", v).apply(); }
+
     public static void resetMapping(Context c) {
         SharedPreferences sp = p(c);
         SharedPreferences.Editor e = sp.edit();
-        for (String k : sp.getAll().keySet()) if (k.startsWith("map.")) e.remove(k);
+        for (String k : sp.getAll().keySet()) if (k.startsWith("map.") || k.startsWith("dkmap.")) e.remove(k);
+        e.remove("padMode").remove("gyroMode").remove("gyroSens");  // DroidDeck-deckmap
         e.apply();
     }
 

@@ -419,6 +419,8 @@ public final class DDDeck implements SensorEventListener {
      * game tidak menerima input ganda, seperti Steam yang menyembunyikan pad fisik saat Steam Input aktif.
      */
     public static boolean isEvdevActive() {
+        // DroidDeck-deckmap: tanpa sesi hidraw, evdev adalah satu-satunya jalur sehingga selalu aktif
+        if (!sessionActive) return true;
         // Off dihormati mutlak.
         return !isHidrawClientActive() && alsoEvdev;
     }

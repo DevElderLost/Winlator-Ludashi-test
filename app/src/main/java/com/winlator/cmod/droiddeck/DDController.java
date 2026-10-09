@@ -666,17 +666,28 @@ public final class DDController {
         DDDeck.setPadListener(null);
         DDDeck.setGyroListener(null);
         stopEvdevPad();
-        if (!DDDeck.isWanted()) return;
-        if (DDDeck.prepare(act).isEmpty()) return;  // gagal menyiapkan: tetap pakai jalur biasa
-        DDDeck.setSessionActive(true);
+        // DroidDeck-deckmap: trackpad, grip L4/R4/L5/R5, QAM dan gyro adalah bagian dari UI kontrol dan jalur evdev, jadi
+        // tetap ada walaupun hidraw (Steam Deck Pad) mati. Hidraw hanya menambah penulisan state ke file milik Wine.
         DDDeck.setPadListener(evdevPadListener);
         DDDeck.setGyroListener(gyroListener);
         loadDeckMap();
+        boolean hidraw = DDDeck.isWanted() && !DDDeck.prepare(act).isEmpty();  // gagal menyiapkan: evdev saja
+        DDDeck.setSessionActive(hidraw);
         deckView = new DDDeckControlsView(act, DDPrefs.read(act).tint);
         rootView.addView(deckView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        applyDeckVisibility(isControlsEnabled());  // DroidDeck-deckmap: satu UI kontrol
-        final Activity a = act;
-        DDDeck.startMotion(act, () -> a.getWindowManager().getDefaultDisplay().getRotation());
+        applyDeckVisibility(isControlsEnabled());  // satu UI kontrol
+        ensureMotion();
+    }
+
+    /** Sensor dipakai hidraw (state file) atau gyro -> stik kanan (evdev); selain itu dilepas agar hemat baterai. */
+    private static void ensureMotion() {
+        final Activity a = activity;
+        if (a == null) return;
+        if (DDDeck.isSessionActive() || !"off".equals(gyroMode)) {
+            DDDeck.startMotion(a, () -> a.getWindowManager().getDefaultDisplay().getRotation());
+        } else {
+            DDDeck.stopMotion();
+        }
     }
 
     // DroidDeck-bp: overlay Controller Test di atas game (tab Status memperlihatkan apakah Steam menemukan pad)
@@ -714,6 +725,7 @@ public final class DDController {
 
     private static void reloadControls() {
         loadDeckMap();  // DroidDeck-deckmap
+        ensureMotion();
         if (controls != null) controls.reload();
         if (deckView != null) deckView.reload();  // posisi trackpad/grip/QAM ikut layout tersimpan
     }

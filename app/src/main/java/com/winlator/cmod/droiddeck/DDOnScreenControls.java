@@ -416,7 +416,10 @@ public class DDOnScreenControls extends View {
         }
     }
 
-    private boolean isVisible(Control c) { return !DDPrefs.OFF.equals(c.target); }
+    // DroidDeck-visibility: D-pad disembunyikan sebagai satu kelompok ("dpad"); lainnya per id
+    private boolean isVisible(Control c) {
+        return !DDPrefs.OFF.equals(c.target) && !settings.hidden.contains("dpad".equals(c.group) ? "dpad" : c.id);
+    }
 
     private int directionIndex(String target) {
         for (int i = 0; i < DIRECTIONS.length; i++) if (DIRECTIONS[i].equals(target)) return i;

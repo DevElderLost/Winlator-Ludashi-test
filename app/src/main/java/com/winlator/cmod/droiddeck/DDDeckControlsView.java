@@ -137,6 +137,27 @@ public class DDDeckControlsView extends View {
     public void reload() {
         ignoreSaved = false;
         relayout();
+        releaseHidden();  // elemen yang baru disembunyikan tidak boleh tertinggal dalam keadaan tertekan
+    }
+
+    // DroidDeck-visibility: id elemen sama dengan DDPrefs.VIS_IDS (pad_l, pad_r, lalu DDPrefs.DECK_IDS)
+    private boolean padVisible(int i) { return !settings.hidden.contains(i == 0 ? "pad_l" : "pad_r"); }
+    private boolean btnVisible(int i) { return !settings.hidden.contains(DDPrefs.DECK_IDS[i]); }
+
+    private void releaseHidden() {
+        for (int p = 0; p < 2; p++) {
+            if (!padVisible(p) && padPointer[p] != -1) {
+                padPointer[p] = -1;
+                DDDeck.setPad(p == 1, false, 0f, 0f);
+            }
+        }
+        for (int b = 0; b < BUTTONS; b++) {
+            if (!btnVisible(b) && (btnPointer[b] != -1 || btnDown[b])) {
+                btnPointer[b] = -1;
+                sendButton(b, false);
+            }
+        }
+        invalidate();
     }
 
     public void resetLayout() {
@@ -206,12 +227,12 @@ public class DDDeckControlsView extends View {
     }
 
     private int padAt(float x, float y) {
-        for (int i = 0; i < 2; i++) if (pad[i].contains(x, y)) return i;
+        for (int i = 0; i < 2; i++) if (padVisible(i) && pad[i].contains(x, y)) return i;
         return -1;
     }
 
     private int btnAt(float x, float y) {
-        for (int i = 0; i < BUTTONS; i++) if (btn[i].contains(x, y)) return i;
+        for (int i = 0; i < BUTTONS; i++) if (btnVisible(i) && btn[i].contains(x, y)) return i;
         return -1;
     }
 
@@ -312,6 +333,7 @@ public class DDDeckControlsView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         for (int i = 0; i < 2; i++) {
+            if (!padVisible(i)) continue;
             boolean on = padPointer[i] != -1;
             fill.setColor(on ? heldFill : padFill);
             canvas.drawRoundRect(pad[i], dp(14f), dp(14f), fill);
@@ -324,6 +346,7 @@ public class DDDeckControlsView extends View {
             }
         }
         for (int i = 0; i < BUTTONS; i++) {
+            if (!btnVisible(i)) continue;
             boolean held = btnDown[i];
             float corner = btn[i].height() * 0.55f;  // sama dengan tombol lebar di kontrol utama
             fill.setColor(held ? heldFill : idleFill);

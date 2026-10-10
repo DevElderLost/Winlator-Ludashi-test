@@ -186,6 +186,7 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
     val enabled = remember(rev) { runCatching { DDController.panelControlsEnabled() }.getOrDefault(false) }
     val keyboard = remember(rev) { runCatching { DDController.panelKeyboardShown() }.getOrDefault(false) }
     var showMapping by remember { mutableStateOf(false) }
+    var showVisibility by remember { mutableStateOf(false) }  // DroidDeck-visibility
     // DroidDeck-deckmap: bagian Deck selalu tampil (jalur evdev); deckWanted hanya menentukan label "Hidraw only"/"None"
     val deckWanted = remember(rev) { runCatching { DDDeck.isWanted() }.getOrDefault(false) }
 
@@ -302,6 +303,60 @@ private fun DDSidebarContent(activity: Activity, rev: Int) {
                     // matikan: hentikan getar yang sedang berjalan
                     if (!on) safe { (activity.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)?.cancel() }
                     changed()
+                }
+            }
+
+            // DroidDeck-visibility: pilih joystick, tombol, trackpad dan grip yang tampil di layar
+            SettingsCard {
+                Surface(
+                    onClick = { showVisibility = !showVisibility },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Visible controls",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            if (showVisibility) "Hide" else "Show",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (showVisibility) {
+                    DDPrefs.VIS_SECTIONS.forEachIndexed { sec, title ->
+                        SettingsDivider()
+                        Text(
+                            title,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val from = DDPrefs.VIS_SECTION_START[sec]
+                        val to = if (sec + 1 < DDPrefs.VIS_SECTION_START.size) DDPrefs.VIS_SECTION_START[sec + 1] else DDPrefs.VIS_IDS.size
+                        for (i in from until to) {
+                            val id = DDPrefs.VIS_IDS[i]
+                            SettingsDivider()
+                            SettingToggle(DDPrefs.VIS_NAMES[i], !DDPrefs.isHidden(activity, id)) { shown ->
+                                safe { DDPrefs.setHidden(activity, id, !shown) }
+                                changed()
+                            }
+                        }
+                    }
+                    if (DDPrefs.anyHidden(activity)) {
+                        SettingsDivider()
+                        DDActionRow("Show all controls") {
+                            safe { DDPrefs.showAllElements(activity) }
+                            changed()
+                        }
+                    }
                 }
             }
 

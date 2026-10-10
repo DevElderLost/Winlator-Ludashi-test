@@ -4,7 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /** Preferensi kontrol DroidDeck (port dari ControllerPrefs.kt). Disimpan terpisah dari preferensi Winlator. */
 public final class DDPrefs {
@@ -42,6 +44,10 @@ public final class DDPrefs {
     public static final String NONE = "none";
     public static final String[] DECK_IDS = {"dk_L4", "dk_L5", "dk_qam", "dk_R5", "dk_R4"};  // urutan sama dengan tombol di DDDeckControlsView
     public static final String[] DECK_NAMES = {"L4 (back grip)", "L5 (back grip)", "QAM (... button)", "R5 (back grip)", "R4 (back grip)"};
+    // Default grip: tombol belakang menduplikasi tombol muka supaya jempol tetap di stik. Steam Input tidak punya default
+    // universal untuk grip (assignable per game), jadi ini pilihan sendiri; QAM dibiarkan kosong karena Steam pun tidak
+    // memperbolehkan Steam/QAM dipetakan ulang. Urutan sama dengan DECK_IDS. Pilihan "None" milik pengguna tetap dihormati.
+    private static final String[] DECK_DEFAULTS = {"y", "x", NONE, "a", "b"};
     public static final String[] DECK_TARGET_IDS = {
         NONE, "a", "b", "x", "y", "lb", "rb", "lt", "rt", "l3", "r3", "select", "start", "guide", "up", "down", "left", "right"
     };
@@ -55,11 +61,29 @@ public final class DDPrefs {
     public static final String[] GYRO_NAMES = {"Off", "Always on", "While right pad touched"};
     public static final int GYRO_SENS_MIN = 25, GYRO_SENS_MAX = 300, GYRO_SENS_STEP = 5;
 
+    // DroidDeck-visibility: elemen UI yang ditampilkan/disembunyikan (kunci "hide.<id>"), terpisah dari pemetaan tombol
+    // sehingga pemetaan tidak hilang saat elemen disembunyikan. Tombol buka panel dan tombol sembunyi cepat tidak termasuk.
+    public static final String[] VIS_IDS = {
+        "ls", "rs",
+        "dpad", "a", "b", "x", "y", "lb", "rb", "lt", "rt", "select", "start", "guide",
+        "pad_l", "pad_r",
+        "dk_L4", "dk_L5", "dk_qam", "dk_R5", "dk_R4"
+    };
+    public static final String[] VIS_NAMES = {
+        "Left stick", "Right stick",
+        "D-pad", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "View", "Menu", "Steam",
+        "Left trackpad", "Right trackpad",
+        "L4 (back grip)", "L5 (back grip)", "QAM", "R5 (back grip)", "R4 (back grip)"
+    };
+    public static final String[] VIS_SECTIONS = {"Joysticks", "Buttons", "Trackpads", "Back grips"};
+    public static final int[] VIS_SECTION_START = {0, 2, 14, 16};  // indeks awal tiap bagian di VIS_IDS
+
     public static final class Settings {
         public int tint, opacity, size, stickSens = 100, padSens = 100;
         public boolean stickClick, adaptiveSticks;
         public boolean rumble = true;  // DroidDeck-rumble: getar HP dari rumble pad virtual
         public final Map<String, String> mapping = new HashMap<>();
+        public final Set<String> hidden = new HashSet<>();  // DroidDeck-visibility: id elemen yang disembunyikan
     }
 
     private DDPrefs() {}
@@ -97,6 +121,7 @@ public final class DDPrefs {
         s.adaptiveSticks = sp.getBoolean("adaptiveSticks", true);
         s.rumble = sp.getBoolean("rumble", true);
         for (String id : MAPPABLE_IDS) s.mapping.put(id, target(c, id));
+        for (String id : VIS_IDS) if (sp.getBoolean("hide." + id, false)) s.hidden.add(id);
         return s;
     }
 
@@ -113,7 +138,14 @@ public final class DDPrefs {
         return def;
     }
 
-    public static String deckTarget(Context c, String id) { return known(DECK_TARGET_IDS, p(c).getString("dkmap." + id, NONE), NONE); }
+    public static String deckDefault(String id) {
+        for (int i = 0; i < DECK_IDS.length; i++) if (DECK_IDS[i].equals(id)) return DECK_DEFAULTS[i];
+        return NONE;
+    }
+    public static String deckTarget(Context c, String id) {
+        String def = deckDefault(id);
+        return known(DECK_TARGET_IDS, p(c).getString("dkmap." + id, def), def);
+    }
     public static void setDeckTarget(Context c, String id, String target) { p(c).edit().putString("dkmap." + id, target).apply(); }
     public static String padMode(Context c) { return known(PAD_MODE_IDS, p(c).getString("padMode", "mouse"), "mouse"); }
     public static void setPadMode(Context c, String mode) { p(c).edit().putString("padMode", mode).apply(); }
@@ -124,6 +156,26 @@ public final class DDPrefs {
         return snap(v, GYRO_SENS_MIN, GYRO_SENS_MAX, GYRO_SENS_STEP, 100);
     }
     public static void setGyroSens(Context c, int v) { p(c).edit().putInt("gyroSens", v).apply(); }
+
+    public static boolean isHidden(Context c, String id) { return p(c).getBoolean("hide." + id, false); }
+
+    public static void setHidden(Context c, String id, boolean hidden) {
+        SharedPreferences.Editor e = p(c).edit();
+        if (hidden) e.putBoolean("hide." + id, true); else e.remove("hide." + id);
+        e.apply();
+    }
+
+    public static boolean anyHidden(Context c) {
+        for (String id : VIS_IDS) if (isHidden(c, id)) return true;
+        return false;
+    }
+
+    public static void showAllElements(Context c) {
+        SharedPreferences sp = p(c);
+        SharedPreferences.Editor e = sp.edit();
+        for (String k : sp.getAll().keySet()) if (k.startsWith("hide.")) e.remove(k);
+        e.apply();
+    }
 
     public static void resetMapping(Context c) {
         SharedPreferences sp = p(c);

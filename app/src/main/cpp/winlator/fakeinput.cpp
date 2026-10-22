@@ -38,6 +38,7 @@
 #include <dirent.h>
 #include <unordered_map>
 #include <sys/socket.h>
+#include <linux/netlink.h>
 #include <sys/mman.h>
 #include <sys/statfs.h>
 #include <sys/syscall.h>
@@ -240,7 +241,8 @@ static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std:
 // bisa dipercaya setelah startup, jadi nilai awal itulah yang dipakai.
 static const char *const DECK_ENV_NAMES[] = {"FAKE_EVDEV_DECK", "FAKE_DECK_STATE", "FAKE_DECK_SYSFS_DIR",
                                               "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS", "FAKE_DECK_POLL_US", "FAKE_DECK_IDLE_US",
-                                              "FAKE_DECK_ANALOG_US", "FAKE_DECK_MOTION_US"};
+                                              "FAKE_DECK_ANALOG_US", "FAKE_DECK_MOTION_US",
+                                              "FAKE_UEVENT_SOCKET", "FAKE_DECK_SYSFS_LISTING"};
 static constexpr int DECK_ENV_COUNT = sizeof(DECK_ENV_NAMES) / sizeof(DECK_ENV_NAMES[0]);
 static char *deck_env_snapshot[DECK_ENV_COUNT];
 static bool deck_env_snapped = false;
@@ -824,6 +826,112 @@ static const char *deck_dev_fallback() {
     return path.empty() ? nullptr : path.c_str();
 }
 
+// ---- Pengganti soket monitor uevent libudev (port dari Tiny Computer, FAKE_UEVENT_SOCKET) ----
+// libudev (dan lewat itu SDL serta winebus Wine) memantau hotplug dengan soket NETLINK_KOBJECT_UEVENT.
+// SELinux Android menolak soket itu untuk aplikasi, sehingga udev_monitor_new_from_netlink gagal dan
+// winebus membatalkan SELURUH pemindaian perangkat sebelum satu pad pun terdaftar ("Could not initialize
+// UDEV"). Dengan FAKE_UEVENT_SOCKET=1 soket itu diganti satu ujung pasangan AF_UNIX datagram yang ujung
+// lainnya tetap terbuka dan diam: monitor terbentuk, tidak pernah menerima event, dan pemindaian
+// /sys/class/{input,hidraw} tetap berjalan. Hotplug tidak diumumkan; node pad sudah ada sejak awal.
+static bool fake_uevent_enabled() {
+    const char *v = deck_env("FAKE_UEVENT_SOCKET");
+    return v && *v && strcmp(v, "0") != 0;
+}
+
+static std::mutex &uevent_mutex() { static auto *m = new std::mutex(); return *m; }
+static std::unordered_map<int, int> &uevent_map() { static auto *m = new std::unordered_map<int, int>(); return *m; }
+static std::atomic<int> uevent_count{0};
+
+static bool is_uevent_fd(int fd) {
+    if (fd < 0 || uevent_count.load(std::memory_order_relaxed) == 0) return false;
+    std::lock_guard<std::mutex> guard(uevent_mutex());
+    return uevent_map().count(fd) != 0;
+}
+
+static void forget_uevent_fd(int fd) {
+    if (fd < 0 || uevent_count.load(std::memory_order_relaxed) == 0) return;
+    int peer = -1;
+    {
+        std::lock_guard<std::mutex> guard(uevent_mutex());
+        auto it = uevent_map().find(fd);
+        if (it == uevent_map().end()) return;
+        peer = it->second;
+        uevent_map().erase(it);
+        uevent_count.fetch_sub(1, std::memory_order_relaxed);
+    }
+    if (peer >= 0) syscall(SYS_close, peer);
+}
+
+EXPORT int socket(int domain, int type, int protocol) {
+    static auto real = reinterpret_cast<int (*)(int, int, int)>(dlsym(RTLD_NEXT, "socket"));
+    if (domain == AF_NETLINK && protocol == NETLINK_KOBJECT_UEVENT && fake_uevent_enabled()) {
+        int pair[2];
+        if (socketpair(AF_UNIX, SOCK_DGRAM | (type & (SOCK_NONBLOCK | SOCK_CLOEXEC)), 0, pair) == 0) {
+            fcntl(pair[1], F_SETFD, FD_CLOEXEC);
+            {
+                std::lock_guard<std::mutex> guard(uevent_mutex());
+                uevent_map()[pair[0]] = pair[1];
+                uevent_count.fetch_add(1, std::memory_order_relaxed);
+            }
+            Logger::log("uevent: netlink monitor socket %d is a silent stand-in\n", pair[0]);
+            return pair[0];
+        }
+    }
+    return real(domain, type, protocol);
+}
+
+EXPORT int bind(int fd, const struct sockaddr *addr, socklen_t len) {
+    static auto real = reinterpret_cast<int (*)(int, const struct sockaddr *, socklen_t)>(dlsym(RTLD_NEXT, "bind"));
+    if (is_uevent_fd(fd)) return 0;
+    return real(fd, addr, len);
+}
+
+EXPORT int getsockname(int fd, struct sockaddr *addr, socklen_t *len) {
+    static auto real = reinterpret_cast<int (*)(int, struct sockaddr *, socklen_t *)>(dlsym(RTLD_NEXT, "getsockname"));
+    if (is_uevent_fd(fd)) {
+        struct sockaddr_nl nl;
+        memset(&nl, 0, sizeof(nl));
+        nl.nl_family = AF_NETLINK;
+        nl.nl_pid = static_cast<__u32>(getpid());
+        nl.nl_groups = 0;
+        if (addr && len) {
+            socklen_t room = *len < sizeof(nl) ? *len : static_cast<socklen_t>(sizeof(nl));
+            memcpy(addr, &nl, room);
+            *len = sizeof(nl);
+        }
+        return 0;
+    }
+    return real(fd, addr, len);
+}
+
+// SO_PASSCRED, SO_RCVBUFFORCE dan filter BPF (SO_ATTACH_FILTER) yang dipasang libudev pada soket netlink
+// tidak berarti (atau ditolak) pada pasangan AF_UNIX.
+EXPORT int setsockopt(int fd, int level, int optname, const void *optval, socklen_t optlen) {
+    static auto real = reinterpret_cast<int (*)(int, int, int, const void *, socklen_t)>(dlsym(RTLD_NEXT, "setsockopt"));
+    if (is_uevent_fd(fd)) return 0;
+    return real(fd, level, optname, optval, optlen);
+}
+
+// ---- Listing /sys, /sys/class, /sys/bus pengganti (port dari Tiny Computer, FAKE_DECK_SYSFS_LISTING) ----
+// SELinux Android menolak listing /sys, /sys/class dan /sys/bus untuk aplikasi. libudev membaca /sys/class
+// untuk mencari subsistem lalu menyerah total bila gagal, sehingga hidraw tidak pernah dijangkau. Bila akses
+// asli ditolak (EACCES), pemanggil diberi folder pengganti (hidraw ada di bawah class) lalu membuka
+// /sys/class/hidraw sendiri, yang sudah dialihkan deck_redirect. Hanya saat penolakan, hanya saat Deck aktif.
+static std::string deck_listing_for(const char *path, int saved_errno) {
+    if (saved_errno != EACCES || !path || path[0] != '/' || !deck_enabled()) return std::string();
+    const char *listing = deck_env("FAKE_DECK_SYSFS_LISTING");
+    if (!listing) return std::string();
+    std::string p(path);
+    while (p.size() > 1 && p.back() == '/') p.pop_back();
+    int which = p == "/sys" ? 0 : p == "/sys/class" ? 1 : p == "/sys/bus" ? 2 : -1;
+    if (which < 0) return std::string();
+    static const char *const names[] = {"sys", "class", "bus"};
+    static std::atomic<int> logged{0};
+    if (!(logged.fetch_or(1 << which) & (1 << which)))
+        Logger::log("deck: sysfs %s listed from the stand-in\n", p.c_str());
+    return std::string(listing) + "/" + names[which];
+}
+
 static bool deck_dev_denied() { return errno == EACCES || errno == EPERM || errno == ENOENT; }
 
 EXPORT DIR *opendir(const char *name) {
@@ -850,6 +958,12 @@ EXPORT DIR *opendir(const char *name) {
             static std::atomic<bool> noted{false};
             if (d && !noted.exchange(true)) Logger::log("deck: opendir(/dev) denied, using %s\n", fallback);
         }
+    }
+    if (!d) {
+        int saved = errno;
+        std::string listing = deck_listing_for(name, saved);
+        if (!listing.empty()) d = real(listing.c_str());
+        if (!d) errno = saved;
     }
     if (d && dev_dir) deck_dev_track(d);
     return d;
@@ -1189,6 +1303,13 @@ EXPORT int openat(int dirfd, const char *pathname, int flags, ...) {
     else
         fd = my_openat(dirfd, pathname, flags);
 
+    if (fd < 0 && pathname && pathname[0] == '/') {
+        int saved = errno;
+        std::string listing = deck_listing_for(pathname, saved);
+        if (!listing.empty()) fd = my_openat(AT_FDCWD, listing.c_str(), flags);
+        if (fd < 0) errno = saved;
+    }
+
     if (isFromInput) {
         Logger::log("Adding controller, fd %d event %s\n", fd, get_event(pathname));
         controller_map[fd] = strdup(get_event(pathname));
@@ -1484,6 +1605,7 @@ EXPORT int close(int fd) {
 		*(void **)&my_close = dlsym(RTLD_NEXT, "close");
 	// DroidDeck-deck
 	deck_forget(fd);
+	forget_uevent_fd(fd);
 
 
 	auto controller = controller_map.find(fd);

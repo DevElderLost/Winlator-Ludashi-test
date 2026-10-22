@@ -224,6 +224,16 @@ public final class DDDeck implements SensorEventListener {
             env.put("PROTON_ENABLE_HIDRAW", "0x28de/0x1205");
             // Game berbasis SDL (>= 2.28): driver HIDAPI Steam Deck membaca hidraw sendiri (gyro, trackpad, L4/R4/L5/R5)
             env.put("SDL_JOYSTICK_HIDAPI_STEAMDECK", "1");
+            // Sama dengan Tiny Computer (PadSetup): soket netlink uevent ditolak SELinux, jadi libudev/winebus gagal
+            // membuat monitor dan membatalkan seluruh pemindaian. libfakeinput menggantinya dengan soket diam.
+            env.put("FAKE_UEVENT_SOCKET", "1");
+            // Listing /sys, /sys/class dan /sys/bus pengganti saat akses asli ditolak SELinux (libudev menyerah tanpanya).
+            File listing = new File(base, "listing");
+            buildListing(listing);
+            env.put("FAKE_DECK_SYSFS_LISTING", listing.getAbsolutePath());
+            // SDL memindai node lewat /dev (yang sudah dialihkan libfakeinput), bukan lewat monitor udev.
+            env.put("SDL_JOYSTICK_DISABLE_UDEV", "1");
+            env.put("SDL_HIDAPI_JOYSTICK_DISABLE_UDEV", "1");
         } catch (Exception e) {
             Log.w(TAG, "Deck pad tidak bisa disiapkan: " + e);
             env.clear();
@@ -300,6 +310,13 @@ public final class DDDeck implements SensorEventListener {
         link(new File(clsHidraw, NODE), dir(hidraw));
         link(new File(dir("sys/dev/char"), MAJOR + ":" + MINOR), dir(hidraw));
         write("run/udev/data", "c" + MAJOR + ":" + MINOR, "I:1\nE:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\n");
+    }
+
+    /** Folder pengganti listing /sys, /sys/class, /sys/bus (hanya nama yang penting; padanan SteamDeckPad.listingDir). */
+    private static void buildListing(File listing) {
+        deleteTree(listing);
+        for (String n : new String[] {"sys/bus", "sys/class", "sys/devices", "class/hidraw", "bus"})
+            new File(listing, n).mkdirs();
     }
 
     // ---------------------------------------------------------------- state

@@ -425,6 +425,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 }
                 com.winlator.cmod.droiddeck.DDDeck.resetStatus();  // ST_OPEN dihitung dari nol untuk peluncuran ini
             }
+            // evdev-sysfs: sesi tanpa pad Deck tetap butuh sysfs/udev palsu agar winebus membaca /dev/input/event0
+            // (Deck aktif: env yang sama sudah ditambahkan prepare()). Nilai FAKE_EVDEV_SYSFS dari pengguna dihormati.
+            if (!com.winlator.cmod.droiddeck.DDDeck.isWanted() && event0.exists()) {
+                for (java.util.Map.Entry<String, String> evEnv : com.winlator.cmod.droiddeck.DDDeck.prepareEvdev(context).entrySet()) {
+                    String current = envVars.get(evEnv.getKey());
+                    if ("FAKE_EVDEV_SYSFS".equals(evEnv.getKey()) && current != null && !current.isEmpty()) continue;
+                    envVars.put(evEnv.getKey(), evEnv.getValue());
+                }
+            }
             com.winlator.cmod.droiddeck.DDDeck.applyLaunchEnv(envVars);
         }
         // ---- end DroidDeck ----

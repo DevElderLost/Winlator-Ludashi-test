@@ -37,6 +37,15 @@ public final class DDDeck implements SensorEventListener {
     private static final String NODE = "hidraw" + MINOR, SERIAL = "DROIDDECK0001";
     private static final int STATE_SIZE = 64, STATE_MAGIC = 0x31534B44;
 
+    // evdev-sysfs: node pad evdev palsu (/dev/input/event0..3) = 13:64..13:67, seperti kernel. Identitas harus sama dengan
+    // hook ioctl di fakeinput.cpp: bustype 3, vendor 0x1234+n, product 0x5678+n, versi 0x0110, nama "Generic HID Gamepad n".
+    private static final int EV_MAJOR = 13, EV_MINOR_BASE = 64, EV_COUNT = 4;
+    // Kata bitmask format sysfs (heks, kata tertinggi dulu) yang sama dengan EVIOCGBIT di fakeinput.cpp.
+    private static final String EV_CAP_EV = "b";                                    // EV_SYN | EV_KEY | EV_ABS
+    private static final String EV_CAP_KEY = "7fdb000000000000 0 0 0 0";           // BTN_A,B,X,Y,TL,TR,TL2,TR2,SELECT,START,MODE,THUMBL,THUMBR
+    private static final String EV_CAP_ABS = "3061b";                               // X,Y,RX,RY,GAS,BRAKE,HAT0X,HAT0Y
+    private static boolean sysfsBuilt = false;
+
     // Bit laporan Deck (SDL_hidapi_steamdeck.c): kata rendah lalu tinggi.
     private static final int L_R2 = 0x1, L_L2 = 0x2, L_R1 = 0x4, L_L1 = 0x8, L_Y = 0x10, L_B = 0x20, L_X = 0x40,
         L_A = 0x80, L_UP = 0x100, L_RIGHT = 0x200, L_LEFT = 0x400, L_DOWN = 0x800, L_VIEW = 0x1000,
@@ -210,6 +219,7 @@ public final class DDDeck implements SensorEventListener {
                 }
                 map.order(ByteOrder.LITTLE_ENDIAN);
                 buildSysfs();
+                sysfsBuilt = true;
                 publish();
             }
             // DroidDeck-bp: file penghitung status yang ditulis libfakeinput (dibaca layar uji)
@@ -226,6 +236,8 @@ public final class DDDeck implements SensorEventListener {
             File devDir = new File(base, "devdir");  // pengganti /dev yang ditolak SELinux (opendir/inotify)
             devDir.mkdirs();
             env.put("FAKE_EVDEV_DECK", "1");
+            // Pad evdev ikut aktif: Wine harus bisa membaca event0 lewat sysfs/udev palsu (lihat buildEvdevSysfs).
+            if (alsoEvdev) env.put("FAKE_EVDEV_SYSFS", "1");
             env.put("FAKE_DECK_STATE", state.getAbsolutePath());
             env.put("FAKE_DECK_SYSFS_DIR", root.getAbsolutePath());
             env.put("FAKE_DECK_DEVDIR", devDir.getAbsolutePath());
@@ -245,6 +257,38 @@ public final class DDDeck implements SensorEventListener {
             env.put("SDL_HIDAPI_JOYSTICK_DISABLE_UDEV", "1");
         } catch (Exception e) {
             Log.w(TAG, "Deck pad tidak bisa disiapkan: " + e);
+            env.clear();
+        }
+        return env;
+    }
+
+    /**
+     * Untuk sesi TANPA pad Deck (hanya pad evdev/XInput DroidDeck): menyiapkan pohon sysfs/udev palsu untuk event0..3
+     * dan pengganti /dev, supaya winebus (mode udev langsung) bisa mendaftarkan /dev/input/eventN sebagai perangkat.
+     * Tanpa Deck: tidak ada file state, tidak ada FAKE_EVDEV_DECK, tidak ada PROTON_ENABLE_HIDRAW.
+     */
+    public static synchronized Map<String, String> prepareEvdev(Context c) {
+        Map<String, String> env = new HashMap<>();
+        try {
+            File base = new File(c.getFilesDir(), "deck");
+            base.mkdirs();
+            root = new File(base, "root");
+            if (!sysfsBuilt) {
+                buildSysfs();
+                sysfsBuilt = true;
+            }
+            File devDir = new File(base, "devdir");  // pengganti /dev yang ditolak SELinux (opendir/inotify)
+            devDir.mkdirs();
+            File listing = new File(base, "listing");
+            buildListing(listing);
+            env.put("FAKE_EVDEV_SYSFS", "1");
+            env.put("FAKE_DECK_SYSFS_DIR", root.getAbsolutePath());
+            env.put("FAKE_DECK_DEVDIR", devDir.getAbsolutePath());
+            env.put("FAKE_DECK_SYSFS_LISTING", listing.getAbsolutePath());
+            // soket netlink uevent ditolak SELinux: libudev/winebus membatalkan pemindaian; ganti dengan soket diam
+            env.put("FAKE_UEVENT_SOCKET", "1");
+        } catch (Exception e) {
+            Log.w(TAG, "sysfs evdev tidak bisa disiapkan: " + e);
             env.clear();
         }
         return env;
@@ -319,12 +363,73 @@ public final class DDDeck implements SensorEventListener {
         link(new File(clsHidraw, NODE), dir(hidraw));
         link(new File(dir("sys/dev/char"), MAJOR + ":" + MINOR), dir(hidraw));
         write("run/udev/data", "c" + MAJOR + ":" + MINOR, "I:1\nE:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\n");
+        buildEvdevSysfs();
+    }
+
+    /**
+     * Sysfs pad evdev seperti gamepad USB asli: usb_device > usb_interface > input/inputN > eventN, ditambah
+     * /sys/class/input/eventN, /sys/dev/char/13:M dan data udev (ID_INPUT_JOYSTICK=1). Hanya cermin; node /dev/input/eventN
+     * dilayani libfakeinput, dan hook-nya mengalihkan akses sysfs ke pohon ini (hanya bila FAKE_EVDEV_SYSFS=1).
+     */
+    private static void buildEvdevSysfs() throws Exception {
+        File busUsb = dir("sys/bus/usb"), clsInput = dir("sys/class/input");
+        for (int n = 0; n < EV_COUNT; n++) {
+            int minor = EV_MINOR_BASE + n;
+            String vid = String.format(java.util.Locale.US, "%04x", 0x1234 + n);
+            String pid = String.format(java.util.Locale.US, "%04x", 0x5678 + n);
+            String name = "Generic HID Gamepad " + n;
+            String usb = "sys/devices/droiddeck/usb" + (10 + n);
+            String iface = usb + "/" + (10 + n) + "-1:1.0";
+            String inp = iface + "/input/input" + n;
+            String ev = inp + "/event" + n;
+            String prod = Integer.toHexString(0x1234 + n) + "/" + Integer.toHexString(0x5678 + n) + "/110";
+
+            write(usb, "uevent", "DEVTYPE=usb_device\nPRODUCT=" + prod + "\nTYPE=0/0/0\nBUSNUM=001\nDEVNUM=" + String.format(java.util.Locale.US, "%03d", 10 + n) + "\n");
+            write(usb, "idVendor", vid + "\n");
+            write(usb, "idProduct", pid + "\n");
+            write(usb, "bcdDevice", "0110\n");
+            write(usb, "manufacturer", "DroidDeck\n");
+            write(usb, "product", name + "\n");
+            write(usb, "serial", "DROIDDECKEV" + n + "\n");
+            link(new File(dir(usb), "subsystem"), busUsb);
+
+            write(iface, "uevent", "DEVTYPE=usb_interface\nDRIVER=usbhid\nPRODUCT=" + prod + "\nINTERFACE=3/0/0\n");
+            write(iface, "bInterfaceNumber", "00\n");
+            write(iface, "bInterfaceClass", "03\n");
+            link(new File(dir(iface), "subsystem"), busUsb);
+
+            write(inp, "uevent", "PRODUCT=3/" + prod + "\nNAME=\"" + name + "\"\nPHYS=\"droiddeck/input" + n
+                + "\"\nPROP=0\nEV=" + EV_CAP_EV + "\nKEY=" + EV_CAP_KEY + "\nABS=" + EV_CAP_ABS + "\n");
+            write(inp, "name", name + "\n");
+            write(inp, "phys", "droiddeck/input" + n + "\n");
+            write(inp, "uniq", "\n");
+            write(inp, "properties", "0\n");
+            write(inp + "/id", "bustype", "0003\n");
+            write(inp + "/id", "vendor", vid + "\n");
+            write(inp + "/id", "product", pid + "\n");
+            write(inp + "/id", "version", "0110\n");
+            write(inp + "/capabilities", "ev", EV_CAP_EV + "\n");
+            write(inp + "/capabilities", "key", EV_CAP_KEY + "\n");
+            write(inp + "/capabilities", "abs", EV_CAP_ABS + "\n");
+            for (String z : new String[] {"rel", "msc", "led", "snd", "ff", "sw"})
+                write(inp + "/capabilities", z, "0\n");
+            link(new File(dir(inp), "subsystem"), clsInput);
+
+            write(ev, "uevent", "MAJOR=" + EV_MAJOR + "\nMINOR=" + minor + "\nDEVNAME=input/event" + n + "\n");
+            write(ev, "dev", EV_MAJOR + ":" + minor + "\n");
+            link(new File(dir(ev), "subsystem"), clsInput);
+            link(new File(clsInput, "event" + n), dir(ev));
+            link(new File(clsInput, "input" + n), dir(inp));
+            link(new File(dir("sys/dev/char"), EV_MAJOR + ":" + minor), dir(ev));
+            write("run/udev/data", "c" + EV_MAJOR + ":" + minor,
+                "I:1\nE:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\nE:ID_BUS=usb\nE:ID_VENDOR_ID=" + vid + "\nE:ID_MODEL_ID=" + pid + "\n");
+        }
     }
 
     /** Folder pengganti listing /sys, /sys/class, /sys/bus (hanya nama yang penting; padanan SteamDeckPad.listingDir). */
     private static void buildListing(File listing) {
         deleteTree(listing);
-        for (String n : new String[] {"sys/bus", "sys/class", "sys/devices", "class/hidraw", "bus"})
+        for (String n : new String[] {"sys/bus", "sys/class", "sys/devices", "class/hidraw", "class/input", "bus"})
             new File(listing, n).mkdirs();
     }
 

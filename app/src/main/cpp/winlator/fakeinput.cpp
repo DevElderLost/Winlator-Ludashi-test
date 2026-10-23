@@ -242,7 +242,7 @@ static std::unordered_map<int, DeckFd *> &deck_fds() { static auto *m = new std:
 static const char *const DECK_ENV_NAMES[] = {"FAKE_EVDEV_DECK", "FAKE_DECK_STATE", "FAKE_DECK_SYSFS_DIR",
                                               "FAKE_DECK_DEVDIR", "FAKE_DECK_STATUS", "FAKE_DECK_POLL_US", "FAKE_DECK_IDLE_US",
                                               "FAKE_DECK_ANALOG_US", "FAKE_DECK_MOTION_US",
-                                              "FAKE_UEVENT_SOCKET", "FAKE_DECK_SYSFS_LISTING"};
+                                              "FAKE_UEVENT_SOCKET", "FAKE_DECK_SYSFS_LISTING", "FAKE_EVDEV_SYSFS"};
 static constexpr int DECK_ENV_COUNT = sizeof(DECK_ENV_NAMES) / sizeof(DECK_ENV_NAMES[0]);
 static char *deck_env_snapshot[DECK_ENV_COUNT];
 static bool deck_env_snapped = false;
@@ -669,6 +669,24 @@ static int ioctl_deck(DeckFd &deck, unsigned op, void *argp) {
     }
 }
 
+// evdev-sysfs: pohon sysfs/udev palsu untuk pad evdev (event0..3), TANPA harus mode Deck aktif.
+// Tanpa ini winebus (mode udev langsung) memanggil realpath("/sys/class/input/event0"), mendapat sysfs ASLI HP
+// (mis. tombol power), dan udev_device_new_from_syspath gagal karena SELinux -> pad evdev tidak pernah dibaca Wine,
+// padahal SDL (membaca /dev/input yang sudah dialihkan) melihatnya.
+static bool evsysfs_enabled() {
+    static int on = -1;
+    if (on == 1) return true;
+    const char *v = deck_env("FAKE_EVDEV_SYSFS");
+    const int now = (v && atoi(v)) ? 1 : 0;
+    if (deck_env_snapped) on = now;
+    return now == 1;
+}
+
+// true bila salah satu pohon sysfs palsu (Deck/hidraw atau evdev) dipakai pada sesi ini.
+static bool sysfs_fake_enabled() { return deck_enabled() || evsysfs_enabled(); }
+
+static constexpr unsigned EV_FAKE_MAJOR = 13, EV_FAKE_MINOR_BASE = 64;  // seperti kernel: /dev/input/eventN = 13:(64+N)
+
 static bool deck_is_node(const char *path) {
     return path && deck_enabled() && !strcmp(path, DECK_NODE);
 }
@@ -679,14 +697,22 @@ static std::atomic<bool> deck_hot{false};
 
 // Pohon sysfs Deck (ditulis DDDeck.java) mencerminkan path absolutnya di bawah FAKE_DECK_SYSFS_DIR.
 static bool deck_redirect(const char *path, std::string &out) {
-    if (!path || path[0] != '/' || !deck_enabled()) return false;
+    if (!path || path[0] != '/' || !sysfs_fake_enabled()) return false;
     const char *root = deck_env("FAKE_DECK_SYSFS_DIR");
     if (!root) return false;
     if (!deck_hot.load(std::memory_order_relaxed) && (!strncmp(path, "/sys", 4) || !strncmp(path, "/run/udev", 9)))
         deck_hot.store(true, std::memory_order_relaxed);
     static const char *kPrefixes[] = {"/sys/devices/droiddeck", "/sys/class/hidraw", "/sys/bus/hid",
                                       "/sys/bus/usb", "/sys/dev/char/240:16", "/run/udev/data/c240:16"};
-    for (const char *prefix : kPrefixes) {
+    // evdev-sysfs: /sys/class/input, node 13:64..13:67 (event0..3) dan data udev-nya
+    static const char *kEvPrefixes[] = {"/sys/class/input",
+                                        "/sys/dev/char/13:64", "/sys/dev/char/13:65", "/sys/dev/char/13:66", "/sys/dev/char/13:67",
+                                        "/run/udev/data/c13:64", "/run/udev/data/c13:65", "/run/udev/data/c13:66", "/run/udev/data/c13:67"};
+    const bool ev_on = evsysfs_enabled();
+    const size_t total = sizeof(kPrefixes) / sizeof(kPrefixes[0]) + (ev_on ? sizeof(kEvPrefixes) / sizeof(kEvPrefixes[0]) : 0);
+    for (size_t idx = 0; idx < total; idx++) {
+        const char *prefix = idx < sizeof(kPrefixes) / sizeof(kPrefixes[0]) ? kPrefixes[idx]
+                                                                           : kEvPrefixes[idx - sizeof(kPrefixes) / sizeof(kPrefixes[0])];
         size_t n = strlen(prefix);
         if (!strncmp(path, prefix, n) && (path[n] == '\0' || path[n] == '/')) {
             static std::atomic<bool> noted{false};
@@ -918,7 +944,7 @@ EXPORT int setsockopt(int fd, int level, int optname, const void *optval, sockle
 // asli ditolak (EACCES), pemanggil diberi folder pengganti (hidraw ada di bawah class) lalu membuka
 // /sys/class/hidraw sendiri, yang sudah dialihkan deck_redirect. Hanya saat penolakan, hanya saat Deck aktif.
 static std::string deck_listing_for(const char *path, int saved_errno) {
-    if (saved_errno != EACCES || !path || path[0] != '/' || !deck_enabled()) return std::string();
+    if (saved_errno != EACCES || !path || path[0] != '/' || !sysfs_fake_enabled()) return std::string();
     const char *listing = deck_env("FAKE_DECK_SYSFS_LISTING");
     if (!listing) return std::string();
     std::string p(path);
@@ -946,13 +972,14 @@ EXPORT DIR *opendir(const char *name) {
     }
     if (deck_redirect(name, redirected)) name = redirected.c_str();
     const bool dev_dir = deck_enabled() && deck_is_dev_dir(name);
+    const bool dev_denied_ok = sysfs_fake_enabled() && deck_is_dev_dir(name);  // evdev-sysfs: pengganti /dev juga tanpa mode Deck
     DIR *d = real(name);
     if (deck_is_dev_dir(name)) {
         static std::atomic<int> seen{0};
         if (seen.fetch_add(1) < 3)
             Logger::log("deck: opendir(%s) -> %s (errno %d) deck_enabled=%d live_env=%s\n", name, d ? "ok" : "FAIL", d ? 0 : errno, (int) deck_enabled(), getenv("FAKE_EVDEV_DECK") ? getenv("FAKE_EVDEV_DECK") : "(unset)");
     }
-    if (!d && dev_dir && deck_dev_denied()) {
+    if (!d && dev_denied_ok && deck_dev_denied()) {
         if (const char *fallback = deck_dev_fallback()) {
             d = real(fallback);
             static std::atomic<bool> noted{false};
@@ -974,7 +1001,7 @@ EXPORT ssize_t readlink(const char *path, char *buf, size_t size) {
     std::string redirected;
     bool hit = deck_redirect(path, redirected);
     ssize_t result = real(hit ? redirected.c_str() : path, buf, size);
-    if (result > 0 && deck_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
+    if (result > 0 && sysfs_fake_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
     return result;
 }
 
@@ -1020,7 +1047,7 @@ EXPORT int statfs(const char *path, struct statfs *buf) {
 EXPORT int fstatfs(int fd, struct statfs *buf) {
     static auto real = reinterpret_cast<int (*)(int, struct statfs *)>(dlsym(RTLD_NEXT, "fstatfs"));
     int result = real(fd, buf);
-    if (result == 0 && deck_enabled()) {
+    if (result == 0 && sysfs_fake_enabled()) {
         char link[64], path[PATH_MAX];
         snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
         ssize_t length = syscall(SYS_readlinkat, AT_FDCWD, link, path, sizeof(path) - 1);
@@ -1078,7 +1105,7 @@ DECK_HOOK int deck_hook_fstat64(int fd, void *buf) __asm__("fstat64");
 int deck_hook_fstat64(int fd, void *buf) { return fstat(fd, (struct stat *)buf); }
 
 static int deck_fstatat_impl(int dirfd, const char *path, void *buf, int flags) {
-    if (deck_enabled() && buf) {
+    if (sysfs_fake_enabled() && buf) {
         if (path && !*path && (flags & AT_EMPTY_PATH) && deck_find(dirfd)) {
             deck_fill_stat((struct stat *)buf);
             return 0;
@@ -1101,7 +1128,7 @@ int deck_hook_fstatat64(int dirfd, const char *path, void *buf, int flags) { ret
 
 DECK_HOOK int deck_hook_statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) __asm__("statx");
 int deck_hook_statx(int dirfd, const char *path, int flags, unsigned int mask, void *buf) {
-    if (deck_enabled() && buf) {
+    if (sysfs_fake_enabled() && buf) {
         if (path && !*path && (flags & AT_EMPTY_PATH) && deck_find(dirfd)) {
             deck_fill_statx((DeckStatx *)buf);
             return 0;
@@ -1119,7 +1146,7 @@ int deck_hook_statx(int dirfd, const char *path, int flags, unsigned int mask, v
 DECK_HOOK int deck_hook_faccessat(int dirfd, const char *path, int mode, int flags) __asm__("faccessat");
 int deck_hook_faccessat(int dirfd, const char *path, int mode, int flags) {
     std::string abs, red;
-    if (deck_enabled() && deck_abs_path(dirfd, path, abs)) {
+    if (sysfs_fake_enabled() && deck_abs_path(dirfd, path, abs)) {
         if (abs == DECK_NODE) return 0;
         if (deck_redirect(abs.c_str(), red)) { dirfd = AT_FDCWD; path = red.c_str(); }
     }
@@ -1133,12 +1160,12 @@ int deck_hook_faccessat(int dirfd, const char *path, int mode, int flags) {
 DECK_HOOK ssize_t deck_hook_readlinkat(int dirfd, const char *path, char *buf, size_t size) __asm__("readlinkat");
 ssize_t deck_hook_readlinkat(int dirfd, const char *path, char *buf, size_t size) {
     std::string abs, red;
-    if (deck_enabled() && deck_abs_path(dirfd, path, abs) && deck_redirect(abs.c_str(), red)) {
+    if (sysfs_fake_enabled() && deck_abs_path(dirfd, path, abs) && deck_redirect(abs.c_str(), red)) {
         dirfd = AT_FDCWD;
         path = red.c_str();
     }
     ssize_t result = syscall(SYS_readlinkat, dirfd, path, buf, size);
-    if (result > 0 && deck_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
+    if (result > 0 && sysfs_fake_enabled()) result = (ssize_t)deck_strip_root(buf, (size_t)result);
     return result;
 }
 
@@ -1277,7 +1304,7 @@ EXPORT int openat(int dirfd, const char *pathname, int flags, ...) {
 			return open_deck_hidraw(flags);
 		if (deck_redirect(pathname, deck_path)) {
 			pathname = deck_path.c_str();
-		} else if (pathname[0] != '/' && deck_enabled() && deck_abs_path(dirfd, pathname, deck_abs)) {
+		} else if (pathname[0] != '/' && sysfs_fake_enabled() && deck_abs_path(dirfd, pathname, deck_abs)) {
 			if (deck_is_node(deck_abs.c_str()))
 				return open_deck_hidraw(flags);
 			if (deck_redirect(deck_abs.c_str(), deck_path)) {
@@ -1348,7 +1375,7 @@ EXPORT int stat(const char *pathname, struct stat *statbuf) {
 	int ret = my_stat(pathname, statbuf);
     
     if (event && event_number >= 0) {
-		statbuf->st_rdev = makedev(1, event_number);
+		statbuf->st_rdev = makedev(EV_FAKE_MAJOR, EV_FAKE_MINOR_BASE + event_number);
 	}
 
 	return ret;
@@ -1366,7 +1393,7 @@ EXPORT int fstat(int fd, struct stat *buf) {
 
     auto controller = controller_map.find(fd);
     if (controller != controller_map.end()) {
-    	buf->st_rdev = makedev(1, get_event_number(controller->second));
+    	buf->st_rdev = makedev(EV_FAKE_MAJOR, EV_FAKE_MINOR_BASE + get_event_number(controller->second));
     }
 
     return ret;
@@ -1407,7 +1434,7 @@ EXPORT int inotify_add_watch(int fd, const char *pathname, uint32_t mask) {
     }
 
     int watch = my_inotify_add_watch(fd, pathname, mask);
-    if (watch < 0 && pathname && deck_enabled() && deck_is_dev_dir(pathname) && deck_dev_denied()) {
+    if (watch < 0 && pathname && sysfs_fake_enabled() && deck_is_dev_dir(pathname) && deck_dev_denied()) {
         // winebus: create_inotify() memantau /dev untuk hidraw baru; arahkan ke folder pengganti.
         if (const char *fallback = deck_dev_fallback()) {
             watch = my_inotify_add_watch(fd, fallback, mask);

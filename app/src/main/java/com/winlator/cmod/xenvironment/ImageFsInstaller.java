@@ -14,6 +14,7 @@ import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.DownloadProgressDialog;
 import com.winlator.cmod.core.FileUtils;
 import com.winlator.cmod.core.PreloaderDialog;
+import com.winlator.cmod.core.SteamInputPatch;
 import com.winlator.cmod.core.TarCompressorUtils;
 import com.winlator.cmod.core.WineInfo;
 
@@ -44,7 +45,8 @@ public abstract class ImageFsInstaller {
         for (String version : versions) {
             File outFile = new File(rootDir, "/opt/" + version);
             outFile.mkdirs();
-            TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, activity, version + ".txz", outFile);
+            boolean wineExtracted = TarCompressorUtils.extract(TarCompressorUtils.Type.XZ, activity, version + ".txz", outFile);
+            if (wineExtracted) SteamInputPatch.applyToWineDir(activity, outFile, version);  // steam-input-patch: winebus/setupapi Deck Pad
         }
     }
 

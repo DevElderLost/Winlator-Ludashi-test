@@ -346,6 +346,45 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             ld_preload = imageFs.getLibDir() + "/libandroid-sysvshm.so";
         }
 
+        // ---- DroidDeck: libfakeinput (evdev + hidraw pad Steam Deck) ----
+        // Hanya dipasang bila UI DroidDeck atau pad Deck dipakai di sesi ini, supaya sesi biasa tidak berubah sama sekali.
+        com.winlator.cmod.droiddeck.DDDeck.configureLaunch(context, container, shortcut, wineInfo != null ? wineInfo.path : null);
+        com.winlator.cmod.droiddeck.DDDeck.fakeInputLoaded = false;
+        final boolean droidDeckInput = com.winlator.cmod.droiddeck.DDDeck.isWanted()
+                || com.winlator.cmod.droiddeck.DDController.wantsControls(context,
+                        shortcut != null ? shortcut.getExtra("droiddeckUi", "") : "",
+                        container != null ? container.getExtra("droiddeckUi", "") : "");
+        File devInputDir = new File(imageFs.getRootDir(), "dev/input");
+        File event0 = new File(devInputDir, "event0");
+        if (droidDeckInput) {
+            File fakeinputDest = new File(imageFs.getLibDir(), "libfakeinput.so");
+            String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
+            File fakeinputSrc = new File(nativeLibDir, "libfakeinput.so");
+
+            try {
+                if (fakeinputSrc.exists()) {
+                    FileUtils.copy(fakeinputSrc, fakeinputDest);
+                    Log.d("GuestLauncher", "Copied libfakeinput.so to imagefs");
+                } else {
+                    Log.e("GuestLauncher", "libfakeinput.so NOT FOUND in APK: " + fakeinputSrc.getAbsolutePath());
+                }
+            } catch (Exception e) {
+                Log.e("GuestLauncher", "Failed to copy libfakeinput.so: " + e.getMessage());
+            }
+
+            if (fakeinputDest.exists()) {
+                if (!ld_preload.isEmpty()) ld_preload += ":";
+                ld_preload += fakeinputDest.getAbsolutePath();
+                com.winlator.cmod.droiddeck.DDDeck.fakeInputLoaded = true;
+            }
+
+            devInputDir.mkdirs();
+            if (!event0.exists()) {
+                try { event0.createNewFile(); } catch (Exception e) {}
+            }
+        }
+        // ---- end DroidDeck ----
+
         envVars.put("LD_PRELOAD", ld_preload);
 
         if (this.envVars.has("MANGOHUD")) {
@@ -360,6 +399,35 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (this.envVars != null) {
             envVars.putAll(this.envVars);
         }
+
+        // ---- DroidDeck: variabel lingkungan fakeinput, SETELAH merge envVars agar setelan pengguna tetap dihormati ----
+        if (droidDeckInput) {
+            envVars.put("FAKE_EVDEV_DIR", devInputDir.getAbsolutePath());
+            envVars.put("FAKE_EVDEV_VIBRATION", "1");
+            // evdev Off + Deck Pad On: /dev/input di Wine = folder ini, jadi tanpa event0 Wine tidak membuat pad evdev sama sekali (hidraw saja)
+            if (com.winlator.cmod.droiddeck.DDDeck.isWanted() && !com.winlator.cmod.droiddeck.DDDeck.isAlsoEvdev()) {
+                if (event0.exists() && !event0.delete())
+                    Log.w("GuestLauncher", "event0 tidak bisa dihapus; pad evdev tetap terlihat oleh Wine");
+            }
+            if (com.winlator.cmod.droiddeck.DDDeck.isWanted()) {
+                for (java.util.Map.Entry<String, String> deckEnv : com.winlator.cmod.droiddeck.DDDeck.prepare(context).entrySet()) {
+                    String key = deckEnv.getKey(), value = deckEnv.getValue();
+                    if (key.startsWith("SDL_")) {  // hint SDL yang sudah diatur pengguna tidak ditimpa
+                        String current = envVars.get(key);
+                        if (current != null && !current.isEmpty()) continue;
+                    }
+                    if ("PROTON_ENABLE_HIDRAW".equals(key)) {
+                        String existing = envVars.get(key);  // daftar vid/pid dari pengguna tidak ditimpa
+                        if (existing != null && !existing.isEmpty() && !existing.toLowerCase().contains(value)) value = existing + "," + value;
+                        else if (existing != null && existing.toLowerCase().contains(value)) value = existing;
+                    }
+                    envVars.put(key, value);
+                }
+                com.winlator.cmod.droiddeck.DDDeck.resetStatus();  // ST_OPEN dihitung dari nol untuk peluncuran ini
+            }
+            com.winlator.cmod.droiddeck.DDDeck.applyLaunchEnv(envVars);
+        }
+        // ---- end DroidDeck ----
 
         // === LSFG: dipanggil SETELAH merge envVars ===
         // VK_LAYER_PATH per-container tidak tertimpa oleh VK_LAYER_PATH global

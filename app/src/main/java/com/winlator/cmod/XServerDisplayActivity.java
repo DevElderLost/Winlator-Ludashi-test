@@ -427,6 +427,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         imageFs = ImageFs.find(this);
 
+        // DroidDeck-port: folder event evdev untuk libfakeinput; file lama dibersihkan, pad DroidDeck membuat event0 sendiri
+        File devInputDir = new File(imageFs.getRootDir(), "dev/input");
+        if (devInputDir.exists() || devInputDir.mkdirs()) {
+            for (int i = 0; i < 4; i++) {
+                File eventFile = new File(devInputDir, "event" + i);
+                if (eventFile.exists())
+                    eventFile.delete();
+            }
+        }
+        winHandler.setFakeInputPath(devInputDir.getAbsolutePath());
+
         String screenSize = Container.DEFAULT_SCREEN_SIZE;
         containerManager = new ContainerManager(this);
         container = containerManager.getContainerById(getIntent().getIntExtra("container_id", 0));
@@ -941,6 +952,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     protected void onDestroy() {
+        com.winlator.cmod.droiddeck.DDDeck.stopMotion(); // DroidDeck-port: lepas sensor gyro/accelerometer
         super.onDestroy();
     }
 
@@ -981,6 +993,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             case R.id.main_menu_input_controls:
                 showInputControlsDialog();
                 drawerLayout.closeDrawers();
+                break;
+            case R.id.main_menu_droiddeck:
+                drawerLayout.closeDrawers();
+                com.winlator.cmod.droiddeck.DDController.openMenu();
                 break;
             case R.id.main_menu_relative_mouse_movement:
                 isRelativeMouseMovement = !isRelativeMouseMovement;
@@ -1497,6 +1513,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsView.setXServer(xServer);
         inputControlsView.setVisibility(View.GONE);
         rootView.addView(inputControlsView);
+
+        // DroidDeck-port: mode kontrol tambahan (default mati)
+        com.winlator.cmod.droiddeck.DDDeck.configureLaunch(this, container, shortcut); // DroidDeck-deck
+        com.winlator.cmod.droiddeck.DDController.install(this, rootView, xServer, inputControlsView,
+                shortcut != null ? shortcut.getExtra("droiddeckUi", "") : "",
+                container != null ? container.getExtra("droiddeckUi", "") : ""); // DD-UI-SELECT
 
 
         startTouchscreenTimeout();

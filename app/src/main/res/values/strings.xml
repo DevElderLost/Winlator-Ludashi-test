@@ -12,6 +12,7 @@
     <string name="shortcuts">Shortcuts</string>
     <string name="containers">Containers</string>
     <string name="input_controls">Input Controls</string>
+    <string name="droiddeck_controller">DroidDeck Controller</string>
     <string name="no_items_to_display">No items to display</string>
     <string name="new_container">New Container</string>
     <string name="edit_container">Edit Container</string>

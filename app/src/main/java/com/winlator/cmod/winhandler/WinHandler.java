@@ -2,7 +2,12 @@ package com.winlator.cmod.winhandler;
 
 import static com.winlator.cmod.inputcontrols.ExternalController.TRIGGER_IS_AXIS;
 
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.LocalServerSocket;
+import android.net.LocalSocket;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -13,6 +18,7 @@ import com.winlator.cmod.XServerDisplayActivity;
 import com.winlator.cmod.core.StringUtils;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;
+import com.winlator.cmod.inputcontrols.FakeInputWriter;
 import com.winlator.cmod.inputcontrols.GamepadState;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.xserver.XServer;
@@ -363,8 +369,128 @@ public class WinHandler {
         });
     }
 
+    // ---- DroidDeck-port: pad evdev/hidraw DroidDeck lewat libfakeinput (terpisah dari jalur UDP XInput bawaan) ----
+    private static final int DD_SLOT = 0;
+    // slot khusus dari fakeinput untuk rumble pad Deck virtual (hidraw); harus sama dengan DECK_RUMBLE_SLOT di fakeinput.cpp
+    private static final int DECK_RUMBLE_SLOT = 0xFFFF;
+    private final Object ddLock = new Object();
+    private FakeInputWriter ddWriter;
+    private String fakeInputBasePath;
+    private LocalServerSocket vibrationServer;
+    private volatile boolean vibrationRunning = false;
+
+    public void setFakeInputPath(String fakeInputPath) {
+        if (fakeInputPath != null && !fakeInputPath.isEmpty()) {
+            this.fakeInputBasePath = fakeInputPath;
+            Log.d("WinHandler", "FakeInputWriter base path set: " + fakeInputPath);
+            startVibrationListener();
+        }
+    }
+
+    public void startVibrationListener() {
+        if (vibrationRunning)
+            return;
+        vibrationRunning = true;
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                vibrationServer = new LocalServerSocket("winlator_vibration");
+                Log.d("WinHandler", "Vibration listener started on abstract socket: winlator_vibration");
+
+                while (vibrationRunning) {
+                    LocalSocket client = vibrationServer.accept();
+                    try {
+                        java.io.InputStream is = client.getInputStream();
+                        byte[] buf = new byte[8];
+                        int read = is.read(buf);
+                        if (read == 8) {
+                            int strong = (buf[0] & 0xFF) | ((buf[1] & 0xFF) << 8);
+                            int weak = (buf[2] & 0xFF) | ((buf[3] & 0xFF) << 8);
+                            int durationMs = (buf[4] & 0xFF) | ((buf[5] & 0xFF) << 8);
+                            int slot = (buf[6] & 0xFF) | ((buf[7] & 0xFF) << 8);
+                            triggerVibration(strong, weak, durationMs, slot);
+                        }
+                        client.close();
+                    } catch (IOException e) {
+                        Log.e("WinHandler", "Vibration client error: " + e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                if (vibrationRunning) {
+                    Log.e("WinHandler", "Vibration listener error: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    // Satu-satunya perangkat fakeinput di branch ini adalah pad DroidDeck, jadi semua rumble (evdev slot 0 maupun
+    // slot Deck/hidraw) dikirim ke motor getar HP dan dikendalikan saklar Rumble di panel DroidDeck.
+    private void triggerVibration(int strong, int weak, int durationMs, int slot) {
+        if (slot != DECK_RUMBLE_SLOT && slot != DD_SLOT)
+            return;
+
+        boolean cancel = (durationMs == 0 && strong == 0 && weak == 0);
+        if (!cancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity))
+            return;
+
+        Vibrator vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null || !vibrator.hasVibrator())
+            return;
+
+        if (cancel) {
+            vibrator.cancel();
+            return;
+        }
+
+        int amplitude = Math.min(255, Math.max(1, (int) ((Math.max(strong, weak) / 65535.0f) * 255)));
+        int duration = Math.max(1, durationMs);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
+        } else {
+            vibrator.vibrate(duration);
+        }
+    }
+
+    public void sendDroidDeckGamepadState(GamepadState state) {
+        // tanpa libfakeinput (tidak dipasang saat peluncuran) tidak ada pembaca file event, jadi jangan menulis apa pun
+        if (state == null || fakeInputBasePath == null || !com.winlator.cmod.droiddeck.DDDeck.fakeInputLoaded)
+            return;
+        synchronized (ddLock) {
+            if (ddWriter == null) {
+                ddWriter = new FakeInputWriter(fakeInputBasePath, DD_SLOT);
+                ddWriter.open();
+                Log.d("WinHandler", "DroidDeck pad assigned to fake input slot " + DD_SLOT);
+            }
+            ddWriter.writeGamepadState(state);
+        }
+    }
+
+    public void releaseDroidDeckGamepad() {
+        synchronized (ddLock) {
+            if (ddWriter != null) {
+                ddWriter.destroy();
+                ddWriter = null;
+                Log.d("WinHandler", "DroidDeck pad released from fake input slot " + DD_SLOT);
+            }
+        }
+    }
+
+    public void closeFakeInputWriter() {
+        releaseDroidDeckGamepad();
+        vibrationRunning = false;
+        if (vibrationServer != null) {
+            try {
+                vibrationServer.close();
+            } catch (IOException e) {
+            }
+            vibrationServer = null;
+        }
+    }
+    // ---- end DroidDeck-port ----
+
     public void stop() {
         running = false;
+        closeFakeInputWriter();
 
         if (socket != null) {
             socket.close();

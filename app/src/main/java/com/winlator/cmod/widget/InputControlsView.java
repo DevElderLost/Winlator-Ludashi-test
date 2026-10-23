@@ -142,6 +142,17 @@ public class InputControlsView extends View {
         this.editMode = editMode;
     }
 
+    // ---- DD-UI-EXCLUSIVE: saat UI DroidDeck aktif, overlay Winlator in-game tidak boleh tampil ----
+    @Override
+    public void setVisibility(int visibility) {
+        if (visibility == View.VISIBLE
+                && com.winlator.cmod.droiddeck.DDController.isWinlatorControlsSuppressed(this)) {
+            visibility = View.GONE;
+        }
+        super.setVisibility(visibility);
+    }
+    // ---- end DD-UI-EXCLUSIVE ----
+
     public void setOverlayOpacity(float overlayOpacity) {
         this.overlayOpacity = overlayOpacity;
     }

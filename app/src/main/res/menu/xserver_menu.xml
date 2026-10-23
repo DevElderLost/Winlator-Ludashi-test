@@ -10,6 +10,10 @@
             android:id="@+id/main_menu_input_controls"
             android:title="@string/input_controls" />
         <item
+            android:icon="@drawable/icon_input_controls"
+            android:id="@+id/main_menu_droiddeck"
+            android:title="@string/droiddeck_controller" />
+        <item
             android:icon="@drawable/icon_fps_monitor"
             android:id="@+id/main_menu_toggle_hud"
             android:title="@string/toggle_hud" />

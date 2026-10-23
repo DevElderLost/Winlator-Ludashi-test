@@ -158,6 +158,13 @@
             android:value="true" />
         >
 
+        <activity
+            android:name="com.winlator.cmod.droiddeck.DDControllerTestActivity"
+            android:theme="@style/AppThemeFullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
+            android:exported="false" /> <!-- DroidDeck-bp -->
+
     </application>
 </manifest>
 

@@ -197,6 +197,11 @@ public class WindowManager extends XResourceManager {
             if (depth != visual.depth) throw new BadMatch();
         }
 
+        if (parent == rootWindow) {
+            width = clampToScreen(width, rootWindow.getWidth());
+            height = clampToScreen(height, rootWindow.getHeight());
+        }
+
         Drawable drawable = null;
         if (isInputOutput) {
             drawable = drawableManager.createDrawable(id, width, height, visual);
@@ -211,6 +216,10 @@ public class WindowManager extends XResourceManager {
         triggerOnCreateResourceListener(window);
         triggerOnCreateWindow(window, parent);
         return window;
+    }
+
+    private static short clampToScreen(short size, short screenSize) {
+        return size > screenSize ? screenSize : size;
     }
 
     private void changeWindowGeometry(Window window, short x, short y, short width, short height) {
@@ -294,6 +303,13 @@ public class WindowManager extends XResourceManager {
         }
 
         Window parent = window.getParent();
+        if (parent == rootWindow) {
+            // Window top-level tidak boleh lebih besar dari layar X (mis. game yang memaksa 1280x720
+            // saat screen size 960x544). Ukuran pada ConfigureNotify ikut terpotong, sehingga Wine/DXVK
+            // membuat swapchain sesuai layar dan bukan ukuran yang melebihi layar.
+            width = clampToScreen(width, rootWindow.getWidth());
+            height = clampToScreen(height, rootWindow.getHeight());
+        }
         boolean overrideRedirect = window.attributes.isOverrideRedirect();
         if (!parent.hasEventListenerFor(Event.SUBSTRUCTURE_REDIRECT) || overrideRedirect) {
             changeWindowGeometry(window, x, y, width, height);

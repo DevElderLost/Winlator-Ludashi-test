@@ -106,6 +106,7 @@ import com.winlator.cmod.widget.MagnifierView;
 import com.winlator.cmod.widget.TouchpadView;
 import com.winlator.cmod.widget.XServerRendererView;
 import com.winlator.cmod.widget.XServerView;
+import com.winlator.cmod.widget.OldXServerView;
 import com.winlator.cmod.widget.VulkanXServerView;
 import com.winlator.cmod.winhandler.MouseEventFlags;
 import com.winlator.cmod.winhandler.TaskManagerSidebar;
@@ -639,7 +640,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         displayxConfig.put("presentRR", presentRR ? "1" : "0");
         displayxConfig.put("backPressure", backPressure ? "1" : "0");
         displayxConfig.put("precisePresentation", precisePresentation ? "1" : "0");
-        xServer = new XServer(new ScreenInfo(screenSize), useDisplayX ? "displayx" : "egl", displayxConfig);
+        xServer = new XServer(new ScreenInfo(screenSize), useDisplayX && !isOldDisplayEnabled() ? "displayx" : "egl", displayxConfig);
         xServer.setWinHandler(winHandler);
         xServer.setRelativeMouseMovement(isRelativeMouseMovement);
         advertisePanelRefreshRates();
@@ -1299,6 +1300,11 @@ public class XServerDisplayActivity extends AppCompatActivity {
         scriptFile.setExecutable(true);
     }
 
+    private boolean isOldDisplayEnabled() {
+        if (shortcut != null) return shortcut.getUseOldDisplay();
+        return container != null && container.getUseOldDisplay();
+    }
+
     private boolean isDisplayXEnabled() {
         if (shortcut != null) return shortcut.getUseDisplayX();
         return container != null && container.getUseDisplayX();
@@ -1317,7 +1323,20 @@ public class XServerDisplayActivity extends AppCompatActivity {
         boolean useEGL = !useDisplayX && (shortcut != null ? shortcut.getRendererNative()
                 : (container != null && container.getRendererNative()));
 
-        if (useDisplayX || useEGL) {
+        if (isOldDisplayEnabled()) {
+            // Renderer "Old Display": logika render display experimental-v2.
+            OldXServerView oldView = new OldXServerView(this, xServer);
+            xServerView = oldView;
+            boolean directRendering = shortcut != null
+                    ? shortcut.getOldDisplayDirectRendering() : container.getOldDisplayDirectRendering();
+            boolean forceFullscreen = shortcut != null
+                    ? shortcut.getOldDisplayForceFullscreen() : container.getOldDisplayForceFullscreen();
+            oldView.getRenderer().setNativeMode(directRendering);
+            if (forceFullscreen) {
+                String wmClass = shortcut != null ? shortcut.wmClass : null;
+                if (wmClass != null && !wmClass.isEmpty()) oldView.getRenderer().setForceFullscreenWMClass(wmClass);
+            }
+        } else if (useDisplayX || useEGL) {
             xServerView = new XServerView(this, xServer);
         } else {
             VulkanXServerView.loadNativeLibrary();

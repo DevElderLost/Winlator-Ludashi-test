@@ -167,11 +167,14 @@ private class ContainerEditorStateV2(
 
     var renderer by mutableStateOf(
         when {
+            editing?.getUseOldDisplay() == true -> "Old Display"
             editing?.getUseDisplayX() == true -> "DisplayX"
             editing?.isRendererNative == true -> "EGL"
             else -> "Vulkan"
         }
     )
+    var oldDisplayDirectRendering by mutableStateOf(editing?.getOldDisplayDirectRendering() ?: false)
+    var oldDisplayForceFullscreen by mutableStateOf(editing?.getOldDisplayForceFullscreen() ?: false)
     var rendererPresentMode by mutableStateOf(editing?.rendererPresentMode ?: "fifo")
     var rendererDriver by mutableStateOf(editing?.rendererDriverId ?: "system")
     var filterMode by mutableIntStateOf(editing?.rendererFilterMode ?: 0)
@@ -457,6 +460,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setRendererDriverId(state.rendererDriver)
         container.setRendererFilterMode(state.filterMode)
         container.setUseDisplayX(state.renderer == "DisplayX")
+        container.setUseOldDisplay(state.renderer == "Old Display")
+        container.setOldDisplayDirectRendering(state.oldDisplayDirectRendering)
+        container.setOldDisplayForceFullscreen(state.oldDisplayForceFullscreen)
         container.setSurfaceFormat(state.surfaceFormat)
         container.setTrueDisplayX(state.trueDisplayX)
         container.setDisplayXPerformanceMode(state.displayXPerformanceMode)
@@ -551,6 +557,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("hudMode", state.hudMode.toString())
                     .put("mouseWarpOverride", state.mouseWarp)
                     .put("useDisplayX", if (state.renderer == "DisplayX") "1" else "0")
+                    .put("useOldDisplay", if (state.renderer == "Old Display") "1" else "0")
+                    .put("oldDisplayDirectRendering", if (state.oldDisplayDirectRendering) "1" else "0")
+                    .put("oldDisplayForceFullscreen", if (state.oldDisplayForceFullscreen) "1" else "0")
                     .put("surfaceFormat", state.surfaceFormat)
                     .put("trueDisplayX", if (state.trueDisplayX) "1" else "0")
                     .put("displayXPerformanceMode", if (state.displayXPerformanceMode) "1" else "0")
@@ -843,7 +852,7 @@ private fun ContainerCategoryV2(
                     SettingText("Custom resolution", s.screen) { s.screen = it }
                 }
                 SettingsDivider()
-                SettingChoice("Renderer", s.renderer, listOf("Vulkan", "EGL", "DisplayX")) {
+                SettingChoice("Renderer", s.renderer, listOf("Vulkan", "EGL", "DisplayX", "Old Display")) {
                     s.renderer = it
                     s.surfaceFormat = if (it == "DisplayX") "rgba8" else "bgra8"
                     if (it == "EGL" && s.filterMode > 1) s.filterMode = 0
@@ -854,6 +863,12 @@ private fun ContainerCategoryV2(
                     if (s.surfaceFormat == "bgra8") "BGRA" else "RGBA",
                     listOf("RGBA", "BGRA")
                 ) { s.surfaceFormat = if (it == "BGRA") "bgra8" else "rgba8" }
+                if (s.renderer == "Old Display") {
+                    SettingsDivider()
+                    SettingToggle("Direct Rendering", s.oldDisplayDirectRendering) { s.oldDisplayDirectRendering = it }
+                    SettingsDivider()
+                    SettingToggle("Force Fullscreen", s.oldDisplayForceFullscreen) { s.oldDisplayForceFullscreen = it }
+                }
                 if (s.renderer == "DisplayX") {
                     SettingsDivider()
                     SettingToggle("Bypass X11", s.trueDisplayX) {
@@ -876,7 +891,7 @@ private fun ContainerCategoryV2(
                         s.displayXPrecisePresentation = it
                     }
                 } else {
-                    if (s.renderer != "EGL") {
+                    if (s.renderer != "EGL" && s.renderer != "Old Display") {
                         SettingsDivider()
                         SettingChoice("Present Mode", s.rendererPresentMode, listOf("fifo", "mailbox")) {
                             s.rendererPresentMode = it

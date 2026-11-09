@@ -174,7 +174,9 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
 
     var name by mutableStateOf(shortcut.name)
     var screen by mutableStateOf(normalizeResolution(shortcut.getExtra("screenSize", container.getScreenSize())))
-    var renderer by mutableStateOf(if (shortcut.getUseDisplayX()) "DisplayX" else if (shortcut.getRendererNative()) "EGL" else "Vulkan")
+    var renderer by mutableStateOf(if (shortcut.getUseOldDisplay()) "Old Display" else if (shortcut.getUseDisplayX()) "DisplayX" else if (shortcut.getRendererNative()) "EGL" else "Vulkan")
+    var oldDisplayDirectRendering by mutableStateOf(shortcut.getOldDisplayDirectRendering())
+    var oldDisplayForceFullscreen by mutableStateOf(shortcut.getOldDisplayForceFullscreen())
     var presentMode by mutableStateOf(shortcut.getRendererPresentMode())
     var rendererDriver by mutableStateOf(shortcut.getRendererDriverId())
     var filterMode by mutableIntStateOf(shortcut.getRendererFilterMode())
@@ -393,6 +395,9 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
     fun saveRenderer() {
         shortcut.setRendererNative(renderer == "EGL")
         shortcut.setUseDisplayX(renderer == "DisplayX")
+        shortcut.setUseOldDisplay(renderer == "Old Display")
+        shortcut.setOldDisplayDirectRendering(oldDisplayDirectRendering)
+        shortcut.setOldDisplayForceFullscreen(oldDisplayForceFullscreen)
         shortcut.setRendererPresentMode(presentMode)
         shortcut.setRendererDriverId(rendererDriver)
         shortcut.setRendererFilterMode(filterMode)
@@ -974,7 +979,7 @@ private fun ShortcutCategoryV2(
                     }
                 }
                 SettingsDivider()
-                SettingChoice("Renderer", s.renderer, listOf("Vulkan", "EGL", "DisplayX")) {
+                SettingChoice("Renderer", s.renderer, listOf("Vulkan", "EGL", "DisplayX", "Old Display")) {
                     s.renderer = it
                     s.surfaceFormat = if (it == "DisplayX") "rgba8" else "bgra8"
                     if (it == "EGL" && s.filterMode > 1) s.filterMode = 0
@@ -988,6 +993,18 @@ private fun ShortcutCategoryV2(
                 ) {
                     s.surfaceFormat = if (it == "BGRA") "bgra8" else "rgba8"
                     s.saveRenderer()
+                }
+                if (s.renderer == "Old Display") {
+                    SettingsDivider()
+                    SettingToggle("Direct Rendering", s.oldDisplayDirectRendering) {
+                        s.oldDisplayDirectRendering = it
+                        s.saveRenderer()
+                    }
+                    SettingsDivider()
+                    SettingToggle("Force Fullscreen", s.oldDisplayForceFullscreen) {
+                        s.oldDisplayForceFullscreen = it
+                        s.saveRenderer()
+                    }
                 }
                 if (s.renderer == "DisplayX") {
                     SettingsDivider()
@@ -1016,7 +1033,7 @@ private fun ShortcutCategoryV2(
                         s.saveRenderer()
                     }
                 } else {
-                    if (s.renderer != "EGL") {
+                    if (s.renderer != "EGL" && s.renderer != "Old Display") {
                         SettingsDivider()
                         SettingChoice("Present Mode", s.presentMode, listOf("mailbox", "fifo")) {
                             s.presentMode = it

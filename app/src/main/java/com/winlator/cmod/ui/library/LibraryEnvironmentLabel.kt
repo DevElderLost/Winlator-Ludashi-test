@@ -25,6 +25,7 @@ private fun environmentText(
     if (version.endsWith(".0")) version = version.dropLast(2)
     val runtime = (if (info.type.equals("proton", true)) "Proton " else "Wine ") + version + " " + info.getArch()
     val renderer = when {
+        shortcut.getUseOldDisplay() -> "Old Display"
         shortcut.getUseDisplayX() -> "DisplayX"
         shortcut.getRendererNative() -> "EGL"
         else -> "Vulkan"

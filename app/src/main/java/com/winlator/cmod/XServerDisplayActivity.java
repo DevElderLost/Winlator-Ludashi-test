@@ -1333,8 +1333,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     ? shortcut.getOldDisplayForceFullscreen() : container.getOldDisplayForceFullscreen();
             oldView.getRenderer().setNativeMode(directRendering);
             if (forceFullscreen) {
-                String wmClass = shortcut != null ? shortcut.wmClass : null;
-                if (wmClass != null && !wmClass.isEmpty()) oldView.getRenderer().setForceFullscreenWMClass(wmClass);
+                // Sama seperti experimental-v2: WMClass kosong tetap mengaktifkan Force Fullscreen
+                // (contains("") cocok ke semua window), sehingga border/title bar window besar dihilangkan.
+                String wmClass = shortcut != null && shortcut.wmClass != null ? shortcut.wmClass : "";
+                oldView.getRenderer().setForceFullscreenWMClass(wmClass);
             }
         } else if (useDisplayX || useEGL) {
             xServerView = new XServerView(this, xServer);

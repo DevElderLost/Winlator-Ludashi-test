@@ -19,6 +19,27 @@ class ContainerCreateComposeFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        (activity as? com.winlator.cmod.MainActivity)?.apply {
+            setDetailMode(true)
+            setMainToolbarVisible(false)
+        }
+    }
+
+    override fun onPause() {
+        (activity as? com.winlator.cmod.MainActivity)?.apply {
+            setDetailMode(false)
+            setMainToolbarVisible(true)
+        }
+        super.onPause()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        (activity as? com.winlator.cmod.MainActivity)?.setMainToolbarVisible(false)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -37,3 +58,4 @@ class ContainerCreateComposeFragment : Fragment() {
         }
     }
 }
+

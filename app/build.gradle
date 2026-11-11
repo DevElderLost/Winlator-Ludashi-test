@@ -45,11 +45,12 @@ tasks.register("downloadImageFS") {
 
 tasks.register("downloadProton") {
     def assetDir = new File(project.rootDir, ["app","src","main","assets"].join(File.separator))
-    File protonARM64EC = new File(assetDir, "proton-9.0-arm64ec.tar.zst")
-    File staleProtonARM64EC = new File(assetDir, "proton-10.0-5-arm64ec.tar.zst")
-    String protonURL = "https://github.com/Other-backup/winlator-imagefs-v2/releases/download/c/proton-9.0-arm64ec.tar.zst"
-    String protonSHA256 = "5f9375640479a5b2c4c3998fda689bb5085febc8fcdb7b6998c79d925392991a"
-    long protonSize = 73570637L
+    File protonARM64EC = new File(assetDir, "proton-11.0-7-arm64ec.tar.zst")
+    File staleProtonARM64EC = new File(assetDir, "proton-9.0-arm64ec.tar.zst")
+    // The .wcp release is a Zstandard tar archive. Keep the bundled name aligned with wine_entries.
+    String protonURL = "https://github.com/Other-backup/winlator-imagefs-v2/releases/download/pnew2/proton-wine-11.0-7-arm64ec.wcp"
+    String protonSHA256 = "1ef0bb9efceb2278933b3fa2bfd374999b0d9a7c74045b67b9af8a9b5260f734"
+    long protonSize = 112607135L
 
     def fileSHA256 = { File file ->
         MessageDigest digest = MessageDigest.getInstance("SHA-256")
@@ -63,32 +64,93 @@ tasks.register("downloadProton") {
 
     doLast {
         if (staleProtonARM64EC.exists()) staleProtonARM64EC.delete()
+        File staleProton10 = new File(assetDir, "proton-10.0-5-arm64ec.tar.zst")
+        if (staleProton10.exists()) staleProton10.delete()
 
         boolean valid = protonARM64EC.isFile()
                 && protonARM64EC.length() == protonSize
                 && fileSHA256(protonARM64EC).equalsIgnoreCase(protonSHA256)
         if (!valid) {
             if (protonARM64EC.exists()) protonARM64EC.delete()
-            println("Proton 9 ARM64EC was not present or failed validation, downloading...\n")
-            new URL(protonURL).withInputStream { input ->
-                protonARM64EC.withOutputStream { output -> output << input }
+            println("Proton 11 ARM64EC was not present or failed validation, downloading...\n")
+            String protonApiURL = "https://api.github.com/repos/Other-backup/winlator-imagefs-v2/releases/assets/695820250"
+            File partial = new File(assetDir, protonARM64EC.name + ".part")
+            Exception lastFailure = null
+            for (int attempt = 1; attempt <= 4 && !valid; attempt++) {
+                for (String candidate : [protonApiURL, protonURL]) {
+                    try {
+                        partial.delete()
+                        def connection = new URL(candidate).openConnection()
+                        connection.setConnectTimeout(30000)
+                        connection.setReadTimeout(120000)
+                        connection.setRequestProperty("Accept", "application/octet-stream")
+                        connection.setRequestProperty("User-Agent", "Winlator-Ludashi-build")
+                        if (candidate == protonApiURL && System.getenv("GITHUB_TOKEN")) {
+                            connection.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
+                        }
+                        connection.getInputStream().withCloseable { input ->
+                            partial.withOutputStream { output -> output << input }
+                        }
+                        if (!partial.isFile() || partial.length() != protonSize || !fileSHA256(partial).equalsIgnoreCase(protonSHA256)) {
+                            throw new GradleException("Proton 11 ARM64EC size/SHA-256 verification failed")
+                        }
+                        java.nio.file.Files.move(partial.toPath(), protonARM64EC.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        valid = true
+                        break
+                    } catch (Exception error) {
+                        lastFailure = error
+                        println("Proton 11 download attempt ${attempt} failed; trying another endpoint.")
+                    } finally {
+                        partial.delete()
+                    }
+                }
+                if (!valid && attempt < 4) Thread.sleep(4000L * attempt)
             }
-            valid = protonARM64EC.isFile()
-                    && protonARM64EC.length() == protonSize
-                    && fileSHA256(protonARM64EC).equalsIgnoreCase(protonSHA256)
-            if (!valid) {
-                protonARM64EC.delete()
-                throw new GradleException("Downloaded Proton 9 ARM64EC archive failed size/SHA-256 validation")
-            }
+            if (!valid) throw new GradleException("Could not download the verified Proton 11 ARM64EC archive after retries", lastFailure)
         }
     }
 }
 
 tasks.register("prepareKotlinBuildScriptModel"){}
+tasks.register("downloadComponentTools") {
+    def nativeTools = layout.buildDirectory.dir("generated/component-tools/arm64-v8a")
+    def manifestFile = rootProject.file("app/src/main/scripts/component-tools.json")
+    outputs.dir(nativeTools)
+    inputs.file(manifestFile)
+    doLast {
+        def manifest = new groovy.json.JsonSlurper().parse(manifestFile)
+        File directory = nativeTools.get().asFile
+        directory.mkdirs()
+        manifest.each { name, expected ->
+            File target = new File(directory, name)
+            def hash = { File f ->
+                def digest = MessageDigest.getInstance("SHA-256")
+                f.withInputStream { input ->
+                    byte[] buffer = new byte[65536]
+                    int count
+                    while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+                }
+                digest.digest().encodeHex().toString()
+            }
+            if (!target.isFile() || hash(target) != expected) {
+                File part = new File(directory, name + ".part")
+                try {
+                    new URL("https://raw.githubusercontent.com/Other-backup/winlator-imagefs-v2/ludashi-components/component-tools/arm64-v8a/" + name).withInputStream { input ->
+                        part.withOutputStream { output -> output << input }
+                    }
+                    if (hash(part) != expected) throw new GradleException("Component tool checksum mismatch: " + name)
+                    java.nio.file.Files.move(part.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                } finally { part.delete() }
+            }
+        }
+    }
+}
 downloadProton.dependsOn(downloadImageFS)
 preBuild.dependsOn(downloadProton)
+preBuild.dependsOn(downloadComponentTools)
 
 android {
+    sourceSets.main.jniLibs.srcDir(layout.buildDirectory.dir("generated/component-tools"))
     namespace 'com.winlator.cmod'
     // Keep compileSdk from your current config. If you want to match Termux-X11, you could set to 34.
     compileSdk 35
@@ -104,8 +166,8 @@ android {
         // We’re preserving Winlator’s request to keep targetSdkVersion at 28
         targetSdkVersion 28
 
-        versionCode 20
-        versionName "4.1"
+        versionCode 30
+        versionName "5.0"
 
         // External native build from Winlator
         externalNativeBuild {
@@ -132,6 +194,16 @@ android {
         freeCompilerArgs += ['-opt-in=androidx.compose.material3.ExperimentalMaterial3Api']
     }
 
+    signingConfigs {
+        upstream {
+            storeFile file(System.getenv("LUDASHI_KEYSTORE_PATH") ?: "missing-upstream-signing.p12")
+            storeType "PKCS12"
+            storePassword System.getenv("LUDASHI_STORE_PASSWORD") ?: ""
+            keyAlias "upstream"
+            keyPassword System.getenv("LUDASHI_STORE_PASSWORD") ?: ""
+        }
+    }
+
     // Keep Winlator’s buildTypes
     buildTypes {
         debug {
@@ -139,7 +211,7 @@ android {
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.upstream
             crunchPngs false
         }
     }
@@ -156,11 +228,14 @@ android {
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
+            pickFirsts += ['**/libc++_shared.so']
         }
         resources {
             pickFirsts += ["assets/dexopt/baseline.prof", "assets/dexopt/baseline.profm"]
         }
     }
+
+    testOptions { unitTests.includeAndroidResources = true }
 
     buildFeatures {
         prefab = true
@@ -169,6 +244,12 @@ android {
 }
 
 dependencies {
+    implementation 'com.jakewharton.timber:timber:5.0.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'org.conscrypt:conscrypt-openjdk-uber:2.5.2'
+    // Host JNI library for tests that install the real compressed audio asset.
+    testRuntimeOnly 'com.github.luben:zstd-jni:1.5.2-3@jar'
     implementation platform('androidx.compose:compose-bom:2025.08.00')
     implementation 'androidx.activity:activity-compose:1.10.1'
     implementation 'androidx.compose.ui:ui'
@@ -178,7 +259,7 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-tooling'
 
     // Winlator’s dependencies
-    implementation 'androidx.appcompat:appcompat:1.4.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.preference:preference:1.2.1'
     implementation 'com.google.android.material:material:1.4.0'
     implementation 'com.github.luben:zstd-jni:1.5.2-3@aar'
@@ -192,6 +273,7 @@ dependencies {
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation 'com.google.code.gson:gson:2.8.8'
+    implementation 'com.google.zxing:core:3.5.3'
     implementation 'org.conscrypt:conscrypt-android:2.5.2'
     implementation 'org.bouncycastle:bcprov-jdk15on:1.68'
     implementation 'org.openjsse:openjsse:1.1.7'
@@ -200,4 +282,22 @@ dependencies {
     implementation 'com.kohlschutter.junixsocket:junixsocket-common:2.6.0'
     implementation 'com.kohlschutter.junixsocket:junixsocket-native-common:2.6.0'
     annotationProcessor 'com.github.bumptech.glide:compiler:4.11.0'
+}
+
+
+// Robolectric runs on the host JVM; its TLS provider needs host, rather than Android, JNI.
+configurations.configureEach {
+    if (name.endsWith('UnitTestRuntimeClasspath')) {
+        exclude group: 'org.conscrypt', module: 'conscrypt-android'
+    }
+}
+
+// Robolectric fetches its Android SDK image at test runtime outside Gradle's Maven resolver.
+// Use the Maven Central canonical host instead of the default repo1.maven.org endpoint.
+tasks.withType(Test).configureEach {
+    systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
 }

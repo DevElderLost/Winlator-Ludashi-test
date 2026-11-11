@@ -1,5 +1,7 @@
 package com.winlator.cmod.ui.settings
 
+import com.winlator.cmod.R
+import com.winlator.cmod.ui.uiStr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -52,6 +54,8 @@ val knownEnvironmentVariables = listOf(
     EnvVariableSpec("MESA_SHADER_CACHE_MAX_SIZE", EnvValueKind.TEXT),
     EnvVariableSpec("mesa_glthread", EnvValueKind.CHECKBOX, listOf("false", "true")),
     EnvVariableSpec("WINEESYNC", EnvValueKind.CHECKBOX, listOf("0", "1")),
+    EnvVariableSpec("WINE_FAST_YIELD", EnvValueKind.CHECKBOX, listOf("0", "1")),
+    EnvVariableSpec("WINE_OFFSCREEN_CHECK_MS", EnvValueKind.NUMBER, listOf("100")),
     EnvVariableSpec("TU_DEBUG", EnvValueKind.MULTI, listOf("forcecb", "nocb", "deck_emu", "startup", "nir", "nobin", "sysmem", "gmem", "forcebin", "layout", "noubwc", "nomultipos", "nolrz", "nolrzfc", "perf", "perfc", "flushall", "syncdraw", "push_consts_per_stage", "rast_order", "unaligned_store", "log_skip_gmem_ops", "dynamic", "bos", "3d_load", "fdm", "noconform", "rd")),
     EnvVariableSpec("DXVK_HUD", EnvValueKind.MULTI, listOf("scale=0.5", "scale=0.7", "opacity=0.5", "opacity=0.7", "devinfo", "fps", "frametimes", "submissions", "drawcalls", "pipelines", "descriptors", "memory", "gpuload", "version", "api", "cs", "compiler", "samplers")),
     EnvVariableSpec("DXVK_DISABLE_TIMELINE_SEMAPHORES", EnvValueKind.CHECKBOX, listOf("0", "1")),
@@ -104,7 +108,7 @@ fun EnvironmentVariablesEditor(
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Text(
-                    "No environment variables added.",
+                    uiStr(R.string.ui_no_environment_variables_added),
                     modifier = Modifier.padding(14.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -134,7 +138,7 @@ fun EnvironmentVariablesEditor(
         OutlinedButton(onClick = { addOpen = true }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(7.dp))
-            Text("Add variable")
+            Text(uiStr(R.string.ui_add_variable))
         }
     }
 
@@ -165,7 +169,7 @@ private fun EnvironmentVariableRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(row.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-            IconButton(onClick = onRemove) { Icon(Icons.Outlined.DeleteOutline, "Remove") }
+            IconButton(onClick = onRemove) { Icon(Icons.Outlined.DeleteOutline, uiStr(R.string.remove)) }
         }
         when (spec.kind) {
             EnvValueKind.CHECKBOX -> {
@@ -178,13 +182,13 @@ private fun EnvironmentVariableRow(
                 )
             }
             EnvValueKind.SELECT -> SettingChoice(
-                label = "Value",
+                label = uiStr(R.string.value),
                 selected = row.value.ifBlank { spec.options.firstOrNull().orEmpty() },
                 entries = spec.options
             ) { onValue(it) }
             EnvValueKind.MULTI -> MultiEnvironmentChoice(spec.options, row.value, onValue)
-            EnvValueKind.NUMBER -> SettingText("Value", row.value) { onValue(it.filter(Char::isDigit)) }
-            EnvValueKind.TEXT -> SettingText("Value", row.value, onChanged = onValue)
+            EnvValueKind.NUMBER -> SettingText(uiStr(R.string.value), row.value) { onValue(it.filter(Char::isDigit)) }
+            EnvValueKind.TEXT -> SettingText(uiStr(R.string.value), row.value, onChanged = onValue)
         }
     }
 }
@@ -195,7 +199,7 @@ private fun MultiEnvironmentChoice(options: List<String>, value: String, onChang
     val selectedText = value.ifBlank { "None" }
     Surface(onClick = { open = true }, color = androidx.compose.ui.graphics.Color.Transparent, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp)) {
-            Text("Value", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiStr(R.string.value), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(selectedText, style = MaterialTheme.typography.bodyLarge)
         }
     }
@@ -211,10 +215,10 @@ private fun MultiEnvironmentChoice(options: List<String>, value: String, onChang
                 TextButton(onClick = {
                     onChanged(selected.joinToString(","))
                     open = false
-                }) { Text("Done") }
+                }) { Text(uiStr(R.string.ui_done)) }
             },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
-            title = { Text("Select values") },
+            dismissButton = { TextButton(onClick = { open = false }) { Text(uiStr(R.string.cancel)) } },
+            title = { Text(uiStr(R.string.ui_select_values)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(options) { option ->
@@ -259,22 +263,22 @@ private fun AddEnvironmentVariableDialog(
                     val spec = knownEnvironmentVariables.firstOrNull { it.name == finalName }
                     val initial = when (spec?.kind) {
                         EnvValueKind.CHECKBOX -> spec.options.firstOrNull().orEmpty()
-                        EnvValueKind.SELECT -> spec.options.firstOrNull().orEmpty()
+                        EnvValueKind.SELECT, EnvValueKind.NUMBER -> spec.options.firstOrNull().orEmpty()
                         else -> ""
                     }
                     onAdd(finalName, initial)
                 }
-            }) { Text("Add") }
+            }) { Text(uiStr(R.string.add)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Add environment variable") },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(uiStr(R.string.cancel)) } },
+        title = { Text(uiStr(R.string.ui_add_environment_variable)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SettingChoice("Variable", selected, options) { picked ->
                     name = if (picked == "Custom…") "" else picked
                 }
                 if (selected == "Custom…") {
-                    SettingText("Name", customName) { customName = it }
+                    SettingText(uiStr(R.string.name), customName) { customName = it }
                 }
             }
         }

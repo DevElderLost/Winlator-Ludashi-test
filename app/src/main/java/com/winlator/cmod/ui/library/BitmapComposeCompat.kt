@@ -1,6 +1,8 @@
 package com.winlator.cmod.ui.library
 
+import com.winlator.cmod.ui.uiStr
 import android.graphics.Bitmap
+import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -29,13 +31,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.ScreenRotation
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Settings
@@ -79,6 +86,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.winlator.cmod.MainActivity
+import com.winlator.cmod.steam.SteamActivity
 import com.winlator.cmod.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -92,16 +100,18 @@ internal fun LibraryRoot(
     grid: Boolean,
     query: String,
     selectedShortcutPath: MutableState<String?>,
-    cb: LibraryCallbacks
+    cb: LibraryCallbacks,
+    showAddGames: MutableState<Boolean>,
+    steamFilterAvailable: Boolean
 ) {
     var filterName by rememberSaveable { mutableStateOf(LibraryFilter.All.name) }
-    val filter = LibraryFilter.valueOf(filterName)
+    val selectedFilter = LibraryFilter.valueOf(filterName)
+    val filter = if (!steamFilterAvailable && selectedFilter == LibraryFilter.Steam) LibraryFilter.All else selectedFilter
+    LaunchedEffect(steamFilterAvailable) {
+        if (!steamFilterAvailable && filterName == LibraryFilter.Steam.name) filterName = LibraryFilter.All.name
+    }
     val visible = remember(items, filter, query) {
-        val source = when (filter) {
-            LibraryFilter.All -> items
-            LibraryFilter.Favorites -> items.filter { it.favorite }
-            LibraryFilter.Recent -> items.sortedByDescending { it.lastRunAt }
-        }
+        val source = filterLibraryItems(items, filter)
         if (query.isBlank()) source else source.filter { it.name.contains(query, true) }
     }
     val configuration = LocalConfiguration.current
@@ -116,6 +126,29 @@ internal fun LibraryRoot(
         }
     }
 
+    if (showAddGames.value) {
+        ModalBottomSheet(
+            onDismissRequest = { showAddGames.value = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = null
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 30.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                LibraryAddGamesChoice("Stores", Icons.Outlined.Storefront) {
+                    showAddGames.value = false
+                    activity?.startActivity(Intent(activity, SteamActivity::class.java).putExtra("steam_tab", 0))
+                }
+                LibraryAddGamesChoice("File Manager", Icons.Outlined.FolderOpen) {
+                    showAddGames.value = false
+                    activity?.navigateToMainDestination(R.id.main_menu_file_manager)
+                }
+            }
+        }
+    }
+
     if (landscape && visible.isNotEmpty() && !grid) {
         var menu by remember { mutableStateOf<LibraryItem?>(null) }
         LandscapePagerCore(
@@ -127,17 +160,18 @@ internal fun LibraryRoot(
                     activity = activity,
                     grid = grid,
                     onArtwork = true,
+                    onAddGames = { showAddGames.value = true },
                     onGridViewChanged = cb::onGridViewChanged
                 )
                 Spacer(Modifier.height(7.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    LibraryFilter.values().forEach { option ->
+                    LibraryFilter.values().filter { it != LibraryFilter.Steam || steamFilterAvailable }.forEach { option ->
                         LibraryFilterChip(option.name, option == filter) { filterName = option.name }
                     }
                 }
             },
             footerActions = { item ->
-                IconButton(onClick = { menu = item }) { Icon(Icons.Outlined.MoreVert, "More options", tint = Color.White) }
+                IconButton(onClick = { menu = item }) { Icon(Icons.Outlined.MoreVert, uiStr(R.string.ui_more_options), tint = Color.White) }
             }
         )
         menu?.let { LibraryItemMenuCompat(it, cb) { menu = null } }
@@ -150,12 +184,13 @@ internal fun LibraryRoot(
                 activity = activity,
                 grid = grid,
                 onArtwork = false,
+                onAddGames = { showAddGames.value = true },
                 onGridViewChanged = cb::onGridViewChanged
             )
             Spacer(Modifier.height(7.dp))
         }
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LibraryFilter.values().forEach { option ->
+            LibraryFilter.values().filter { it != LibraryFilter.Steam || steamFilterAvailable }.forEach { option ->
                 LibraryFilterChip(option.name, option == filter) { filterName = option.name }
             }
         }
@@ -163,16 +198,16 @@ internal fun LibraryRoot(
             if (query.isNotBlank() || (filter != LibraryFilter.All && items.isNotEmpty())) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        if (query.isNotBlank()) "No games match your search" else "No games in this section",
+                        if (query.isNotBlank()) uiStr(R.string.ui_no_games_match_your_search) else uiStr(R.string.ui_no_games_in_this_section),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Surface(
-                        onClick = { activity?.navigateToMainDestination(R.id.main_menu_file_manager) },
-                        modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
+                        onClick = { showAddGames.value = true },
+                        modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
@@ -188,7 +223,7 @@ internal fun LibraryRoot(
                                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Add, null, modifier = Modifier.size(34.dp)) }
                             }
                             Spacer(Modifier.height(16.dp))
-                            Text("Add games", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            Text(uiStr(R.string.ui_add_games), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -214,11 +249,12 @@ private fun LibraryLandscapeHeader(
     activity: MainActivity?,
     grid: Boolean,
     onArtwork: Boolean,
+    onAddGames: () -> Unit,
     onGridViewChanged: (Boolean) -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "Library",
+            uiStr(R.string.library),
             color = if (onArtwork) Color.White else MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Medium
@@ -227,8 +263,9 @@ private fun LibraryLandscapeHeader(
         LibraryTopIcon(if (grid) Icons.Outlined.ViewList else Icons.Outlined.GridView, false) {
             onGridViewChanged(!grid)
         }
-        LibraryTopIcon(Icons.Outlined.Add, false) { activity?.navigateToMainDestination(R.id.main_menu_file_manager) }
+        LibraryTopIcon(Icons.Outlined.Add, false, onAddGames)
         LibraryTopIcon(Icons.Outlined.Home, true) {}
+        LibraryTopIcon(Icons.Outlined.Dns, false) { activity?.navigateToMainDestination(R.id.main_menu_containers) }
         LibraryTopIcon(Icons.Outlined.SportsEsports, false) { activity?.navigateToMainDestination(R.id.main_menu_input_controls) }
         LibraryTopIcon(Icons.Outlined.Settings, false) { activity?.navigateToMainDestination(R.id.main_menu_settings) }
         LibraryOrientationMenu(activity)
@@ -248,17 +285,26 @@ private fun LibraryOrientationMenu(activity: MainActivity?) {
     }
 
     Box {
-        LibraryTopIcon(Icons.Outlined.MoreVert, false) { expanded = true }
+        Surface(
+            onClick = { expanded = true },
+            modifier = Modifier.padding(horizontal = 3.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = Color.Transparent
+        ) {
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Icon(androidx.compose.ui.res.painterResource(R.drawable.ic_orientation), null, Modifier.size(23.dp), tint = Color.White.copy(alpha = .68f))
+            }
+        }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            OrientationToggleMenuItem("Lock screen orientation", orientationState.first) {
+            OrientationToggleMenuItem(uiStr(R.string.ui_lock_screen_orientation), orientationState.first) {
                 activity?.toggleOrientationLock()
                 orientationRevision++
             }
-            OrientationToggleMenuItem("Vertical mode", orientationState.second) {
+            OrientationToggleMenuItem(uiStr(R.string.ui_vertical_mode), orientationState.second) {
                 activity?.toggleVerticalMode()
                 orientationRevision++
             }
-            OrientationToggleMenuItem("Horizontal mode", orientationState.third) {
+            OrientationToggleMenuItem(uiStr(R.string.ui_horizontal_mode), orientationState.third) {
                 activity?.toggleHorizontalMode()
                 orientationRevision++
             }
@@ -288,6 +334,28 @@ private fun LibraryTopIcon(icon: ImageVector, selected: Boolean, click: () -> Un
         color = background,
         contentColor = content
     ) { Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { Icon(icon, null, modifier = Modifier.size(23.dp)) } }
+}
+
+@Composable
+private fun LibraryAddGamesChoice(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, Modifier.size(25.dp))
+            Spacer(Modifier.width(16.dp))
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
+        }
+    }
 }
 
 @Composable
@@ -387,9 +455,11 @@ private fun userArtworkPath(item: LibraryItem): String? =
 
 @Composable
 private fun ArtworkCompat(path: String?, fallback: Bitmap?, modifier: Modifier) {
-    val bitmap by produceState<Bitmap?>(fallback, path, fallback) {
+    val artworkRevision = LibraryImageCache.revision
+    val cacheKey = remember(path, artworkRevision) { LibraryImageCache.thumbnailKeyFor(path) }
+    val bitmap by produceState<Bitmap?>(LibraryImageCache.peek(cacheKey) ?: fallback, cacheKey, fallback) {
         value = withContext(Dispatchers.IO) {
-            path?.takeIf { File(it).isFile }?.let(BitmapFactory::decodeFile) ?: fallback
+            path?.let(LibraryImageCache::loadThumbnail) ?: fallback
         }
     }
     if (bitmap != null) Image(bitmap!!.asImageBitmap(), null, modifier, contentScale = ContentScale.Crop)
@@ -404,14 +474,14 @@ private fun PlayCompat(item: LibraryItem, cb: LibraryCallbacks, overlay: Boolean
         shape = CircleShape,
         color = if (overlay) Color.Black.copy(.72f) else MaterialTheme.colorScheme.surfaceVariant,
         contentColor = if (overlay) Color.White else MaterialTheme.colorScheme.onSurface
-    ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PlayArrow, "Play") } }
+    ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PlayArrow, uiStr(R.string.play)) } }
 }
 
 @Composable
 private fun MenuButtonCompat(item: LibraryItem, cb: LibraryCallbacks, light: Boolean) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }) {
-        Icon(Icons.Outlined.MoreVert, "More options", tint = if (light) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Outlined.MoreVert, uiStr(R.string.ui_more_options), tint = if (light) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (open) LibraryItemMenuCompat(item, cb) { open = false }
 }

@@ -2,6 +2,9 @@
 
 package com.winlator.cmod.ui.container
 
+import com.winlator.cmod.ui.uiOptionLabel
+import com.winlator.cmod.ui.uiStr
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.widget.Toast
@@ -64,6 +67,7 @@ import com.winlator.cmod.box64.Box64PresetManager
 import com.winlator.cmod.container.Container
 import com.winlator.cmod.container.ContainerManager
 import com.winlator.cmod.contents.ContentsManager
+import com.winlator.cmod.core.OpenGLDriverDefaults
 import com.winlator.cmod.core.DefaultVersion
 import com.winlator.cmod.core.FileUtils
 import com.winlator.cmod.core.GPUInformation
@@ -81,6 +85,7 @@ import com.winlator.cmod.ui.settings.DDrawWrapperChoice
 import com.winlator.cmod.ui.settings.DriverOption
 import com.winlator.cmod.ui.settings.DxvkAsyncMode
 import com.winlator.cmod.ui.settings.EnvironmentVariablesEditor
+import com.winlator.cmod.ui.settings.FrameGenerationSettings
 import com.winlator.cmod.ui.settings.SettingChoice
 import com.winlator.cmod.ui.settings.SettingDriverChoice
 import com.winlator.cmod.ui.settings.SettingInstallChoice
@@ -140,13 +145,11 @@ private class ContainerEditorStateV2(
     var runtime by mutableStateOf(editing?.wineVersion.orEmpty())
     var name by mutableStateOf(editing?.name ?: "Container-${manager.nextContainerId}")
     var screen by mutableStateOf(editing?.screenSize ?: Container.DEFAULT_SCREEN_SIZE)
+    var builtinDecoder by mutableStateOf(editing?.getBuiltinDecoder() ?: "gstreamer")
+    var softwareDecoding by mutableStateOf(editing?.getSoftwareDecoding() ?: false)
     var audio by mutableStateOf(editing?.audioDriver ?: Container.DEFAULT_AUDIO_DRIVER)
-    var oboeProfile by mutableStateOf(editing?.getExtra("oboeProfile", "low") ?: "low")
-    var oboeApi by mutableStateOf(editing?.getExtra("oboeApi", "auto") ?: "auto")
-    var oboeAdaptive by mutableStateOf((editing?.getExtra("oboeAdaptive", "1") ?: "1") != "0")
-    var oboeExclusive by mutableStateOf((editing?.getExtra("oboeExclusive", "0") ?: "0") == "1")
     var hudMode by mutableIntStateOf(
-        editing?.getExtra("hudMode", if (editing.isShowFPS) "1" else "0")?.toIntOrNull() ?: 0
+        editing?.getExtra("hudMode", if (editing.isShowFPS) "2" else "0")?.toIntOrNull() ?: 0
     )
     var locale by mutableStateOf(
         editing?.getLC_ALL().orEmpty().ifBlank {
@@ -166,6 +169,10 @@ private class ContainerEditorStateV2(
     var mouseWarp by mutableStateOf(editing?.getExtra("mouseWarpOverride", "disable") ?: "disable")
     var drives by mutableStateOf(editing?.drives ?: Container.DEFAULT_DRIVES)
 
+    var displayServer by mutableStateOf(
+        if ((editing?.getExtra("displayServer", "native") ?: "native") == "native") "X++"
+        else "X11"
+    )
     var renderer by mutableStateOf(
         when {
             editing?.getUseOldDisplay() == true -> "Old Display"
@@ -182,12 +189,24 @@ private class ContainerEditorStateV2(
     var surfaceFormat by mutableStateOf(editing?.getSurfaceFormat() ?: if (renderer == "DisplayX") "rgba8" else "bgra8")
     var trueDisplayX by mutableStateOf(editing?.getTrueDisplayX() ?: false)
     var displayXPerformanceMode by mutableStateOf(editing?.getDisplayXPerformanceMode() ?: true)
-    var displayXPresentAtRefreshRate by mutableStateOf(editing?.getDisplayXPresentAtRefreshRate() ?: true)
-    var displayXBackPressure by mutableStateOf(editing?.getDisplayXBackPressure() ?: false)
+    var displayXPresentAtRefreshRate by mutableStateOf(editing?.getDisplayXPresentAtRefreshRate() ?: false)
+    var displayXDynamicRange by mutableStateOf(editing?.getDisplayXDynamicRange() ?: "sdr")
+    var displayXPresentMode by mutableStateOf(editing?.getDisplayXPresentMode() ?: "auto")
     var displayXPrecisePresentation by mutableStateOf(editing?.getDisplayXPrecisePresentation() ?: false)
+    var frameGenEngine by mutableStateOf(if (editing?.getExtra("frameGenEngine", "lsfg") == "wfg") "wfg" else "lsfg")
+    var frameGenEnabled by mutableStateOf((editing?.getExtra("frameGen", "0") ?: "0") == "1")
+    var frameGenMultiplier by mutableIntStateOf(
+        (editing?.getExtra("frameGenMultiplier", "2") ?: "2").toIntOrNull()?.coerceIn(2, 4) ?: 2
+    )
+    var frameGenTargetRate by mutableIntStateOf(
+        (editing?.getExtra("frameGenTargetRate", "-1") ?: "-1").toIntOrNull()?.coerceAtLeast(-1) ?: -1
+    )
+    var frameGenFlowScale by mutableIntStateOf(
+        (editing?.getExtra("frameGenFlowScale", "70") ?: "70").toIntOrNull()?.coerceIn(25, 100) ?: 70
+    )
 
     var graphicsDriver by mutableStateOf(
-        editing?.graphicsDriver ?: if (preferredDriver == DefaultVersion.WRAPPER_ADRENO) {
+        editing?.graphicsDriver ?: if (OpenGLDriverDefaults.shouldUseFreedreno(context, preferredDriver)) {
             "freedreno"
         } else Container.DEFAULT_GRAPHICS_DRIVER
     )
@@ -196,6 +215,7 @@ private class ContainerEditorStateV2(
             if (readConfig(original, "version", ';').isBlank()) writeConfig(original, "version", preferredDriver, ';') else original
         }
     )
+    var freedrenoVersion by mutableStateOf(editing?.getExtra("freedrenoVersion", "Bundled") ?: "Bundled")
     var driverVersion by mutableStateOf(readConfig(graphicsConfig, "version", ';').ifBlank { preferredDriver })
     var blacklistedExtensions by mutableStateOf(readConfig(graphicsConfig, "blacklistedExtensions", ';'))
     var vulkanVersion by mutableStateOf(readConfig(graphicsConfig, "vulkanVersion", ';').ifBlank { "1.3" })
@@ -232,6 +252,7 @@ private class ContainerEditorStateV2(
     var ddDeck by mutableStateOf(editing?.getExtra("droiddeckDeck", "") ?: "")  // DroidDeck-deck
     var ddDeckEvdev by mutableStateOf(editing?.getExtra("droiddeckDeckEvdev", "") ?: "")  // DroidDeck-deck
     var exclusive by mutableStateOf(editing?.isExclusiveXInput ?: true)
+    var forceSsbs by mutableStateOf(editing?.isForceSsbs ?: true)
     var xinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0 } ?: true)
     var dinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()) != 0 } ?: false)
     var syncCpu by mutableStateOf(editing?.isSyncCpuTopology ?: false)
@@ -248,7 +269,9 @@ private class ContainerEditorStateV2(
 
     var startup by mutableIntStateOf(editing?.startupSelection?.toInt() ?: Container.STARTUP_SELECTION_ESSENTIAL.toInt())
     var openGlDefaultInitialized by mutableStateOf((editing?.getExtra("openGlDefaultInitialized", "0") ?: "0") == "1")
-    private val initialEnvVars = cleanContainerEnvironment(editing?.envVars ?: Container.DEFAULT_ENV_VARS)
+    private val initialEnvVars = cleanContainerEnvironment(editing?.envVars ?: envPut(Container.DEFAULT_ENV_VARS, "DXVK_HUD", null)).let {
+        if (envValue(it, "FD_MESA_DEBUG").isNullOrBlank()) envPut(it, "FD_MESA_DEBUG", "hiprio,sysmem") else it
+    }
     private val shouldAddMesaGlOverride = graphicsDriver.equals("freedreno", true) &&
         envValue(initialEnvVars, "MESA_GL_VERSION_OVERRIDE").isNullOrBlank()
     var autoMesaGlVersionOverride by mutableStateOf(
@@ -319,13 +342,14 @@ private class ContainerEditorStateV2(
     }
 
     fun fingerprint(): String = listOf(
-        name, screen, audio, oboeProfile, oboeApi, oboeAdaptive, oboeExclusive, hudMode, locale, soundFont,
+        name, screen, audio, builtinDecoder, softwareDecoding, hudMode, locale, soundFont,
         fullscreen, desktopTheme, desktopBackground, wallpaperStamp, mouseWarp, drives,
-        renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
-        displayXPerformanceMode, displayXPresentAtRefreshRate, displayXBackPressure,
-        displayXPrecisePresentation, graphicsDriver, graphicsConfig,
-        wrapper, wrapperConfig, emulator, emulator64, box64ecVersion, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
-        syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
+        displayServer, renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
+        displayXPerformanceMode, displayXPresentAtRefreshRate, displayXPresentMode, displayXDynamicRange,
+        displayXPrecisePresentation, frameGenEngine, frameGenEnabled, frameGenMultiplier,
+        frameGenTargetRate, frameGenFlowScale, graphicsDriver, freedrenoVersion, graphicsConfig,
+        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
+        forceSsbs, syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
 }
@@ -400,7 +424,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         scope.launch {
             val installed = installRuntimeComponent(context, type, version)
             installing = installing - key
-            if (installed == null) Toast.makeText(context, "Unable to install $version", Toast.LENGTH_SHORT).show()
+            if (installed == null) Toast.makeText(context, uiStr(R.string.ui_unable_to_install_1_s, version), Toast.LENGTH_SHORT).show()
             else {
                 done(installed)
                 revision++
@@ -415,7 +439,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         scope.launch {
             val installedId = installWineRuntimeComponent(context, option)
             installing = installing - key
-            if (installedId == null) Toast.makeText(context, "Unable to install ${option.label}", Toast.LENGTH_LONG).show()
+            if (installedId == null) Toast.makeText(context, uiStr(R.string.ui_unable_to_install_1_s, option.label), Toast.LENGTH_LONG).show()
             else {
                 state.runtime = installedId
                 contents.syncContents()
@@ -431,7 +455,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         scope.launch {
             val installed = installAdrenoDriver(context, option)
             installing = installing - key
-            if (installed == null) Toast.makeText(context, "Unable to install ${option.label}", Toast.LENGTH_SHORT).show()
+            if (installed == null) Toast.makeText(context, uiStr(R.string.ui_unable_to_install_1_s, option.label), Toast.LENGTH_SHORT).show()
             else {
                 state.driverVersion = installed
                 state.graphics("version", installed)
@@ -456,8 +480,10 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setCPUList(state.cpu64.indices.filter { state.cpu64[it] }.joinToString(","))
         container.setCPUListWoW64(state.cpu32.indices.filter { state.cpu32[it] }.joinToString(","))
         container.setSyncCpuTopology(state.syncCpu)
+        container.putExtra("freedrenoVersion", state.freedrenoVersion)
         container.setGraphicsDriver(state.graphicsDriver)
         container.setGraphicsDriverConfig(state.graphicsConfig)
+        container.putExtra("displayServer", if (state.displayServer == "X++") "native" else "java")
         container.setRendererNative(state.renderer == "EGL")
         container.setRendererPresentMode(state.rendererPresentMode)
         container.setRendererDriverId(state.rendererDriver)
@@ -470,15 +496,19 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setTrueDisplayX(state.trueDisplayX)
         container.setDisplayXPerformanceMode(state.displayXPerformanceMode)
         container.setDisplayXPresentAtRefreshRate(state.displayXPresentAtRefreshRate)
-        container.setDisplayXBackPressure(state.displayXBackPressure)
+        container.setDisplayXDynamicRange(state.displayXDynamicRange)
+        container.setDisplayXPresentMode(state.displayXPresentMode)
         container.setDisplayXPrecisePresentation(state.displayXPrecisePresentation)
+        container.putExtra("frameGenEngine", state.frameGenEngine)
+        container.putExtra("frameGen", if (state.frameGenEnabled) "1" else "0")
+        container.putExtra("frameGenMultiplier", state.frameGenMultiplier.toString())
+        container.putExtra("frameGenTargetRate", state.frameGenTargetRate.toString())
+        container.putExtra("frameGenFlowScale", state.frameGenFlowScale.toString())
         container.setDXWrapper(state.wrapper)
         container.setDXWrapperConfig(state.wrapperConfig)
+        container.setBuiltinDecoder(state.builtinDecoder)
+        container.setSoftwareDecoding(state.softwareDecoding)
         container.setAudioDriver(state.audio)
-        container.putExtra("oboeProfile", state.oboeProfile)
-        container.putExtra("oboeApi", state.oboeApi)
-        container.putExtra("oboeAdaptive", if (state.oboeAdaptive) "1" else "0")
-        container.putExtra("oboeExclusive", if (state.oboeExclusive) "1" else "0")
         container.setEmulator(if (arm64) if (state.emulator == "FEXCore") "FEXCore" else "Box64" else "Box64")
         container.putExtra("emulator64", state.emulator64)
         container.putExtra("box64ecVersion", state.box64ecVersion)
@@ -486,6 +516,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setShowFPS(state.hudMode != 0)
         container.setFullscreenStretched(state.fullscreen)
         container.setExclusiveXInput(state.exclusive)
+        container.setForceSsbs(state.forceSsbs)
         var inputType = 0
         if (state.xinput) inputType = inputType or WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()
         if (state.dinput) inputType = inputType or WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()
@@ -518,7 +549,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         if (creating || state.runtime.isBlank()) return
         val wineInfo = WineInfo.fromIdentifier(context, contents, state.runtime)
         if (wineInfo.path.isNullOrBlank()) {
-            Toast.makeText(context, "Selected Wine/Proton is not installed.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, uiStr(R.string.ui_selected_wine_proton_is_not_installed), Toast.LENGTH_LONG).show()
             return
         }
         creating = true
@@ -545,6 +576,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                 put("showFPS", state.hudMode != 0)
                 put("fullscreenStretched", state.fullscreen)
                 put("exclusiveXInput", state.exclusive)
+                put("forceSsbs", state.forceSsbs)
                 var inputType = 0
                 if (state.xinput) inputType = inputType or WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()
                 if (state.dinput) inputType = inputType or WinHandler.FLAG_INPUT_TYPE_DINPUT.toInt()
@@ -558,9 +590,12 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                 put("wineVersion", state.runtime)
                 put("midiSoundFont", state.soundFont)
                 put("lc_all", state.locale)
-                put("extraData", JSONObject()
+                put("extraData", JSONObject().put("freedrenoVersion", state.freedrenoVersion)
+                    .put("builtinDecoder", state.builtinDecoder)
+                    .put("softwareDecoding", if (state.softwareDecoding) "1" else "0")
                     .put("hudMode", state.hudMode.toString())
                     .put("mouseWarpOverride", state.mouseWarp)
+                    .put("displayServer", if (state.displayServer == "X++") "native" else "java")
                     .put("useDisplayX", if (state.renderer == "DisplayX") "1" else "0")
                     .put("useOldDisplay", if (state.renderer == "Old Display") "1" else "0")
                     .put("oldDisplayDirectRendering", if (state.oldDisplayDirectRendering) "1" else "0")
@@ -569,12 +604,14 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("trueDisplayX", if (state.trueDisplayX) "1" else "0")
                     .put("displayXPerformanceMode", if (state.displayXPerformanceMode) "1" else "0")
                     .put("displayXPresentAtRefreshRate", if (state.displayXPresentAtRefreshRate) "1" else "0")
-                    .put("displayXBackPressure", if (state.displayXBackPressure) "1" else "0")
+                    .put("displayXDynamicRange", state.displayXDynamicRange)
+                    .put("displayXPresentMode", state.displayXPresentMode)
                     .put("displayXPrecisePresentation", if (state.displayXPrecisePresentation) "1" else "0")
-                    .put("oboeProfile", state.oboeProfile)
-                    .put("oboeApi", state.oboeApi)
-                    .put("oboeAdaptive", if (state.oboeAdaptive) "1" else "0")
-                    .put("oboeExclusive", if (state.oboeExclusive) "1" else "0")
+                    .put("frameGenEngine", state.frameGenEngine)
+                    .put("frameGen", if (state.frameGenEnabled) "1" else "0")
+                    .put("frameGenMultiplier", state.frameGenMultiplier.toString())
+                    .put("frameGenTargetRate", state.frameGenTargetRate.toString())
+                    .put("frameGenFlowScale", state.frameGenFlowScale.toString())
                     .put("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
                     .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
                     .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
@@ -585,7 +622,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
-                if (created == null) Toast.makeText(context, "Unable to create container.", Toast.LENGTH_LONG).show()
+                if (created == null) Toast.makeText(context, uiStr(R.string.ui_unable_to_create_container), Toast.LENGTH_LONG).show()
                 else {
                     applyMouseWarp(created)
                     onCreated()
@@ -593,7 +630,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
             }
         } catch (_: Exception) {
             creating = false
-            Toast.makeText(context, "Unable to create container.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, uiStr(R.string.ui_unable_to_create_container), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -604,7 +641,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(if (editing == null) "New container" else state.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { Text(if (editing == null) uiStr(R.string.ui_new_container) else state.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, null) } }
             )
         },
@@ -620,7 +657,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp).height(50.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(if (creating) "Creating…" else "Create container", fontWeight = FontWeight.SemiBold)
+                        Text(if (creating) uiStr(R.string.ui_creating) else uiStr(R.string.ui_create_container), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -644,7 +681,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     ) {
                         item {
                             Text(
-                                "Container settings",
+                                uiStr(R.string.ui_container_settings),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(8.dp)
@@ -703,7 +740,7 @@ private fun ContainerNavItemV2(label: String, selected: Boolean, onClick: () -> 
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
     ) {
         Text(
-            label,
+            uiOptionLabel(label),
             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
@@ -736,15 +773,15 @@ private fun ContainerCategoryV2(
     val wallpaperPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             runCatching {
-                val bitmap = ImageUtils.getBitmapFromUri(context, uri, 1280) ?: error("Unable to decode image")
+                val bitmap = ImageUtils.getBitmapFromUri(context, uri, 1280) ?: error(uiStr(R.string.ui_unable_to_decode_image))
                 val target = WineThemeManager.getUserWallpaperFile(context)
                 target.parentFile?.mkdirs()
-                if (!ImageUtils.save(bitmap, target, Bitmap.CompressFormat.PNG, 100)) error("Unable to save image")
+                if (!ImageUtils.save(bitmap, target, Bitmap.CompressFormat.PNG, 100)) error(uiStr(R.string.ui_unable_to_save_image))
                 val stamp = target.lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
                 s.desktopBackground = "Image"
                 s.wallpaperStamp = stamp
             }.onFailure {
-                Toast.makeText(context, "Unable to set wallpaper image.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, uiStr(R.string.ui_unable_to_set_wallpaper_image), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -752,65 +789,42 @@ private fun ContainerCategoryV2(
     when (category) {
         "General" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SettingsCard {
-                SettingText("Name", s.name) { s.name = it }
+                SettingText(uiStr(R.string.name), s.name) { s.name = it }
                 SettingsDivider()
-                SettingWineRuntimeChoice("Wine / Proton", s.runtime, runtimes, installing, installWine) { s.runtime = it }
+                SettingWineRuntimeChoice(uiStr(R.string.ui_wine_proton), s.runtime, runtimes, installing, installWine) { s.runtime = it }
             }
             SettingsCard {
                 SettingChoice(
-                    "Audio Driver",
+                    uiStr(R.string.audio_driver),
                     audioEntries.firstOrNull { StringUtils.parseIdentifier(it).equals(s.audio, true) } ?: s.audio,
                     audioEntries
                 ) { s.audio = StringUtils.parseIdentifier(it) }
-                if (s.audio == "oboe") {
-                    SettingsDivider()
-                    val latencyLabel = when (s.oboeProfile) {
-                        "ultra" -> "Low Latency"
-                        "stable" -> "Stable"
-                        else -> "Automatic"
-                    }
-                    SettingChoice("Oboe latency", latencyLabel, listOf("Automatic", "Low Latency", "Stable")) {
-                        s.oboeProfile = when (it) {
-                            "Low Latency" -> "ultra"
-                            "Stable" -> "stable"
-                            else -> "low"
-                        }
-                    }
-                    SettingsDivider()
-                    val apiLabel = when (s.oboeApi) {
-                        "aaudio" -> "AAudio"
-                        "opensles" -> "OpenSL ES"
-                        else -> "Automatic"
-                    }
-                    SettingChoice("Oboe backend", apiLabel, listOf("Automatic", "AAudio", "OpenSL ES")) {
-                        s.oboeApi = when (it) {
-                            "AAudio" -> "aaudio"
-                            "OpenSL ES" -> "opensles"
-                            else -> "auto"
-                        }
-                    }
-                }
                 SettingsDivider()
                 val hudEntries = listOf("Off", "Classic", "Modern")
-                SettingChoice("Winlator HUD", hudEntries.getOrElse(s.hudMode) { "Off" }, hudEntries) {
+                SettingChoice(uiStr(R.string.ui_winlator_hud), hudEntries.getOrElse(s.hudMode) { "Off" }, hudEntries) {
                     s.hudMode = hudEntries.indexOf(it).coerceAtLeast(0)
                 }
             }
             SettingsCard {
-                SettingChoice("Locale (LC_ALL)", localeDisplayValue(s.locale), localeEntries) {
+                SettingToggle(uiStr(R.string.ui_dxvk_hud), !envValue(s.envVars, "DXVK_HUD").isNullOrBlank()) {
+                    s.setEnvironment(envPut(s.envVars, "DXVK_HUD", if (it) "fps,devinfo,gpuload,version" else null))
+                }
+            }
+            SettingsCard {
+                SettingChoice(uiStr(R.string.ui_locale_lc_all), localeDisplayValue(s.locale), localeEntries) {
                     s.locale = normalizeLocaleValue(it)
                 }
                 SettingsDivider()
-                SettingChoice("MIDI SoundFont", s.soundFont.ifBlank { "Disabled" }, soundFonts) {
+                SettingChoice(uiStr(R.string.midi_sound_font), s.soundFont.ifBlank { "Disabled" }, soundFonts) {
                     s.soundFont = if (it == "Disabled") "" else it
                 }
                 SettingsDivider()
-                SettingToggle("Fullscreen Stretched", s.fullscreen) { s.fullscreen = it }
+                SettingToggle(uiStr(R.string.ui_fullscreen_stretched), s.fullscreen) { s.fullscreen = it }
             }
             SettingsCard {
-                SettingChoice("Desktop Theme", s.desktopTheme, listOf("Dark", "Light")) { s.desktopTheme = it }
+                SettingChoice(uiStr(R.string.ui_desktop_theme), s.desktopTheme, listOf("Dark", "Light")) { s.desktopTheme = it }
                 SettingsDivider()
-                SettingChoice("Desktop Background", s.desktopBackground, listOf("Image", "Solid Color")) { s.desktopBackground = it }
+                SettingChoice(uiStr(R.string.ui_desktop_background), s.desktopBackground, listOf("Image", "Solid Color")) { s.desktopBackground = it }
                 if (s.desktopBackground == "Image") {
                     SettingsDivider()
                     Row(
@@ -819,23 +833,23 @@ private fun ContainerCategoryV2(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "Wallpaper image",
+                                uiStr(R.string.ui_wallpaper_image),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                if (s.wallpaperStamp > 0L) "Custom image" else "Default wallpaper",
+                                if (s.wallpaperStamp > 0L) uiStr(R.string.ui_custom_image) else uiStr(R.string.ui_default_wallpaper),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Medium
                             )
                         }
                         TextButton(onClick = { wallpaperPicker.launch("image/*") }) {
-                            Text(if (s.wallpaperStamp > 0L) "Change" else "Choose")
+                            Text(if (s.wallpaperStamp > 0L) uiStr(R.string.ui_change) else uiStr(R.string.ui_choose))
                         }
                     }
                 }
                 SettingsDivider()
-                SettingChoice("Mouse Warp Override", s.mouseWarp, listOf("disable", "enable", "force")) { s.mouseWarp = it }
+                SettingChoice(uiStr(R.string.mouse_warp_override), s.mouseWarp, listOf("disable", "enable", "force")) { s.mouseWarp = it }
             }
         }
 
@@ -846,7 +860,7 @@ private fun ContainerCategoryV2(
                 }
                 val shownScreen = if (customScreenSelected) "Custom"
                 else screenEntries.firstOrNull { normalizeResolution(it).equals(s.screen, true) } ?: "Custom"
-                SettingChoice("Screen Size", shownScreen, screenEntries) {
+                SettingChoice(uiStr(R.string.screen_size), shownScreen, screenEntries) {
                     if (it.equals("Custom", true)) {
                         customScreenSelected = true
                     } else {
@@ -856,17 +870,20 @@ private fun ContainerCategoryV2(
                 }
                 if (shownScreen == "Custom") {
                     SettingsDivider()
-                    SettingText("Custom resolution", s.screen) { s.screen = it }
+                    SettingText(uiStr(R.string.ui_custom_resolution), s.screen) { s.screen = it }
                 }
                 SettingsDivider()
-                SettingChoice("Renderer", s.renderer, listOf("Vulkan", "EGL", "DisplayX", "Old Display")) {
+                SettingChoice(uiStr(R.string.ui_display_server), s.displayServer,
+                    listOf("X11", "X++")) { s.displayServer = it }
+                SettingsDivider()
+                SettingChoice(uiStr(R.string.ui_renderer), s.renderer, listOf("Vulkan", "EGL", "DisplayX",  "Old Display")) {
                     s.renderer = it
                     s.surfaceFormat = if (it == "DisplayX") "rgba8" else "bgra8"
                     if (it == "EGL" && s.filterMode > 1) s.filterMode = 0
                 }
                 SettingsDivider()
                 SettingChoice(
-                    "Surface format",
+                    uiStr(R.string.ui_surface_format),
                     if (s.surfaceFormat == "bgra8") "BGRA" else "RGBA",
                     listOf("RGBA", "BGRA")
                 ) { s.surfaceFormat = if (it == "BGRA") "bgra8" else "rgba8" }
@@ -878,34 +895,36 @@ private fun ContainerCategoryV2(
                 }
                 if (s.renderer == "DisplayX") {
                     SettingsDivider()
-                    SettingToggle("Bypass X11", s.trueDisplayX) {
-                        s.trueDisplayX = it
+                    SettingChoice(uiStr(R.string.ui_displayx_backend), if (s.trueDisplayX) "DisplayX+" else "X11", listOf("X11", "DisplayX+")) {
+                        s.trueDisplayX = it == "DisplayX+"
                     }
                     SettingsDivider()
-                    SettingToggle("Performance mode", s.displayXPerformanceMode) {
+                    SettingToggle(uiStr(R.string.ui_performance_mode), s.displayXPerformanceMode) {
                         s.displayXPerformanceMode = it
                     }
                     SettingsDivider()
-                    SettingToggle("Present at refresh rate", s.displayXPresentAtRefreshRate) {
+                    SettingToggle(uiStr(R.string.ui_present_at_refresh_rate), s.displayXPresentAtRefreshRate) {
                         s.displayXPresentAtRefreshRate = it
                     }
                     SettingsDivider()
-                    SettingToggle("Submit every buffer", s.displayXBackPressure) {
-                        s.displayXBackPressure = it
+                    SettingChoice(uiStr(R.string.ui_present_mode), s.displayXPresentMode, listOf("auto", "mailbox", "fifo")) {
+                        s.displayXPresentMode = it
                     }
-                    SettingsDivider()
-                    SettingToggle("Precise presentation", s.displayXPrecisePresentation) {
-                        s.displayXPrecisePresentation = it
+                    if (s.trueDisplayX) {
+                        SettingsDivider()
+                        SettingChoice(uiStr(R.string.ui_dynamic_range), s.displayXDynamicRange.uppercase(), listOf("SDR", "HDR")) {
+                            s.displayXDynamicRange = it.lowercase()
+                        }
                     }
                 } else {
                     if (s.renderer != "EGL" && s.renderer != "Old Display") {
                         SettingsDivider()
-                        SettingChoice("Present Mode", s.rendererPresentMode, listOf("fifo", "mailbox")) {
+                        SettingChoice(uiStr(R.string.ui_present_mode), s.rendererPresentMode, listOf("fifo", "mailbox")) {
                             s.rendererPresentMode = it
                         }
                         catalog?.let { c ->
                             SettingsDivider()
-                            SettingMappedChoice("Renderer Driver", s.rendererDriver, c.rendererDrivers) {
+                            SettingMappedChoice(uiStr(R.string.ui_renderer_driver), s.rendererDriver, c.rendererDrivers) {
                                 s.rendererDriver = it
                             }
                         }
@@ -920,20 +939,39 @@ private fun ContainerCategoryV2(
                         "Lanczos 2 (16-tap)",
                         "Color Boost"
                     )
-                    SettingChoice("Texture Filter", filters.getOrElse(s.filterMode) { filters.first() }, filters) {
+                    SettingChoice(uiStr(R.string.ui_texture_filter), filters.getOrElse(s.filterMode) { filters.first() }, filters) {
                         s.filterMode = filters.indexOf(it).coerceAtLeast(0)
                     }
                 }
             }
+            if (s.renderer == "Vulkan") {
+                FrameGenerationSettings(
+                    engine = s.frameGenEngine,
+                    onEngineChanged = { s.frameGenEngine = it },
+                    enabled = s.frameGenEnabled,
+                    multiplier = s.frameGenMultiplier,
+                    targetRate = s.frameGenTargetRate,
+                    flowScale = s.frameGenFlowScale,
+                    onEnabledChanged = { s.frameGenEnabled = it },
+                    onMultiplierChanged = { s.frameGenMultiplier = it },
+                    onTargetRateChanged = { s.frameGenTargetRate = it },
+                    onFlowScaleChanged = { s.frameGenFlowScale = it },
+                )
+            }
             SettingsCard {
                 SettingChoice(
-                    "Graphics Driver",
+                    uiStr(R.string.graphics_driver),
                     graphicsEntries.firstOrNull { StringUtils.parseIdentifier(it).equals(s.graphicsDriver, true) } ?: s.graphicsDriver,
                     graphicsEntries
                 ) { s.selectGraphicsDriver(StringUtils.parseIdentifier(it)) }
+                if (s.graphicsDriver.equals("freedreno", true)) {
+                    SettingsDivider()
+                    SettingMappedChoice("Freedreno OpenGL", s.freedrenoVersion,
+                        com.winlator.cmod.contents.OpenGLDriverManager(context).versionLabels(s.freedrenoVersion)) { s.freedrenoVersion = it }
+                }
                 catalog?.let { c ->
                     SettingsDivider()
-                    SettingDriverChoice("Driver Version", s.driverVersion, c.drivers, installing, installDriver) {
+                    SettingDriverChoice(uiStr(R.string.ui_driver_version), s.driverVersion, c.drivers, installing, installDriver) {
                         s.driverVersion = it
                         s.graphics("version", it)
                     }
@@ -943,39 +981,39 @@ private fun ContainerCategoryV2(
                     }
                     SettingsDivider()
                 }
-                SettingChoice("Vulkan Version", s.vulkanVersion, listOf("1.1", "1.2", "1.3")) {
+                SettingChoice(uiStr(R.string.graphics_driver_vulkan_version), s.vulkanVersion, listOf("1.1", "1.2", "1.3")) {
                     s.vulkanVersion = it; s.graphics("vulkanVersion", it)
                 }
                 SettingsDivider()
-                SettingChoice("GPU Name", s.gpuName, gpuNames) { s.gpuName = it; s.graphics("gpuName", it) }
+                SettingChoice(uiStr(R.string.gpu_name), s.gpuName, gpuNames) { s.gpuName = it; s.graphics("gpuName", it) }
                 SettingsDivider()
-                SettingChoice("Max Device Memory", s.maxMemory, listOf("0", "512", "1024", "2048", "4096", "8192", "12288", "16384")) {
+                SettingChoice(uiStr(R.string.max_device_memory), s.maxMemory, listOf("0", "512", "1024", "2048", "4096", "8192", "12288", "16384")) {
                     s.maxMemory = it; s.graphics("maxDeviceMemory", it)
                 }
                 SettingsDivider()
-                SettingChoice("Driver Present Mode", s.driverPresentMode, listOf("mailbox", "fifo", "immediate", "relaxed")) {
+                SettingChoice(uiStr(R.string.ui_driver_present_mode), s.driverPresentMode, listOf("mailbox", "fifo", "immediate", "relaxed")) {
                     s.driverPresentMode = it; s.graphics("presentMode", it)
                 }
                 SettingsDivider()
-                SettingToggle("Sync Frame", s.syncFrame) { s.syncFrame = it; s.graphics("syncFrame", if (it) "1" else "0") }
+                SettingToggle(uiStr(R.string.ui_sync_frame), s.syncFrame) { s.syncFrame = it; s.graphics("syncFrame", if (it) "1" else "0") }
                 SettingsDivider()
-                SettingToggle("Disable Present Wait", s.disablePresentWait) {
+                SettingToggle(uiStr(R.string.ui_disable_present_wait), s.disablePresentWait) {
                     s.disablePresentWait = it; s.graphics("disablePresentWait", if (it) "1" else "0")
                 }
                 SettingsDivider()
-                SettingChoice("Resource Type", s.resourceType, listOf("auto", "dmabuf", "ahb", "opaque")) {
+                SettingChoice(uiStr(R.string.ui_resource_type), s.resourceType, listOf("auto", "dmabuf", "ahb", "opaque")) {
                     s.resourceType = it; s.graphics("resourceType", it)
                 }
                 SettingsDivider()
-                SettingChoice("BCN Emulation", s.bcn, listOf("none", "partial", "full", "auto")) {
+                SettingChoice(uiStr(R.string.ui_bcn_emulation), s.bcn, listOf("none", "partial", "full", "auto")) {
                     s.bcn = it; s.graphics("bcnEmulation", it)
                 }
                 SettingsDivider()
-                SettingChoice("BCN Emulation Type", s.bcnType, listOf("software", "compute")) {
+                SettingChoice(uiStr(R.string.ui_bcn_emulation_type), s.bcnType, listOf("software", "compute")) {
                     s.bcnType = it; s.graphics("bcnEmulationType", it)
                 }
                 SettingsDivider()
-                SettingToggle("BCN Emulation Cache", s.bcnCache) {
+                SettingToggle(uiStr(R.string.ui_bcn_emulation_cache), s.bcnCache) {
                     s.bcnCache = it; s.graphics("bcnEmulationCache", if (it) "1" else "0")
                 }
             }
@@ -984,15 +1022,15 @@ private fun ContainerCategoryV2(
         "Compatibility" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SettingsCard {
                 val shownWrapper = wrapperEntries.firstOrNull { StringUtils.parseIdentifier(it).equals(s.wrapper, true) } ?: s.wrapper
-                SettingChoice("DX Wrapper", shownWrapper, wrapperEntries) { s.wrapper = StringUtils.parseIdentifier(it) }
+                SettingChoice(uiStr(R.string.dxwrapper), shownWrapper, wrapperEntries) { s.wrapper = StringUtils.parseIdentifier(it) }
                 if (s.wrapper.contains("dxvk", true)) catalog?.let { c ->
                     val dxvkCatalog = filterDxvkForVkd3d(c.dxvk, s.vkd3dVersion)
                     SettingsDivider()
-                    SettingInstallChoice("DXVK Version", s.dxvkVersion, dxvkCatalog, installing, "DXVK", { v ->
+                    SettingInstallChoice(uiStr(R.string.dxvk_version), s.dxvkVersion, dxvkCatalog, installing, "DXVK", { v ->
                         installRuntime("DXVK", v) { installed -> s.selectDxvkVersion(installed) }
                     }) { s.selectDxvkVersion(it) }
                     SettingsDivider()
-                    SettingInstallChoice("VKD3D Version", s.vkd3dVersion, c.vkd3d, installing, "VKD3D", { v ->
+                    SettingInstallChoice(uiStr(R.string.vkd3d_version), s.vkd3dVersion, c.vkd3d, installing, "VKD3D", { v ->
                         installRuntime("VKD3D", v) { installed ->
                             s.vkd3dVersion = installed
                             s.wrapperValue("vkd3dVersion", installed)
@@ -1008,25 +1046,25 @@ private fun ContainerCategoryV2(
                         }
                     }
                     SettingsDivider()
-                    SettingChoice("VKD3D Feature Level", s.vkd3dLevel, listOf("12_0", "12_1", "12_2", "11_1", "11_0", "10_1", "10_0", "9_3", "9_2", "9_1")) {
+                    SettingChoice(uiStr(R.string.vkd3d_feature_level), s.vkd3dLevel, listOf("12_0", "12_1", "12_2", "11_1", "11_0", "10_1", "10_0", "9_3", "9_2", "9_1")) {
                         s.vkd3dLevel = it; s.wrapperValue("vkd3dLevel", it)
                     }
                     SettingsDivider()
-                    SettingText("Frame Rate", s.frameRate) {
+                    SettingText(uiStr(R.string.frame_rate), s.frameRate) {
                         s.frameRate = it.filter(Char::isDigit).take(4); s.wrapperValue("framerate", s.frameRate.ifBlank { "0" })
                     }
                     SettingsDivider()
-                    SettingToggle("Max Frame Latency", s.maxFrameLatency) {
+                    SettingToggle(uiStr(R.string.ui_max_frame_latency), s.maxFrameLatency) {
                         s.maxFrameLatency = it; s.wrapperValue("maxFrameLatency", if (it) "1" else "0")
                     }
                     val asyncMode = dxvkAsyncMode(s.dxvkVersion)
                     if (asyncMode != DxvkAsyncMode.NONE) {
                         SettingsDivider()
-                        SettingToggle("Async", s.async) { s.async = it; s.wrapperValue("async", if (it) "1" else "0") }
+                        SettingToggle(uiStr(R.string.ui_async), s.async) { s.async = it; s.wrapperValue("async", if (it) "1" else "0") }
                     }
                     if (asyncMode == DxvkAsyncMode.GPL_ASYNC) {
                         SettingsDivider()
-                        SettingToggle("Async Cache", s.asyncCache) { s.asyncCache = it; s.wrapperValue("asyncCache", if (it) "1" else "0") }
+                        SettingToggle(uiStr(R.string.ui_async_cache), s.asyncCache) { s.asyncCache = it; s.wrapperValue("asyncCache", if (it) "1" else "0") }
                     }
                     SettingsDivider()
                     DDrawWrapperChoice(s.ddrawWrapper) {
@@ -1036,56 +1074,47 @@ private fun ContainerCategoryV2(
             }
             SettingsCard {
                 if (arm64) {
-                    SettingChoice("32-bit Emulator", s.emulator, listOf("FEXCore", "WOWBox64")) { s.emulator = it }
+                    SettingChoice(uiStr(R.string.ui_32_bit_emulator), s.emulator, listOf("FEXCore", "WOWBox64")) { s.emulator = it }
                     catalog?.let { c ->
                         SettingsDivider()
-                        SettingInstallChoice("FEXCore Version", s.fexVersion, c.fex, installing, "FEXCore", { v ->
+                        SettingInstallChoice(uiStr(R.string.fexcore_version), s.fexVersion, c.fex, installing, "FEXCore", { v ->
                             installRuntime("FEXCore", v) { installed -> s.fexVersion = installed }
                         }) { s.fexVersion = it }
                     }
                     SettingsDivider()
-                    SettingMappedChoice("FEXCore Preset", s.fexPreset, fexPresets) { s.fexPreset = it }
+                    SettingMappedChoice(uiStr(R.string.fexcore_preset), s.fexPreset, fexPresets) { s.fexPreset = it }
                     SettingsDivider()
-                    SettingChoice("64-bit Emulator", s.emulator64, listOf("FEXCore", "Box64EC")) { s.emulator64 = it }
-                    if (s.emulator64 == "Box64EC") {
-                        val box64ecVersions = remember { installedBox64EcVersions(context) }
-                        SettingsDivider()
-                        SettingChoice(
-                            "Box64EC Version",
-                            s.box64ecVersion.takeIf { it in box64ecVersions } ?: box64ecVersions.firstOrNull() ?: "Not installed",
-                            box64ecVersions.ifEmpty { listOf("Not installed") }
-                        ) { if (it in box64ecVersions) s.box64ecVersion = it }
-                    }
+                    SettingToggle(uiStr(R.string.ui_force_ssbs_cpu_speed_fix), s.forceSsbs) { s.forceSsbs = it }
                 }
                 if (!arm64 || s.emulator == "WOWBox64") {
                     catalog?.let { c ->
                         val type = if (arm64) "WOWBox64" else "Box64"
                         val versions = if (arm64) c.wow else c.box
                         if (arm64) SettingsDivider()
-                        SettingInstallChoice("$type Version", s.boxVersion, versions, installing, type, { v ->
+                        SettingInstallChoice(uiStr(R.string.ui_1_s_version, type), s.boxVersion, versions, installing, type, { v ->
                             installRuntime(type, v) { installed -> s.boxVersion = installed }
                         }) { s.boxVersion = it }
                     }
                     SettingsDivider()
-                    SettingMappedChoice("Box64 Preset", s.boxPreset, boxPresets) { s.boxPreset = it }
+                    SettingMappedChoice(uiStr(R.string.box64_preset), s.boxPreset, boxPresets) { s.boxPreset = it }
                 }
             }
         }
 
         "Input" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SettingsCard {
-                SettingToggle("Exclusive Input", s.exclusive) { enabled ->
+                SettingToggle(uiStr(R.string.ui_exclusive_input), s.exclusive) { enabled ->
                     s.exclusive = enabled
                     if (!enabled) {
                         s.xinput = true; s.dinput = true
                     } else if (s.xinput && s.dinput) s.dinput = false
                 }
                 SettingsDivider()
-                SettingToggle("Enable XInput", s.xinput, s.exclusive) {
+                SettingToggle(uiStr(R.string.ui_enable_xinput), s.xinput, s.exclusive) {
                     s.xinput = it; if (s.exclusive && it && s.dinput) s.dinput = false
                 }
                 SettingsDivider()
-                SettingToggle("Enable DInput", s.dinput, s.exclusive) {
+                SettingToggle(uiStr(R.string.ui_enable_dinput), s.dinput, s.exclusive) {
                     s.dinput = it; if (s.exclusive && it && s.xinput) s.xinput = false
                 }
             }
@@ -1106,7 +1135,7 @@ private fun ContainerCategoryV2(
         "Storage" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             DriveLettersEditorV2(
                 initialDrives = s.drives,
-                subtitle = "Changes are saved with this container"
+                subtitle = uiStr(R.string.ui_changes_are_saved_with_this_container)
             ) { s.drives = it }
         }
 
@@ -1121,17 +1150,20 @@ private fun ContainerCategoryV2(
                     "Essential (Load only essential services)",
                     "Aggressive (Stop services on startup)"
                 )
-                SettingChoice("Startup Selection", startupEntries[s.startup.coerceIn(0, 2)], startupEntries) {
+                SettingChoice(uiStr(R.string.startup_selection), startupEntries[s.startup.coerceIn(0, 2)], startupEntries) {
                     s.startup = startupEntries.indexOf(it).coerceAtLeast(0)
                 }
             }
             SettingsCard {
-                SettingToggle("Sync CPU Topology", s.syncCpu) { s.syncCpu = it }
+                SettingToggle(uiStr(R.string.ui_sync_cpu_topology), s.syncCpu) { s.syncCpu = it }
                 SettingsDivider()
-                CpuSelectorRow("Processor Affinity", s.cpu64) { index, checked -> s.cpu64[index] = checked }
+                CpuSelectorRow(uiStr(R.string.processor_affinity), s.cpu64) { index, checked -> s.cpu64[index] = checked }
                 SettingsDivider()
-                CpuSelectorRow("Processor Affinity (32-bit apps)", s.cpu32) { index, checked -> s.cpu32[index] = checked }
+                CpuSelectorRow(uiStr(R.string.processor_affinity_32_bit_apps), s.cpu32) { index, checked -> s.cpu32[index] = checked }
             }
+            com.winlator.cmod.ui.settings.CodecsSettings(s.builtinDecoder, s.softwareDecoding,
+                { s.builtinDecoder = it }, { s.softwareDecoding = it })
+            SettingsCard { com.winlator.cmod.components.WindowsComponentsEntry(s.editing) }
             SettingsCard {
                 containerComponentRowsV2.forEachIndexed { index, (key, label) ->
                     val entries = listOf("Builtin (Wine)", "Native (Windows)")
@@ -1155,7 +1187,7 @@ private fun ContainerVulkanExtensionsV2(
         runCatching { GPUInformation.enumerateExtensions(driver, context).toList().sorted() }.getOrDefault(emptyList())
     }
     if (extensions.isEmpty()) {
-        SettingText("Disabled Vulkan Extensions", blacklisted, 2) { onChanged(it.replace(" ", "")) }
+        SettingText(uiStr(R.string.ui_disabled_vulkan_extensions), blacklisted, 2) { onChanged(it.replace(" ", "")) }
         return
     }
     val disabled = blacklisted.split(',').map(String::trim).filter(String::isNotBlank).toSet()
@@ -1163,8 +1195,8 @@ private fun ContainerVulkanExtensionsV2(
     var open by remember { mutableStateOf(false) }
     Surface(onClick = { open = true }, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp)) {
-            Text("Vulkan Extensions", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("$enabledCount of ${extensions.size} enabled", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(uiStr(R.string.ui_vulkan_extensions), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiStr(R.string.ui_1_s_of_2_s_enabled, enabledCount, extensions.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
         }
     }
     if (open) {
@@ -1176,10 +1208,10 @@ private fun ContainerVulkanExtensionsV2(
             confirmButton = {
                 TextButton(onClick = {
                     onChanged(extensions.filterNot { it in selected }.joinToString(",")); open = false
-                }) { Text("Done") }
+                }) { Text(uiStr(R.string.ui_done)) }
             },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
-            title = { Text("Vulkan Extensions") },
+            dismissButton = { TextButton(onClick = { open = false }) { Text(uiStr(R.string.cancel)) } },
+            title = { Text(uiStr(R.string.ui_vulkan_extensions)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 460.dp)) {
                     items(extensions) { extension ->

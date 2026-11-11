@@ -160,6 +160,18 @@ public class InputControlsView extends View {
         return editMode;
     }
 
+    private Runnable onEditBackgroundTapListener;
+
+    private Runnable onEditStartListener, onEditEndListener, onEditSelectionChangedListener;
+    public void setOnEditStartListener(Runnable listener) { onEditStartListener = listener; }
+    public void setOnEditEndListener(Runnable listener) { onEditEndListener = listener; }
+    public void setOnEditSelectionChangedListener(Runnable listener) { onEditSelectionChangedListener = listener; }
+    public void selectEditorElement(ControlElement element) { if (editMode) selectElement(element); }
+
+    public void setOnEditBackgroundTapListener(Runnable listener) {
+        onEditBackgroundTapListener = listener;
+    }
+
     public void setOverlayOpacity(float overlayOpacity) {
         this.overlayOpacity = overlayOpacity;
     }
@@ -226,6 +238,15 @@ public class InputControlsView extends View {
                         drawClip.left >= bounds.right + thumbOverhang ||
                         drawClip.bottom <= bounds.top - thumbOverhang ||
                         drawClip.top >= bounds.bottom + thumbOverhang) continue;
+                }
+                else if (element.getType() == ControlElement.Type.DYNAMIC_STICK) {
+                    if (!editMode && !element.isDynamicStickActive()) continue;
+                    int overhang = element.isDynamicStickActive()
+                            ? element.getDynamicStickRadiusPixels() * 2 : 0;
+                    if (drawClip.right <= bounds.left - overhang ||
+                        drawClip.left >= bounds.right + overhang ||
+                        drawClip.bottom <= bounds.top - overhang ||
+                        drawClip.top >= bounds.bottom + overhang) continue;
                 }
                 else if (!Rect.intersects(drawClip, bounds)) continue;
                 element.draw(canvas);
@@ -355,6 +376,7 @@ public class InputControlsView extends View {
             selectedElement.setSelected(true);
         }
         invalidate();
+        if (editMode && onEditSelectionChangedListener != null) onEditSelectionChangedListener.run();
     }
 
     public synchronized ControlsProfile getProfile() {
@@ -602,6 +624,7 @@ public class InputControlsView extends View {
         if (editMode && readyToDraw) {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN: {
+                    if (onEditStartListener != null) onEditStartListener.run();
                     float x = event.getX();
                     float y = event.getY();
 
@@ -614,6 +637,7 @@ public class InputControlsView extends View {
                     }
 
                     selectElement(element);
+                    if (element == null && onEditBackgroundTapListener != null) onEditBackgroundTapListener.run();
                     break;
                 }
                 case MotionEvent.ACTION_MOVE: {
@@ -624,8 +648,10 @@ public class InputControlsView extends View {
                     }
                     break;
                 }
+                case MotionEvent.ACTION_CANCEL:
                 case MotionEvent.ACTION_UP: {
                     if (selectedElement != null && profile != null) profile.save();
+                    if (onEditEndListener != null) onEditEndListener.run();
                     if (moveCursor) cursor.set((int)Mathf.roundTo(event.getX(), snappingSize), (int)Mathf.roundTo(event.getY(), snappingSize));
                     invalidate();
                     break;
@@ -647,7 +673,10 @@ public class InputControlsView extends View {
 
                     touchpadView.setPointerButtonLeftEnabled(true);
                     for (ControlElement element : profile.getElements()) {
-                        if (element.handleTouchDown(pointerId, x, y)) {
+                        // Give visible buttons and other controls priority over the large
+                        // invisible dynamic stick area, regardless of profile ordering.
+                        if (element.getType() != ControlElement.Type.DYNAMIC_STICK &&
+                                element.handleTouchDown(pointerId, x, y)) {
                             handled = true;
 
                             // Trigger haptic feedback for input controls
@@ -666,6 +695,16 @@ public class InputControlsView extends View {
                         }
                         if (element.getBindingAt(0) == Binding.MOUSE_LEFT_BUTTON) {
                             touchpadView.setPointerButtonLeftEnabled(false);
+                        }
+                    }
+                    if (!handled) {
+                        for (ControlElement element : profile.getElements()) {
+                            if (element.getType() == ControlElement.Type.DYNAMIC_STICK &&
+                                    element.handleTouchDown(pointerId, x, y)) {
+                                handled = true;
+                                if (hapticsEnabled) performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                                break;
+                            }
                         }
                     }
                     if (!handled) touchpadView.onTouchEvent(event);
@@ -687,9 +726,15 @@ public class InputControlsView extends View {
                 }
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_POINTER_UP:
-                case MotionEvent.ACTION_CANCEL:
                     for (ControlElement element : profile.getElements()) if (element.handleTouchUp(pointerId)) handled = true;
                     if (!handled) touchpadView.onTouchEvent(event);
+                    break;
+                case MotionEvent.ACTION_CANCEL:
+                    for (int i = 0; i < event.getPointerCount(); i++) {
+                        int cancelledPointerId = event.getPointerId(i);
+                        for (ControlElement element : profile.getElements()) element.handleTouchUp(cancelledPointerId);
+                    }
+                    touchpadView.onTouchEvent(event);
                     break;
             }
         }
@@ -973,3 +1018,4 @@ public class InputControlsView extends View {
         return cached;
     }
 }
+

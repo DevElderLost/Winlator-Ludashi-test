@@ -92,9 +92,6 @@ public class SettingsFragment extends Fragment {
     // Disable or enable Xinput Processing
     private CheckBox cbXinputToggle;
 
-    private CheckBox cbEnableBigPictureMode;
-    private CheckBox cbEnableCustomApiKey;
-    private EditText etCustomApiKey;
 
     private CheckBox cbDarkMode;
     private ComposeView composeView;
@@ -174,12 +171,6 @@ public class SettingsFragment extends Fragment {
             // Update the UI or activity theme if necessary
             updateTheme(isChecked);
         });
-
-        // Initialize Big Picture Mode Checkbox
-        cbEnableBigPictureMode = view.findViewById(R.id.CBEnableBigPictureMode);
-        cbEnableBigPictureMode.setChecked(preferences.getBoolean("enable_big_picture_mode", false));
-
-        initCustomApiKeySettings(view);
 
         // Initialize the cursor lock checkbox
         cbCursorLock = view.findViewById(R.id.CBCursorLock);
@@ -382,10 +373,6 @@ public class SettingsFragment extends Fragment {
             }
             else if (preferences.contains("wine_debug_channels")) editor.remove("wine_debug_channels");
 
-            // Save Big Picture Mode setting
-            editor.putBoolean("enable_big_picture_mode", ((CheckBox) view.findViewById(R.id.CBEnableBigPictureMode)).isChecked());
-            saveCustomApiKeySettings(editor);
-
             if (editor.commit()) {
                 NavigationView navigationView = getActivity().findViewById(R.id.NavigationView);
                 navigationView.setCheckedItem(R.id.main_menu_containers);
@@ -450,7 +437,6 @@ public class SettingsFragment extends Fragment {
                 soundFontChoices,
                 winlatorPath,
                 shortcutPath,
-                preferences.getBoolean("enable_big_picture_mode", false),
                 Math.round(preferences.getFloat("cursor_speed", 1.0f) * 100.0f),
                 preferences.getBoolean("cursor_lock", true),
                 preferences.getBoolean("xinput_toggle", false),
@@ -466,12 +452,11 @@ public class SettingsFragment extends Fragment {
                 preferences.getBoolean("game_saves_all_shortcuts", false),
                 preferences.getBoolean("steam_client_tweaks", true),
                 preferences.getBoolean("save_mem_on_run_from_steam", true),
+                preferences.getBoolean("auto_download_game_artwork", true),
                 preferences.getBoolean("enable_wine_debug", false),
                 preferences.getString("wine_debug_channels", DEFAULT_WINE_DEBUG_CHANNELS),
                 preferences.getBoolean("enable_winlator_logs", false),
                 preferences.getBoolean("enable_box64_logs", false),
-                preferences.getBoolean("enable_custom_api_key", false),
-                preferences.getString("custom_api_key", ""),
                 preferences.getString("downloadable_contents_url", ContentsManager.REMOTE_PROFILES),
                 wineDebugOptions
         );
@@ -568,7 +553,6 @@ public class SettingsFragment extends Fragment {
             @Override
             public void onBooleanChanged(@NonNull String key, boolean value) {
                 SharedPreferences.Editor editor = preferences.edit().putBoolean(key, value);
-                if ("enable_custom_api_key".equals(key) && !value) editor.remove("custom_api_key");
                 editor.apply();
                 if ("enable_file_provider".equals(key)) {
                     AppUtils.showToast(requireContext(), R.string.take_effect_next_startup);
@@ -580,12 +564,6 @@ public class SettingsFragment extends Fragment {
             public void onCursorSpeedChanged(int percent) {
                 int clamped = Math.max(10, Math.min(200, percent));
                 preferences.edit().putFloat("cursor_speed", clamped / 100.0f).apply();
-                refreshCompose();
-            }
-
-            @Override
-            public void onCustomApiKeyChanged(@NonNull String value) {
-                preferences.edit().putString("custom_api_key", value.trim()).apply();
                 refreshCompose();
             }
 
@@ -680,7 +658,7 @@ public class SettingsFragment extends Fragment {
                                 ? id.startsWith(Box64Preset.CUSTOM)
                                 : id.startsWith(FEXCorePreset.CUSTOM);
                         if (!exportable) {
-                            AppUtils.showToast(context, "Cannot export this preset");
+                            AppUtils.showToast(context, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_cannot_export_this_preset));
                             return;
                         }
                         if (box64) Box64PresetManager.exportPreset("box64", context, id);
@@ -738,12 +716,6 @@ public class SettingsFragment extends Fragment {
         TextView shortcutSettingsLabel = view.findViewById(R.id.TVShortcutSettings);
         applyFieldSetLabelStyle(shortcutSettingsLabel, isDarkMode);
 
-        TextView bigPictureModeLabel = view.findViewById(R.id.TVBigPictureMode);
-        applyFieldSetLabelStyle(bigPictureModeLabel, isDarkMode);
-
-        TextView tvCustomApiKey = view.findViewById(R.id.TVCustomApiKey);
-        applyFieldSetLabelStyle(tvCustomApiKey, isDarkMode);
-
 //        TextView shortcutSettingsLabel = view.findViewById(R.id.TVShortcutSettings);
 //        applyFieldSetLabelStyle(shortcutSettingsLabel, isDarkMode);
 
@@ -767,45 +739,6 @@ public class SettingsFragment extends Fragment {
         textView.setTextColor(Color.parseColor(isDarkMode ? "#8F929B" : "#6F727A"));
         textView.setBackgroundColor(Color.TRANSPARENT);
         textView.setTextSize(12);
-    }
-
-    private void initCustomApiKeySettings(View view) {
-        cbEnableCustomApiKey = view.findViewById(R.id.CBEnableCustomApiKey);
-        etCustomApiKey = view.findViewById(R.id.ETCustomApiKey);
-
-        // Load saved preferences
-        boolean isCustomApiKeyEnabled = preferences.getBoolean("enable_custom_api_key", false);
-        String customApiKey = preferences.getString("custom_api_key", "");
-
-        cbEnableCustomApiKey.setChecked(isCustomApiKeyEnabled);
-        etCustomApiKey.setText(customApiKey);
-
-        // Show/hide the EditText based on checkbox state
-        etCustomApiKey.setVisibility(isCustomApiKeyEnabled ? View.VISIBLE : View.GONE);
-
-        cbEnableCustomApiKey.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            etCustomApiKey.setVisibility(isChecked ? View.VISIBLE : View.GONE);
-        });
-
-        // Help button listener to open API documentation
-        view.findViewById(R.id.BTHelpApiKey).setOnClickListener(v -> {
-            String url = "https://www.steamgriddb.com/profile/preferences/api";
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            startActivity(intent);
-        });
-    }
-
-    private void saveCustomApiKeySettings(SharedPreferences.Editor editor) {
-        // Save custom API key preferences
-        boolean isCustomApiKeyEnabled = cbEnableCustomApiKey.isChecked();
-        editor.putBoolean("enable_custom_api_key", isCustomApiKeyEnabled);
-
-        if (isCustomApiKeyEnabled) {
-            String customApiKey = etCustomApiKey.getText().toString().trim();
-            editor.putString("custom_api_key", customApiKey);
-        } else {
-            editor.remove("custom_api_key");
-        }
     }
 
     private void loadBox64PresetSpinners(View view, final Spinner sBox64Preset) {
@@ -852,7 +785,7 @@ public class SettingsFragment extends Fragment {
         Callback<String> onExportPreset = (String prefix) -> {
             final String presetId = Box64PresetManager.getSpinnerSelectedId(spinners.get(prefix));
             if (!presetId.startsWith(Box64Preset.CUSTOM)) {
-                AppUtils.showToast(context, "Cannot export this preset");
+                AppUtils.showToast(context, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_cannot_export_this_preset));
                 return;
             }
             getActivity().runOnUiThread(() ->  {
@@ -914,7 +847,7 @@ public class SettingsFragment extends Fragment {
         Callback<String> onExportPreset = (String prefix) -> {
             final String presetId = FEXCorePresetManager.getSpinnerSelectedId(sFEXCorePreset);
             if (!presetId.startsWith(FEXCorePreset.CUSTOM)) {
-                AppUtils.showToast(context, "Cannot export this preset");
+                AppUtils.showToast(context, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_cannot_export_this_preset));
                 return;
             }
             getActivity().runOnUiThread(() ->  {
@@ -1030,7 +963,7 @@ public class SettingsFragment extends Fragment {
                                     Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                             );
                         } catch (SecurityException e) {
-                            AppUtils.showToast(getContext(), "Unable to take persistable permissions: " + e.getMessage());
+                            AppUtils.showToast(getContext(), com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_unable_to_take_persistable_permissions) + e.getMessage());
                         }
 
                         // Convert the URI to an absolute path and display it
@@ -1055,7 +988,7 @@ public class SettingsFragment extends Fragment {
                                     Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                             );
                         } catch (SecurityException e) {
-                            AppUtils.showToast(getContext(), "Unable to take persistable permissions: " + e.getMessage());
+                            AppUtils.showToast(getContext(), com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_unable_to_take_persistable_permissions) + e.getMessage());
                         }
 
                         // Convert the URI to an absolute path and display it

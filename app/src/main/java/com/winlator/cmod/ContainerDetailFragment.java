@@ -64,6 +64,7 @@ import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.core.ProtonPackageManager;
 import com.winlator.cmod.core.StringUtils;
 import com.winlator.cmod.core.WineInfo;
+import com.winlator.cmod.core.WineRuntimeGuard;
 import com.winlator.cmod.core.WineRegistryEditor;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.fexcore.FEXCoreManager;
@@ -449,6 +450,18 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                 public void onNothingSelected(android.widget.AdapterView<?> parent) {}
             });
         }
+        final Spinner spDisplayServer = view.findViewById(R.id.SPDisplayServer);
+        ArrayAdapter<String> displayServers = new ArrayAdapter<>(context, R.layout.spinner_item_amoled,
+                new String[]{"X11", "X++"});
+        displayServers.setDropDownViewResource(R.layout.spinner_dropdown_item_amoled_compact);
+        spDisplayServer.setAdapter(displayServers);
+        spDisplayServer.setSelection("native".equals(rendererCfgHolder.getExtra("displayServer", "native")) ? 1 : 0);
+        spDisplayServer.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View row, int pos, long id) {
+                rendererCfgHolder.putExtra("displayServer", pos == 1 ? "native" : "java");
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
         View btRendererOptions = view.findViewById(R.id.BTRendererOptions);
         if (btRendererOptions != null) {
             btRendererOptions.setOnClickListener(v -> {
@@ -692,6 +705,9 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
         createWineConfigurationTab(view);
         final EnvVarsView envVarsView = createEnvVarsTab(view);
         createWinComponentsTab(view, isEditMode() ? container.getWinComponents() : Container.DEFAULT_WINCOMPONENTS);
+        com.winlator.cmod.widget.CodecsSettingsView.attach(view,
+                isEditMode() ? container.getBuiltinDecoder() : "gstreamer",
+                isEditMode() && container.getSoftwareDecoding());
         createDrivesTab(view);
         getChildFragmentManager().beginTransaction().replace(R.id.LLTabDrivers, new AdrenotoolsFragment()).commit();
 
@@ -733,6 +749,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                 String audioDriver = StringUtils.parseIdentifier(sAudioDriver.getSelectedItem());
                 String emulator = StringUtils.parseIdentifier(sEmulator.getSelectedItem());
                 String wincomponents = getWinComponents(view);
+                String builtinDecoder = com.winlator.cmod.widget.CodecsSettingsView.decoder(view);
+                boolean softwareDecoding = com.winlator.cmod.widget.CodecsSettingsView.software(view);
                 String drives = getDrives(view);
                 int hudMode = sHudMode.getSelectedItemPosition();
                 boolean showFPS = hudMode != 0;
@@ -769,6 +787,7 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     container.setGraphicsDriver(graphicsDriver);
                     container.setGraphicsDriverConfig(graphicsDriverConfig);
                     container.setDXWrapper(dxwrapper);
+                    container.putExtra("displayServer", rendererCfgHolder.getExtra("displayServer", "native"));
                     container.setRendererNative(rendererCfgHolder.isRendererNative());
                     container.setRendererPresentMode(rendererCfgHolder.getRendererPresentMode());
                     container.setRendererDriverId(rendererCfgHolder.getRendererDriverId());
@@ -778,6 +797,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     container.setAudioDriver(audioDriver);
                     container.setEmulator(emulator);
                     container.setWinComponents(wincomponents);
+                    container.setBuiltinDecoder(builtinDecoder);
+                    container.setSoftwareDecoding(softwareDecoding);
                     container.setDrives(drives);
                     container.setShowFPS(showFPS);
                     container.putExtra("hudMode", String.valueOf(hudMode));
@@ -821,6 +842,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     data.put("audioDriver", audioDriver);
                     data.put("emulator", emulator);
                     data.put("wincomponents", wincomponents);
+                    data.put("extraData", new JSONObject().put("builtinDecoder", builtinDecoder)
+                            .put("softwareDecoding", softwareDecoding ? "1" : "0"));
                     data.put("drives", drives);
                     data.put("showFPS", showFPS);
                     data.put("hudMode", hudMode);
@@ -848,6 +871,8 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
                     manager.createContainerAsync(data, contentsManager, (container) -> {
                         if (container != null) {
                             this.container = container;
+                            container.putExtra("displayServer", rendererCfgHolder.getExtra("displayServer", "native"));
+                            container.saveData();
                             saveWineRegistryKeys(view);
                         }
                         creationDialog.close();
@@ -1105,11 +1130,13 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
         ViewGroup parent = view.findViewById(R.id.LLTabWinComponents);
         ArrayList<View> views = new ArrayList<>();
         AppUtils.findViewsWithClass(parent, Spinner.class, views);
-        String[] wincomponents = new String[views.size()];
+        ArrayList<String> wincomponents = new ArrayList<>();
 
-        for (int i = 0; i < views.size(); i++) {
-            Spinner spinner = (Spinner) views.get(i);
-            wincomponents[i] = spinner.getTag() + "=" + spinner.getSelectedItemPosition();
+        for (View item : views) {
+            Spinner spinner = (Spinner) item;
+            // Codec settings are saved separately and are not component DLL overrides.
+            if (spinner.getTag() instanceof String)
+                wincomponents.add(spinner.getTag() + "=" + spinner.getSelectedItemPosition());
         }
         return String.join(",", wincomponents);
     }
@@ -1327,8 +1354,18 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
         wineVersionAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item_amoled);
         sWineVersion.setAdapter(wineVersionAdapter);
         sWineVersion.setPopupBackgroundResource(R.drawable.dialog_background_dark_blue);
-        if (isEditMode())
+        if (isEditMode()) {
             AppUtils.setSpinnerSelectionFromValue(sWineVersion, container.getWineVersion());
+        } else if (!WineRuntimeGuard.isBundledMainInstalled(context)) {
+            // Existing users may have Proton 9 installed but not yet Proton 11.
+            // Prefer an installed runtime instead of a new default whose files are missing.
+            for (String identifier : ProtonPackageManager.getInstalledIdentifiers(context)) {
+                if (!WineInfo.MAIN_WINE_VERSION.identifier().equals(identifier)) {
+                    AppUtils.setSpinnerSelectionFromValue(sWineVersion, identifier);
+                    break;
+                }
+            }
+        }
     }
 
     private void showWineVersionDownloadPopup(View anchor, Spinner sWineVersion, Runnable refreshAction) {
@@ -1868,3 +1905,4 @@ public class ContainerDetailFragment extends Fragment implements DXVKConfigDialo
     }
 
 }
+

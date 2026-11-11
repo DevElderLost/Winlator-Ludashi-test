@@ -81,7 +81,7 @@ public class ContainerSectionFragment extends Fragment {
     }
 
     private View buildSectionView(ContentsManager contentsManager) {
-        String[] rendererEntries = new String[]{"Vulkan", "EGL"};
+        String[] rendererEntries = new String[]{"Vulkan", "EGL", "DisplayX"};
         String[] screenEntries = getResources().getStringArray(R.array.screen_size_entries);
         String[] graphicsEntries = getResources().getStringArray(R.array.graphics_driver_entries);
         String[] audioEntries = getResources().getStringArray(R.array.audio_driver_entries);
@@ -197,10 +197,13 @@ public class ContainerSectionFragment extends Fragment {
         final View[] host = new View[1];
         host[0] = ContainerSectionComposeHost.create(
                 requireContext(),
+                container,
                 section,
                 description,
                 rendererEntries,
-                container.isRendererNative() ? "EGL" : "Vulkan",
+                container.getUseDisplayX() ? "DisplayX" : container.isRendererNative() ? "EGL" : "Vulkan",
+                "native".equals(container.getExtra("displayServer", "native"))
+                        ? "X++" : "X11",
                 screenEntries,
                 findScreenEntry(screenEntries, container.getScreenSize()),
                 container.getScreenSize(),
@@ -260,6 +263,7 @@ public class ContainerSectionFragment extends Fragment {
                     @Override
                     public void onSave(
                             @NonNull String renderer,
+                            @NonNull String displayServer,
                             @NonNull String screenSize,
                             @NonNull String graphicsDriver,
                             @NonNull String graphicsDriverConfig,
@@ -277,10 +281,12 @@ public class ContainerSectionFragment extends Fragment {
                             @NonNull String fexcorePreset
                     ) {
                         if (section == VIDEO) {
+                            container.putExtra("displayServer", !displayServer.equals("X11") ? "native" : "java");
                             container.setScreenSize(normalizeScreenSize(screenSize));
                             container.setGraphicsDriver(StringUtils.parseIdentifier(graphicsDriver));
                             container.setGraphicsDriverConfig(graphicsDriverConfig);
                             container.setRendererNative(renderer.equalsIgnoreCase("EGL"));
+                            container.setUseDisplayX(renderer.equalsIgnoreCase("DisplayX"));
                             container.setRendererPresentMode(rendererPresentMode);
                             container.setRendererDriverId(rendererDriverId);
                             container.setRendererFilterMode(rendererFilterMode);
@@ -438,3 +444,4 @@ public class ContainerSectionFragment extends Fragment {
         ((AppCompatActivity) requireActivity()).getSupportActionBar().setTitle(title);
     }
 }
+

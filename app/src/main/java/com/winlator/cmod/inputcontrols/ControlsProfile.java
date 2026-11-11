@@ -64,6 +64,25 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
         return virtualGamepad;
     }
 
+    /** Read bindings before layout; no element geometry or first touch is needed. */
+    public void prepareGamepad() {
+        if (elementsLoaded) return;
+        virtualGamepad = false;
+        try {
+            JSONObject data = new JSONObject(FileUtils.readString(getProfileFile(context, id)));
+            JSONArray items = data.getJSONArray("elements");
+            for (int i = 0; i < items.length(); i++) {
+                JSONArray bindings = items.getJSONObject(i).getJSONArray("bindings");
+                boolean gamepad = bindings.length() > 0;
+                for (int j = 0; j < bindings.length(); j++)
+                    if (!Binding.fromString(bindings.getString(j)).isGamepad()) gamepad = false;
+                if (gamepad) { virtualGamepad = true; return; }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("ControlsProfile", "Could not read gamepad bindings", e);
+        }
+    }
+
     public GamepadState getGamepadState() {
         if (gamepadState == null) gamepadState = new GamepadState();
         return gamepadState;
@@ -238,6 +257,17 @@ public class ControlsProfile implements Comparable<ControlsProfile> {
                 element.setX((int)(elementJSONObject.getDouble("x") * inputControlsView.getMaxWidth()));
                 element.setY((int)(elementJSONObject.getDouble("y") * inputControlsView.getMaxHeight()));
                 element.setScale((float)elementJSONObject.getDouble("scale"));
+                if ((element.getType() == ControlElement.Type.STICK ||
+                        element.getType() == ControlElement.Type.DYNAMIC_STICK) && elementJSONObject.has("deadZone"))
+                    element.setDeadZone((float)elementJSONObject.getDouble("deadZone"));
+                if (element.getType() == ControlElement.Type.DYNAMIC_STICK) {
+                    if (elementJSONObject.has("areaWidthRatio"))
+                        element.setAreaWidthRatio((float)elementJSONObject.getDouble("areaWidthRatio"));
+                    if (elementJSONObject.has("areaHeightRatio"))
+                        element.setAreaHeightRatio((float)elementJSONObject.getDouble("areaHeightRatio"));
+                    if (elementJSONObject.has("stickRadiusRatio"))
+                        element.setStickRadiusRatio((float)elementJSONObject.getDouble("stickRadiusRatio"));
+                }
                 element.setText(elementJSONObject.getString("text"));
                 element.setIconId(elementJSONObject.getInt("iconId"));
                 if (elementJSONObject.has("range")) element.setRange(ControlElement.Range.valueOf(elementJSONObject.getString("range")));

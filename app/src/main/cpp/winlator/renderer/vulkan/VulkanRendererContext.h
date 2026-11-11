@@ -1,6 +1,11 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <array>
 #include <list>
+#ifdef LUDASHI_NATIVE_X11
+#include "native_composition.h"
+#include "native_command_cache.h"
+#endif
 #include <cstddef>
 #include <vulkan/vulkan_android.h>
 
@@ -15,6 +20,8 @@ struct VkTable {
     PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
     PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
     PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
+    PFN_vkGetPhysicalDeviceFeatures2 GetPhysicalDeviceFeatures2;
+    PFN_vkGetPhysicalDeviceFormatProperties GetPhysicalDeviceFormatProperties;
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR GetPhysicalDeviceSurfaceFormatsKHR;
     PFN_vkGetPhysicalDeviceSurfacePresentModesKHR GetPhysicalDeviceSurfacePresentModesKHR;
@@ -77,6 +84,7 @@ struct VkTable {
     PFN_vkCmdBindPipeline CmdBindPipeline;
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
     PFN_vkCmdDraw CmdDraw;
+    PFN_vkCmdExecuteCommands CmdExecuteCommands;
     PFN_vkCmdPushConstants CmdPushConstants;
     PFN_vkCmdSetViewport CmdSetViewport;
     PFN_vkCmdSetScissor CmdSetScissor;
@@ -93,14 +101,22 @@ struct VkTable {
     PFN_vkResetFences ResetFences;
     PFN_vkGetFenceStatus GetFenceStatus;
 
+#ifdef LUDASHI_NATIVE_X11
+    PFN_vkCreateQueryPool CreateQueryPool;
+    PFN_vkDestroyQueryPool DestroyQueryPool;
+    PFN_vkGetQueryPoolResults GetQueryPoolResults;
+    PFN_vkCmdResetQueryPool CmdResetQueryPool;
+    PFN_vkCmdWriteTimestamp CmdWriteTimestamp;
+#endif
     PFN_vkGetAndroidHardwareBufferPropertiesANDROID GetAndroidHardwareBufferPropertiesANDROID;
 };
 
 #include <android/log.h>
 #include <string>
 #define WLOG_TAG "Winlator_Renderer"
-#define RLOG(...) if(verboseLog) __android_log_print(ANDROID_LOG_DEBUG,WLOG_TAG,__VA_ARGS__)
+#define RLOG(...) do { if (verboseLog) __android_log_print(ANDROID_LOG_DEBUG,WLOG_TAG,__VA_ARGS__); } while (0)
 #define RLOG_E(...) __android_log_print(ANDROID_LOG_ERROR,WLOG_TAG,__VA_ARGS__)
+#define FGLOG_E(...) __android_log_print(ANDROID_LOG_ERROR,WLOG_TAG,__VA_ARGS__)
 
 #include <vulkan/vulkan_android.h>
 #include <android/hardware_buffer.h>
@@ -117,6 +133,12 @@ struct VkTable {
 #include <condition_variable>
 
 static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+static constexpr uint32_t MAX_FRAMEGEN_GENERATIONS = 3;
+static constexpr uint32_t MAX_FRAMEGEN_TARGETS =
+    MAX_FRAMES_IN_FLIGHT + MAX_FRAMEGEN_GENERATIONS;
+
+struct VkrLsfg;
+struct VkrWfg;
 
 struct WindowPushConstants      { float ndcX0, ndcY0, ndcX1, ndcY1; int useTexAlpha;
                                   float _pad[7];
@@ -167,6 +189,42 @@ public:
     void updateCursorImage(void* pixels, short w, short h, short stride, short hotX, short hotY);
     void setCursorVisible(bool visible);
     void setRenderList(const int64_t* ids, const int* xs, const int* ys, int count);
+    // Native X11 supplies a complete scene snapshot without Java window-tree callbacks.
+    // This entry point is unused by the existing Java renderer.
+    void setExternalRenderList(const int64_t* ids, const int* xs, const int* ys, int count) {
+        std::lock_guard<std::mutex> lock(renderMutex);
+        renderList.resize(count);
+        for (int i = 0; i < count; ++i) renderList[i] = {ids[i], xs[i], ys[i]};
+        treeDirty = false;
+    }
+#ifdef LUDASHI_NATIVE_X11
+    void setNativeDiagnostics(bool enabled) {
+        if (nativeDiagnosticsEnabled == enabled) return;
+        nativeDiagnosticsEnabled = enabled;
+        nativeMetrics = {};
+    }
+    bool nativeDiagnosticsEnabled{};
+    NativeVulkanMetrics nativeMetrics;
+    VkRenderPass nativeNoClearPass = VK_NULL_HANDLE;
+    void reportNativeMetrics();
+    void prepareNativeGpuTiming(uint32_t slot);
+    void beginNativeGpuTiming(VkCommandBuffer cb);
+    void endNativeGpuTiming(VkCommandBuffer cb);
+    VkQueryPool nativeGpuQueries = VK_NULL_HANDLE;
+    bool nativeGpuAttempted{};
+    bool nativeCommandCacheEnabled{true};
+    // Native adapter only; invoked after acquire/image waits, before scene reads.
+    void (*nativeFrameReady)(void*){};
+    void* nativeFrameReadyData{};
+    uint32_t nativeTimestampBits{};
+    float nativeTimestampPeriod{};
+    std::array<bool, MAX_FRAMES_IN_FLIGHT> nativeGpuPending{};
+    NativeCommandCache<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> nativeCommands;
+    VkCommandBuffer nativeSceneCommand = VK_NULL_HANDLE;
+    bool nativeSceneReplay{};
+    std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> nativeCursorCommands{};
+    uint64_t nativeTextureEpoch{};
+#endif
     void removeWindow(int64_t id);
     void clearBackbuffer() {}
     void beginBatch() {}
@@ -196,6 +254,21 @@ public:
     void setSharpness(float s);
     void setSwapRB(bool enabled);
     void setPresentMode(VkPresentModeKHR mode);
+    void configureFrameGeneration(bool enabled, const char* cachePath,
+                                  int multiplier, int targetRate,
+                                  int flowScalePercent, float refreshRate);
+    // Engine is selected before enabling and stays fixed for this session.
+    void setFrameGenerationEngine(int engine);
+    bool frameGenerationDeviceSupported() const {
+        return frameGenEngine == 1 ? wfgDeviceSupported : frameGenDeviceSupported;
+    }
+    void processFrameGeneration(VkCommandBuffer cb, VkImage source, uint32_t generatedCount);
+    void generateFrameGeneration(VkCommandBuffer cb, uint32_t generation, uint32_t targetIndex,
+                                  VkImage image, VkImageView view);
+    void setFrameGenerationSourceCount(uint64_t count);
+    bool isFrameGenerationSupported() const;
+    bool isFrameGenerationEnabled() const;
+    uint64_t getGeneratedFrameCount() const;
     std::vector<int> getSupportedPresentModes() const;
     VkExtent2D getSwapchainExtent() const { return swapchainExt; }
 
@@ -230,6 +303,15 @@ private:
         WinTex wt;
         uint64_t serial = 0;
         AHardwareBuffer* ahb = nullptr;
+    };
+
+    struct FrameGenTarget {
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
+        uint32_t width = 0;
+        uint32_t height = 0;
     };
 
     struct RenderEntry { int64_t id; int x, y; };
@@ -348,10 +430,13 @@ public:
     std::vector<VkFramebuffer> swapchainFBs;
 
     VkRenderPass          renderPass  = VK_NULL_HANDLE;
+    VkRenderPass          frameGenRenderPass = VK_NULL_HANDLE;
     VkDescriptorSetLayout dsLayout    = VK_NULL_HANDLE;
     VkPipelineLayout      pipeLayout  = VK_NULL_HANDLE;
 
     VkPipeline            pipeline        = VK_NULL_HANDLE;
+    VkPipeline opaquePipeline = VK_NULL_HANDLE;
+    bool opaquePipelineAttempted = false;
     VkPipeline            sgsrPipeline    = VK_NULL_HANDLE;
     VkPipeline            fsr1Pipeline    = VK_NULL_HANDLE;
     VkPipeline            lanczosPipeline = VK_NULL_HANDLE;
@@ -360,12 +445,42 @@ public:
 
     VkCommandPool                cmdPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> cmdBufs;
+    std::array<std::array<VkCommandBuffer, MAX_FRAMEGEN_GENERATIONS>,
+               MAX_FRAMES_IN_FLIGHT> frameGenPresentCmdBufs{};
 
     std::vector<VkSemaphore> imgAvailSems;
     std::vector<VkSemaphore> renderDoneSems;
+    std::array<std::array<VkSemaphore, MAX_FRAMEGEN_GENERATIONS>,
+               MAX_FRAMES_IN_FLIGHT> frameGenAcquireSems{};
+    std::vector<VkSemaphore> frameGenRenderDoneSems;
     std::vector<VkFence>     inFlightFences;
     std::vector<VkFence>     imgInFlight;
     uint32_t                 currentFrame = 0;
+
+    std::vector<FrameGenTarget> frameGenTargets;
+    VkrLsfg* frameGen = nullptr;
+    VkrWfg* wfg = nullptr;
+    int frameGenEngine = 0; // 0 = existing LSFG, 1 = WFG
+    bool wfgDeviceSupported = false;
+    bool wfgDispatchReady = false;
+    std::string frameGenCachePath;
+    bool frameGenDispatchReady = false;
+    bool frameGenDeviceSupported = false;
+    bool frameGenCompositeFormatSupported = false;
+    bool graphicsQueueSupportsCompute = false;
+    bool frameGenSurfaceSupported = false;
+    bool frameGenSwapchainStorage = false;
+    bool frameGenSwapchainStorageRejected = false;
+    bool frameGenShaderFloat16 = false;
+    bool frameGenPrepared = false;
+    bool frameGenRequested = false;
+    uint32_t frameGenMultiplier = 2;
+    uint32_t frameGenTargetRate = 0;
+    float frameGenFlowScale = 0.70f;
+    float frameGenRefreshRate = 0.0f;
+    std::atomic<uint64_t> wfgPendingSourceFrames{0};
+    std::atomic<uint64_t> frameGenSourceFrames{0};
+    std::atomic<uint64_t> frameGenGeneratedFrames{0};
 
     VkSampler        sampler    = VK_NULL_HANDLE;
     VkDescriptorPool winTexPool = VK_NULL_HANDLE;
@@ -416,6 +531,7 @@ public:
     void createLogicalDevice();
     void createSwapchain();
     void createRenderPass();
+    void createFrameGenRenderPass();
     void createDSLayout();
     void createPipeline(bool blend, VkPipeline& out);
     void createSgsrPipeline();
@@ -432,6 +548,19 @@ public:
     void createCmdBufs();
     void createSyncObjects();
     void cleanupSwapchain();
+
+    uint32_t desiredFrameGenGenerations() const;
+    uint32_t frameGenCapacity() const;
+    bool frameGenerationActive() const;
+    bool ensureFrameGenerationResources();
+    bool createFrameGenTargets(uint32_t count);
+    void destroyFrameGenTargets();
+    void destroyFrameGeneration();
+    void copyFrameGenTarget(VkCommandBuffer cb, const FrameGenTarget& src,
+                            VkImage dst);
+    void recordFrameGenOutputCmd(VkCommandBuffer cb, uint32_t output,
+                                 uint32_t generatedCount, uint32_t swapchainIndex);
+    void transitionGeneratedSwapchainImage(VkCommandBuffer cb, VkImage image);
 
     bool  createWinTexResources(WinTex& wt, int w, int h);
     bool  importAHBToWinTex(WinTex& wt, AHardwareBuffer* ahb);
@@ -452,7 +581,7 @@ public:
         float ox, float oy, float sx, float sy, float cw, float ch,
         short ptrX, short ptrY, short curHotX, short curHotY,
         short curW, short curH, bool curVis,
-        VkRect2D scissorRect);
+        VkRect2D scissorRect, uint32_t generatedCount, bool useFrameGeneration);
     void renderLoop();
     void renderFrame();
 
@@ -467,3 +596,6 @@ public:
                                VkPipelineStageFlags srcS, VkPipelineStageFlags dstS);
     VkShaderModule  makeShader(const uint32_t* code, size_t sz);
 };
+
+
+

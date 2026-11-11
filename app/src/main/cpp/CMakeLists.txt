@@ -8,6 +8,29 @@ add_subdirectory(OpenXR-SDK)
 add_subdirectory(patchelf)
 add_subdirectory(adrenotools)
 
+add_library(gpuusage SHARED gpuusage/kgsl_busy.c)
+
+# Shaders for Winlator Labs' offscreen rotating 3D cube benchmark.
+# Generated only at build time; no impact on normal VulkanRendererContext.
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_vert.h
+    COMMAND glslangValidator -V --vn labs_cube_vert_code -x
+            -o ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_vert.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/winlator/labs_cube.vert
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/winlator/labs_cube.vert
+)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_frag.h
+    COMMAND glslangValidator -V --vn labs_cube_frag_code -x
+            -o ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_frag.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/winlator/labs_cube.frag
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/winlator/labs_cube.frag
+)
+add_custom_target(labs_cube_shaders DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_vert.h
+    ${CMAKE_CURRENT_BINARY_DIR}/labs_cube_frag.h
+)
+
 # Add Winlator shared library
 add_library(winlator SHARED
         xr/engine.c
@@ -20,8 +43,9 @@ add_library(winlator SHARED
         winlator/gpu_image.c
         winlator/process_helper.c
         winlator/sysvshared_memory.c
+        winlator/xinput_stream.c
+        winlator/xoutput_stream.c
         winlator/xconnector_epoll.c
-        winlator/alsa_client.c
         winlator/vulkan.c
         winlator/renderer/egl.cpp
         winlator/renderer/renderer_jni.cpp
@@ -34,15 +58,18 @@ add_library(winlator SHARED
         winlator/renderer/effectcomposer/effect_composer.cpp
 )
 
+add_dependencies(winlator labs_cube_shaders)
+target_include_directories(winlator PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_options(winlator PRIVATE -Wall -Wextra)
-target_include_directories(winlator PRIVATE winlator/renderer winlator/renderer/effectcomposer)
+target_compile_features(winlator PRIVATE cxx_std_17)
+target_include_directories(winlator PRIVATE winlator/renderer winlator/renderer/effectcomposer winlator/include)
 
 target_link_libraries(winlator
         log
+        m
         android
         jnigraphics
         openxr_loader
-        aaudio
         EGL
         GLESv2
         GLESv3
@@ -215,11 +242,29 @@ include_directories(
         ${VULKAN_RENDERER_DIR}
 )
 
+add_subdirectory(wfg)
+
 add_library(vulkan_renderer SHARED
         winlator/renderer/vulkan/vulkan_jni.cpp
         ${VULKAN_CONTEXT_LEGACY}
         winlator/renderer/vulkan/VulkanRendererFilters.cpp
+        winlator/renderer/vulkan/VulkanRendererWfg.cpp
         winlator/renderer/vulkan/VulkanRendererPipelineOpt.cpp
+        winlator/renderer/vulkan/vk_dispatch.c
+
+        winlator/renderer/vulkan/lsfg/lsfg_dll.c
+        winlator/renderer/vulkan/lsfg/lsfg_common.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_shaders.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_mipmaps.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_generate.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_alpha.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_beta.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_gamma.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_delta.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_chain.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_pacer.cpp
+        winlator/renderer/vulkan/lsfg/vkr_lsfg.cpp
+        winlator/renderer/vulkan/lsfg/lsfg_jni.c
 
         winlator/renderer/vulkan/view_transformation.cpp
         winlator/renderer/vulkan/xform.cpp
@@ -244,6 +289,7 @@ target_compile_options(vulkan_renderer PRIVATE
 )
 
 target_link_libraries(vulkan_renderer
+        wfg
         log
         android
         vulkan
@@ -251,3 +297,18 @@ target_link_libraries(vulkan_renderer
         dl
         atomic
 )
+
+
+
+# A separate native X11 session. Its core and renderer have no per-frame Java callbacks.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ludashix11
+                 ${CMAKE_CURRENT_BINARY_DIR}/ludashix11)
+
+add_subdirectory(ludashi-steam-client)
+add_dependencies(winlator ludashisteam_rust_build)
+# Package the optional backend through a separate native target. The emulator core
+# must not load Steam as a DT_NEEDED dependency when the feature is disabled.
+add_library(steam_optional SHARED steam_optional.c)
+target_link_options(steam_optional PRIVATE "-Wl,--no-as-needed")
+target_link_libraries(steam_optional ludashisteam)
+add_dependencies(steam_optional ludashisteam_rust_build)

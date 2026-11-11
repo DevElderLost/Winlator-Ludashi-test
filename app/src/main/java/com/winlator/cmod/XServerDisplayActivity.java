@@ -30,6 +30,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -93,6 +94,7 @@ import com.winlator.cmod.core.WinlatorLogcatLogger;
 import com.winlator.cmod.inputcontrols.ControlsProfile;
 import com.winlator.cmod.inputcontrols.ExternalController;
 import com.winlator.cmod.inputcontrols.InputControlsManager;
+import com.winlator.cmod.lsfg.LosslessScaling;
 import com.winlator.cmod.math.Mathf;
 import com.winlator.cmod.math.XForm;
 import com.winlator.cmod.midi.MidiHandler;
@@ -108,13 +110,14 @@ import com.winlator.cmod.widget.XServerRendererView;
 import com.winlator.cmod.widget.XServerView;
 import com.winlator.cmod.widget.OldXServerView;
 import com.winlator.cmod.widget.VulkanXServerView;
+import com.winlator.cmod.widget.VulkanRendererControls;
 import com.winlator.cmod.winhandler.MouseEventFlags;
 import com.winlator.cmod.winhandler.TaskManagerSidebar;
 import com.winlator.cmod.winhandler.WinHandler;
 import com.winlator.cmod.xconnector.UnixSocketConfig;
 import com.winlator.cmod.xenvironment.ImageFs;
 import com.winlator.cmod.xenvironment.XEnvironment;
-import com.winlator.cmod.xenvironment.components.ALSAServerComponent;
+import com.winlator.cmod.xenvironment.components.ALSAComponent;
 import com.winlator.cmod.xenvironment.components.GuestProgramLauncherComponent;
 import com.winlator.cmod.xenvironment.components.PulseAudioComponent;
 import com.winlator.cmod.xenvironment.components.SysVSharedMemoryComponent;
@@ -169,6 +172,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private ImageFs imageFs;
     private FrameRating classicHud = null;
     private WinlatorHUD modernHud = null;
+    private boolean graphicsControlsReady;
     private Runnable editInputControlsCallback;
     private Shortcut shortcut;
     private String graphicsDriver = Container.DEFAULT_GRAPHICS_DRIVER;
@@ -186,18 +190,22 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private OnExtractFileListener onExtractFileListener;
     private WinHandler winHandler;
     private TaskManagerSidebar taskManagerSidebar;
+    private com.winlator.cmod.ui.ModernSidebarController modernSidebar;
     private WineRequestHandler wineRequestHandler;
     private float globalCursorSpeed = 1.0f;
     private float refreshRate = 60.0f;
     private MagnifierView magnifierView;
     private boolean softStretchEnabled = false;
+    private volatile com.winlator.cmod.core.RuntimeBackendProbe.FexMode runtimeFexMode = com.winlator.cmod.core.RuntimeBackendProbe.FexMode.NA;
+    private volatile boolean runtimeStatusProbeRunning;
+    private volatile boolean runtimeStatusProbeStopped;
+    private Thread runtimeStatusProbeThread;
     private DebugDialog debugDialog;
     private WinlatorLogcatLogger winlatorLogcatLogger;
     private String rendererLogPath;
     private KeyValueSet displayxConfig;
     public boolean performanceMode;
     public boolean presentRR;
-    public boolean backPressure;
     public boolean precisePresentation;
     public int textureFilter;
     private short taskAffinityMask = 0;
@@ -217,6 +225,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private String vkbasaltConfigFilePath = "";
     PreloaderDialog preloaderDialog = null;
     private Runnable configChangedCallback = null;
+    private android.os.LocaleList sidebarLocales;
     private boolean isPaused = false;
     private boolean isRelativeMouseMovement = false;
     private boolean isRefactorSizeEnabled = false;
@@ -232,8 +241,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private SharedPreferences playtimePrefs;
     private String shortcutName;
     private Handler handler;
+    private volatile boolean ownsSteamSessionPause;
+    public void markSteamSessionPaused() { ownsSteamSessionPause = true; }
     private Runnable savePlaytimeRunnable;
-    private static final long SAVE_INTERVAL_MS = 1000;
+    private static final long SAVE_INTERVAL_MS = 60000;
 
     private Handler timeoutHandler = new Handler(Looper.getMainLooper());
     private Runnable hideControlsRunnable;
@@ -297,7 +308,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private void createNotifcationChannel() {
         String name = "Winlator";
-        String description = "Winlator XServer Messages";
+        String description = com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_winlator_xserver_messages);
         int importance = NotificationManager.IMPORTANCE_HIGH;
         NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
         channel.setDescription(description);
@@ -308,6 +319,12 @@ public class XServerDisplayActivity extends AppCompatActivity {
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (sidebarLocales != null && !sidebarLocales.equals(newConfig.getLocales())) {
+            sidebarLocales = newConfig.getLocales();
+            com.winlator.cmod.ui.UiStrings.invalidate();
+            com.winlator.cmod.ui.SidebarLocalization.refresh(findViewById(R.id.IngameSidebarRoot));
+            if (modernSidebar != null) modernSidebar.onLocaleChanged();
+        }
         if (configChangedCallback != null) {
             configChangedCallback.run();
             configChangedCallback = null;
@@ -363,6 +380,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         AppUtils.keepScreenOn(this);
 
         setContentView(R.layout.xserver_display_activity);
+        sidebarLocales = getResources().getConfiguration().getLocales();
 
         preloaderDialog = new PreloaderDialog(this);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -396,7 +414,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 handler.postDelayed(this, SAVE_INTERVAL_MS);
             }
         };
-        handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
+        // onResume owns the single playtime schedule.
 
         hideControlsRunnable = () -> {
             if (DISABLE_TOUCHSCREEN_AUTO_HIDE) {
@@ -420,16 +438,19 @@ public class XServerDisplayActivity extends AppCompatActivity {
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
         drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
             @Override
-            public void onDrawerOpened(View drawerView) {
-                openSidebarPanel(activeSidebarItemId, activeSidebarPanelId);
-                if (touchpadView != null) {
-                    touchpadView.releasePointerCapture();
-                    touchpadView.setOnCapturedPointerListener(null);
-                }
-            }
+public void onDrawerOpened(View drawerView) {
+    if (modernSidebar != null) modernSidebar.onOpened(isPaused);
+    else openSidebarPanel(activeSidebarItemId, activeSidebarPanelId);
+
+    if (touchpadView != null) {
+        touchpadView.releasePointerCapture();
+        touchpadView.setOnCapturedPointerListener(null);
+    }
+}
 
             @Override
             public void onDrawerClosed(View drawerView) {
+                if (modernSidebar != null) modernSidebar.onClosed();
                 hideAllSidebarPanels();
                 tryCapturePointer();
             }
@@ -440,6 +461,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         boolean enableWinlatorLogs = preferences.getBoolean("enable_winlator_logs", false);
 
         wireSidebarListeners(enableLogs);
+        modernSidebar = com.winlator.cmod.ui.ModernSidebarHost.attach(this);
 
         imageFs = ImageFs.find(this);
 
@@ -500,10 +522,19 @@ public class XServerDisplayActivity extends AppCompatActivity {
             return;
         }
 
+        if (!com.winlator.cmod.core.ContainerSessionGate.start(container.id)) {
+            android.widget.Toast.makeText(this, "This container is busy applying components.", android.widget.Toast.LENGTH_LONG).show();
+            finish(); return;
+        }
+        ownsPrefixLease = true;
         containerManager.activateContainer(container);
 
         if (shortcutPath != null && !shortcutPath.isEmpty()) {
             shortcut = new Shortcut(container, new File(shortcutPath));
+            if (!com.winlator.cmod.steam.SteamLaunch.canLaunch(this, shortcut)) {
+                android.widget.Toast.makeText(this, "Configure the Steam game first, then enable Steam and sign in if required.", android.widget.Toast.LENGTH_LONG).show();
+                finish(); return;
+            }
         }
 
         taskAffinityMask = (short) ProcessHelper.getAffinityMask(container.getCPUList(true));
@@ -568,7 +599,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
             graphicsDriver = shortcut.getExtra("graphicsDriver", container.getGraphicsDriver());
             graphicsDriverConfig = shortcut.getExtra("graphicsDriverConfig", container.getGraphicsDriverConfig());
-            audioDriver = Container.normalizeAudioDriver(shortcut.getExtra("audioDriver", container.getAudioDriver()));
+            audioDriver = shortcut.getAudioDriver();
             emulator = shortcut.getExtra("emulator", container.getEmulator());
             dxwrapper = shortcut.getExtra("dxwrapper", container.getDXWrapper());
             dxwrapperConfig = shortcut.getExtra("dxwrapperConfig", container.getDXWrapperConfig());
@@ -625,22 +656,26 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 ? shortcut.getDisplayXPerformanceMode() : container.getDisplayXPerformanceMode();
         presentRR = shortcut != null
                 ? shortcut.getDisplayXPresentAtRefreshRate() : container.getDisplayXPresentAtRefreshRate();
-        backPressure = shortcut != null
-                ? shortcut.getDisplayXBackPressure() : container.getDisplayXBackPressure();
-        precisePresentation = shortcut != null
-                ? shortcut.getDisplayXPrecisePresentation() : container.getDisplayXPrecisePresentation();
+        precisePresentation = false; // Choreographer frame timelines are selected automatically.
         textureFilter = shortcut != null
                 ? shortcut.getRendererFilterMode() : container.getRendererFilterMode();
         if (textureFilter != 1) textureFilter = 0;
         displayxConfig = new KeyValueSet();
-        displayxConfig.put("trueDisplayX", (shortcut != null
-                ? shortcut.getTrueDisplayX() : container.getTrueDisplayX()) ? "1" : "0");
+        displayxConfig.put("backend", (shortcut != null
+                ? shortcut.getTrueDisplayX() : container.getTrueDisplayX()) ? "displayx" : "x11");
+        displayxConfig.put("dynamicRange", shortcut != null ? shortcut.getDisplayXDynamicRange() : container.getDisplayXDynamicRange());
         displayxConfig.put("performanceMode", performanceMode ? "1" : "0");
         displayxConfig.put("surfaceFormat", getSelectedSurfaceFormat());
         displayxConfig.put("presentRR", presentRR ? "1" : "0");
-        displayxConfig.put("backPressure", backPressure ? "1" : "0");
+        displayxConfig.put("presentMode", shortcut != null
+                ? shortcut.getDisplayXPresentMode() : container.getDisplayXPresentMode());
         displayxConfig.put("precisePresentation", precisePresentation ? "1" : "0");
-        xServer = new XServer(new ScreenInfo(screenSize), useDisplayX && !isOldDisplayEnabled() ? "displayx" : "egl", displayxConfig);
+boolean displayXActive = useDisplayX && !isOldDisplayEnabled();
+
+xServer = isNativeX11Enabled()
+        ? new com.winlator.cmod.widget.NativeX11InputProxy(new ScreenInfo(screenSize), displayxConfig)
+        : new XServer(new ScreenInfo(screenSize), displayXActive ? "displayx" : "egl", displayxConfig);
+if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx");
         xServer.setWinHandler(winHandler);
         xServer.setRelativeMouseMovement(isRelativeMouseMovement);
         advertisePanelRefreshRates();
@@ -738,7 +773,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 .setContentText("Winlator is running, do not kill or swipe this notification")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(pendingIntent)
-                .setAutoCancel(false);
+                .setAutoCancel(false)
+                .setOngoing(true)
+                .addAction(R.drawable.icon_exit, "Exit", com.winlator.cmod.services.NotificationService.exitPendingIntent(this));
 
         NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());
 
@@ -751,13 +788,28 @@ public class XServerDisplayActivity extends AppCompatActivity {
             }
             Executors.newSingleThreadExecutor().execute(() -> {
                 setupWineSystemFiles();
-                extractGraphicsDriverFiles();
+                try {
+                    extractGraphicsDriverFiles();
+                } catch (IllegalStateException error) {
+                    Log.e("OpenGLDriver", "Driver startup failed", error);
+                    runOnUiThread(() -> {
+                        android.widget.Toast.makeText(this, error.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                        exit();
+                    });
+                    return;
+                }
                 changeWineAudioDriver();
                 applyGameRefreshRateUnlock();
                 try {
                     setupXEnvironment();
                 } catch (PackageManager.NameNotFoundException e) {
                     throw new RuntimeException(e);
+                } catch (IllegalStateException e) {
+                    Log.e("LudashiX11", "Display startup failed", e);
+                    runOnUiThread(() -> {
+                        android.widget.Toast.makeText(this, e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                        exit();
+                    });
                 }
             });
         };
@@ -888,14 +940,14 @@ public class XServerDisplayActivity extends AppCompatActivity {
     public void onResume() {
         super.onResume();
 
-        if (environment != null) {
-            xServerView.onResume();
-            environment.onResume();
+        if (!isInPictureInPictureMode()) {
+            ProcessHelper.resumeAllWineProcesses();
+            if (environment != null) environment.onResume();
+            if (xServerView != null) xServerView.onResume();
         }
         startTime = System.currentTimeMillis();
+        handler.removeCallbacks(savePlaytimeRunnable);
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
-        if (!isInPictureInPictureMode())
-            ProcessHelper.resumeAllWineProcesses();
     }
 
     @Override
@@ -907,8 +959,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
         if (!isInPictureInPictureMode()) {
             if (environment != null) {
+                if (xServerView != null) xServerView.onPause();
                 environment.onPause();
-                xServerView.onPause();
             }
 
             ProcessHelper.pauseAllWineProcesses();
@@ -976,20 +1028,29 @@ public class XServerDisplayActivity extends AppCompatActivity {
         editor.apply();
     }
 
+    public void exitSteamLaunchFailure() { exit(); }
+
     private void exit() {
         if (!exiting.compareAndSet(false, true)) return;
+        saveSidebarGraphicsState();
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         boolean removeLoadingBar = PreferenceManager.getDefaultSharedPreferences(this)
                 .getBoolean("remove_loading_bar_when_booting_games", false);
         if (!removeLoadingBar) preloaderDialog.showOnUiThread(R.string.shutdown);
 
-        if (xServerView != null) {
-            xServerView.forceCleanup();
-        }
-
         savePlaytimeData();
         handler.removeCallbacks(savePlaytimeRunnable);
 
+        if (shortcut != null && "RealSteam".equals(shortcut.getExtra("steamLaunchMode")) && !shortcut.getExtra("steamAppId").isEmpty()) {
+            new Thread(() -> {
+                com.winlator.cmod.steam.SteamCloud.awaitShutdown(this, shortcut);
+                runOnUiThread(this::finishExitAfterSteam);
+            }, "SteamCloudShutdown").start();
+        } else finishExitAfterSteam();
+    }
+
+    private void finishExitAfterSteam() {
+        if (xServerView != null) xServerView.forceCleanup();
         if (midiHandler != null)
             midiHandler.stop();
 
@@ -999,6 +1060,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
             winHandler.stop();
         if (wineRequestHandler != null)
             wineRequestHandler.stop();
+        if (ownsPrefixLease) {
+            com.winlator.cmod.core.ContainerSessionGate.stop(container.id);
+            ownsPrefixLease = false;
+        }
 
         Executors.newSingleThreadExecutor().execute(() -> {
 
@@ -1036,6 +1101,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
+        runtimeStatusProbeStopped = true;
+        if (runtimeStatusProbeThread != null) runtimeStatusProbeThread.interrupt();
         if (winlatorLogcatLogger != null) {
             ProcessHelper.removeDebugCallback(winlatorLogcatLogger);
             winlatorLogcatLogger.stop();
@@ -1043,6 +1111,18 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
         if (steamSaveMemoryTask != null) { steamSaveMemoryTask.stop(); steamSaveMemoryTask = null; }  // DroidDeck-steam
+        if (ownsPrefixLease && environment == null && container != null) {
+            com.winlator.cmod.core.ContainerSessionGate.stop(container.id);
+            ownsPrefixLease = false;
+        }
+        if (ownsSteamSessionPause) {
+            ownsSteamSessionPause = false;
+            if (shortcut != null && !shortcut.getExtra("steamAppId").isEmpty()) {
+                com.winlator.cmod.steam.SteamSocial.closeGuest();
+                com.winlator.cmod.steam.SteamAchievements.stop();
+            }
+            com.winlator.cmod.steam.SteamSession.endGame(getApplicationContext());
+        }
         super.onDestroy();
     }
 
@@ -1061,6 +1141,108 @@ public class XServerDisplayActivity extends AppCompatActivity {
             } else
                 drawerLayout.closeDrawers();
         }
+    }
+
+    private boolean ownsPrefixLease;
+    private boolean exclusiveInputBusy;
+
+    public boolean isExclusiveInputEnabled() {
+        return shortcut != null ? shortcut.getExtra("exclusiveXInput", container.isExclusiveXInput() ? "1" : "0").equals("1")
+                : container.isExclusiveXInput();
+    }
+
+    public boolean isExclusiveInputBusy() { return exclusiveInputBusy; }
+    public boolean canChangeExclusiveInput() { return winHandler != null && winHandler.isSessionReady() && !exclusiveInputBusy; }
+    public boolean isSidebarXInputEnabled() {
+        return winHandler != null && (winHandler.getInputType() & WinHandler.FLAG_INPUT_TYPE_XINPUT) != 0;
+    }
+    public boolean isSidebarDInputEnabled() {
+        return winHandler != null && (winHandler.getInputType() & WinHandler.FLAG_INPUT_TYPE_DINPUT) != 0;
+    }
+
+    public void changeExclusiveInput(boolean enabled, Runnable refreshed) {
+        if (!canChangeExclusiveInput() || enabled == isExclusiveInputEnabled()) return;
+        boolean xinput = isSidebarXInputEnabled(), dinput = isSidebarDInputEnabled();
+        if (!enabled) {
+            xinput = true;
+            dinput = true;
+        } else if (xinput && dinput) {
+            dinput = false;
+        }
+        applySidebarJoystickSettings(xinput, dinput, enabled, refreshed);
+    }
+
+    public void changeSidebarInputApis(boolean xinput, boolean dinput, Runnable refreshed) {
+        if (!canChangeExclusiveInput() || !isExclusiveInputEnabled() || (xinput && dinput)) return;
+        if (xinput == isSidebarXInputEnabled() && dinput == isSidebarDInputEnabled()) return;
+        applySidebarJoystickSettings(xinput, dinput, true, refreshed);
+    }
+
+    private void applySidebarJoystickSettings(boolean xinput, boolean dinput, boolean exclusive, Runnable refreshed) {
+        if (!canChangeExclusiveInput()) return;
+        final boolean previousExclusive = isExclusiveInputEnabled();
+        final boolean previousDinput = isSidebarDInputEnabled();
+        final byte previousType = winHandler.getInputType();
+        final byte nextType = (byte)((previousType &
+                ~(WinHandler.FLAG_INPUT_TYPE_XINPUT | WinHandler.FLAG_INPUT_TYPE_DINPUT)) |
+                (xinput ? WinHandler.FLAG_INPUT_TYPE_XINPUT : 0) |
+                (dinput ? WinHandler.FLAG_INPUT_TYPE_DINPUT : 0));
+
+        // Keep the focus of the original Wine HWND when regedit opens a console.
+        Window focused = xServer.windowManager.getFocusedWindow();
+        while (focused != null && focused.getHandle() == 0) focused = focused.getParent();
+        final Window focusTarget = focused;
+        final com.winlator.cmod.widget.NativeX11View nativeFocus = xServerView instanceof com.winlator.cmod.widget.NativeX11View
+                ? (com.winlator.cmod.widget.NativeX11View) xServerView : null;
+        final long focusHandle = nativeFocus != null ? nativeFocus.getFocusedWindowHandle()
+                : focused != null ? focused.getHandle() : 0;
+        File driveC = new File(container.getRootDir(), ".wine/drive_c");
+        exclusiveInputBusy = true;
+        refreshed.run();
+        winHandler.holdGamepadsNeutral();
+
+        com.winlator.cmod.winhandler.LiveJoystickSettings.apply(winHandler, driveC, dinput, exclusive, ok -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (ok) {
+                // Set the transport mode before reconnecting devices, so the new API is used.
+                winHandler.setInputType(nextType);
+                winHandler.setXInputDisabled(!xinput);
+            }
+            Runnable finish = () -> winHandler.reconnectGamepads(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (ok) {
+                    if (shortcut != null) {
+                        shortcut.putExtra("exclusiveXInput", exclusive ? "1" : "0");
+                        shortcut.putExtra("inputType", String.valueOf(nextType & 0xff));
+                        shortcut.putExtra("disableXinput", xinput ? null : "1");
+                        shortcut.saveData();
+                    } else {
+                        container.setExclusiveXInput(exclusive);
+                        container.setInputType(nextType & 0xff);
+                        container.saveData();
+                    }
+                }
+                exclusiveInputBusy = false;
+                if (nativeFocus != null && nativeFocus.hasWindowHandle(focusHandle)) {
+                    winHandler.bringToFront("", focusHandle);
+                } else if (focusTarget != null && focusTarget.attributes.isMapped()
+                        && xServer.windowManager.getWindow(focusTarget.id) == focusTarget
+                        && focusTarget.getHandle() == focusHandle) {
+                    winHandler.bringToFront("", focusHandle);
+                }
+                refreshed.run();
+                android.widget.Toast.makeText(this,
+                        ok ? "Controller input updated. Some games may need a restart."
+                           : "Could not apply controller input. Previous settings restored.",
+                        android.widget.Toast.LENGTH_LONG).show();
+            });
+            if (ok) finish.run();
+            else com.winlator.cmod.winhandler.LiveJoystickSettings.apply(winHandler, driveC,
+                    previousDinput, previousExclusive, ignored -> {
+                        winHandler.setInputType(previousType);
+                        finish.run();
+                    });
+        });
     }
 
     private void showVibrationDialog() {
@@ -1113,6 +1295,24 @@ public class XServerDisplayActivity extends AppCompatActivity {
         String dxwrapper = this.dxwrapper;
 
         if (dxwrapper.contains("dxvk")) {
+            // These optional DXVK variants are no longer bundled with the APK.
+            // Keep user-installed versions working, but migrate legacy selections at launch
+            // to their bundled base version instead of attempting extraction of a missing asset.
+            String selectedDXVK = dxwrapperConfig.get("version");
+            String bundledFallback = null;
+            if ("1.10.3-arm64ec-async".equals(selectedDXVK) || "1.11.1-sarek".equals(selectedDXVK)) {
+                bundledFallback = "1.10.3";
+            } else if ("2.3.1-arm64ec-gplasync".equals(selectedDXVK)) {
+                bundledFallback = "2.3.1";
+            }
+            if (bundledFallback != null
+                    && contentsManager.getProfileByEntryName("dxvk-" + selectedDXVK) == null) {
+                Log.w(TAG, "DXVK " + selectedDXVK + " is no longer bundled; using " + bundledFallback);
+                dxwrapperConfig.put("version", bundledFallback);
+                // An old async-specific selection must not leave async-specific switches enabled.
+                dxwrapperConfig.put("async", "0");
+                dxwrapperConfig.put("asyncCache", "0");
+            }
             String dxvkWrapper = "dxvk-" + dxwrapperConfig.get("version");
             String vkd3dWrapper = "vkd3d-" + dxwrapperConfig.get("vkd3dVersion");
             String ddrawrapper = dxwrapperConfig.get("ddrawrapper");
@@ -1166,11 +1366,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         else
             startupSelection = String.valueOf(container.getStartupSelection());
 
-        if (!startupSelection.equals(container.getExtra("startupSelection"))) {
-            WineUtils.changeServicesStatus(container, startupSelection);
-            container.putExtra("startupSelection", startupSelection);
-            containerDataChanged = true;
-        }
+        containerDataChanged |= WineUtils.applyStartupSelection(container, startupSelection);
         if (containerDataChanged)
             container.saveData();
     }
@@ -1249,30 +1445,39 @@ public class XServerDisplayActivity extends AppCompatActivity {
             overrideEnvVars.clear();
         }
 
+        // Enable the tested offscreen check cache for Proton; keep per-game/container overrides.
+        if (wineInfo != null && "proton".equals(wineInfo.type)
+                && !envVars.has("WINE_OFFSCREEN_CHECK_MS")) {
+            envVars.put("WINE_OFFSCREEN_CHECK_MS", "100");
+        }
+
         environment = new XEnvironment(this, imageFs);
         environment.addComponent(
                 new SysVSharedMemoryComponent(
                         xServer,
                         UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.SYSVSHM_SERVER_PATH)));
-        environment.addComponent(
-                new XServerComponent(
-                        xServer,
-                        UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)));
+        if (isNativeX11Enabled()) {
+            ((com.winlator.cmod.widget.NativeX11View) xServerView).setDiagnosticsEnabled(
+                    "1".equals(envVars.get("WINLATOR_X11")),
+                    !"0".equals(envVars.get("WINLATOR_X11_CMD_CACHE")));
+            environment.addComponent(new com.winlator.cmod.xenvironment.components.NativeX11Component(
+                    (com.winlator.cmod.widget.NativeX11View) xServerView));
+            envVars.put("WINLATOR_NATIVE_X11", "1");
+        } else {
+            environment.addComponent(new XServerComponent(xServer,
+                    UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)));
+        }
 
-        if (audioDriver.equals("alsa")) {
-            envVars.put("ANDROID_ALSA_SERVER", rootPath + UnixSocketConfig.ALSA_SERVER_PATH);
-            envVars.put("ANDROID_ASERVER_USE_SHM", "true");
-            environment.addComponent(
-                    new ALSAServerComponent(
-                            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.ALSA_SERVER_PATH)));
-        } else if (audioDriver.equals("pulseaudio") || audioDriver.equals("pulse-audio-gn")) {
+        if (audioDriver.equals("alsa-oboe")) {
+            environment.addComponent(new ALSAComponent(this, imageFs));
+        } else if (audioDriver.equals("pulse-audio-gn")) {
             envVars.put("PULSE_SERVER", rootPath + UnixSocketConfig.PULSE_SERVER_PATH);
             environment.addComponent(
                     new PulseAudioComponent(
-                            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH),
-                            audioDriver.equals("pulse-audio-gn")));
+                            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH)));
         }
 
+        com.winlator.cmod.steam.SteamLaunch.apply(this, shortcut, envVars);
         guestProgramLauncherComponent.setEnvVars(envVars);
         guestProgramLauncherComponent.setTerminationCallback((status) -> runOnUiThread(this::exit));
 
@@ -1283,6 +1488,18 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
         }
 
+        java.util.concurrent.CountDownLatch gamepadsPrepared = new java.util.concurrent.CountDownLatch(1);
+        runOnUiThread(() -> {
+            try { winHandler.prepareGamepadsForWine(); }
+            finally { gamepadsPrepared.countDown(); }
+        });
+        try {
+            if (!gamepadsPrepared.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                throw new IllegalStateException("Controller preparation timed out");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Controller preparation interrupted", e);
+        }
         environment.startEnvironmentComponents();
 
         winHandler.start();
@@ -1303,6 +1520,11 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private boolean isOldDisplayEnabled() {
         if (shortcut != null) return shortcut.getUseOldDisplay();
         return container != null && container.getUseOldDisplay();
+    }
+  
+    private boolean isNativeX11Enabled() {
+        String base = container != null ? container.getExtra("displayServer", "native") : "native";
+        return "native".equals(shortcut != null ? shortcut.getExtra("displayServer", base) : base);
     }
 
     private boolean isDisplayXEnabled() {
@@ -1337,7 +1559,48 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 // (contains("") cocok ke semua window), sehingga border/title bar window besar dihilangkan.
                 String wmClass = shortcut != null && shortcut.wmClass != null ? shortcut.wmClass : "";
                 oldView.getRenderer().setForceFullscreenWMClass(wmClass);
+            } else if (isNativeX11Enabled()) {
+            EnvVars nativeStartupVars = new EnvVars();
+            if (container != null) nativeStartupVars.putAll(container.getEnvVars());
+            if (shortcut != null) nativeStartupVars.putAll(shortcut.getExtra("envVars"));
+            String nativeValidation = nativeStartupVars.get("WINLATOR_VULKAN_VALIDATION");
+            boolean validationEnabled = "1".equals(nativeValidation)
+                    || "true".equalsIgnoreCase(nativeValidation)
+                    || "yes".equalsIgnoreCase(nativeValidation);
+            String driverId = shortcut != null ? shortcut.getRendererDriverId()
+                    : (container != null ? container.getRendererDriverId() : "system");
+            String driverPath = "", libraryName = "";
+            if (!useEGL && !useDisplayX && driverId != null && !driverId.isEmpty() && !"system".equalsIgnoreCase(driverId)) {
+                AdrenotoolsManager manager = new AdrenotoolsManager(this);
+                driverPath = getFilesDir().getAbsolutePath() + "/contents/adrenotools/" + driverId + "/";
+                if (manager.isFromResources(driverId) && !new File(driverPath).isDirectory())
+                    manager.extractDriverFromResources(driverId);
+                libraryName = manager.getLibraryName(driverId);
+                if (libraryName.isEmpty()) {
+                    Log.w("LudashiX11", "Selected renderer driver is unavailable: " + driverId);
+                    driverPath = "";
+                }
             }
+            String presentMode = shortcut != null ? shortcut.getRendererPresentMode()
+                    : (container != null ? container.getRendererPresentMode() : "fifo");
+            if (useDisplayX) presentMode = shortcut != null ? shortcut.getDisplayXPresentMode() : container.getDisplayXPresentMode();
+            int displayXFlags = ((shortcut != null ? shortcut.getTrueDisplayX() : container.getTrueDisplayX()) ? 1 : 0)
+                    | ((shortcut != null ? shortcut.getDisplayXPerformanceMode() : container.getDisplayXPerformanceMode()) ? 2 : 0)
+                    | ((shortcut != null ? shortcut.getDisplayXPresentAtRefreshRate() : container.getDisplayXPresentAtRefreshRate()) ? 4 : 0);
+            com.winlator.cmod.widget.NativeX11View nativeView =
+                    new com.winlator.cmod.widget.NativeX11View(this, xServer, validationEnabled,
+                            driverPath, libraryName, AppUtils.getNativeLibDir(this),
+                            useDisplayX && "auto".equals(presentMode) ? 1 : com.winlator.cmod.contentdialog.RendererOptionsDialog.toVkPresentMode(presentMode),
+                            shortcut != null ? shortcut.getRendererSwapRB()
+                                    : container != null && container.getRendererSwapRB(),
+                            useDisplayX ? 2 : useEGL ? 1 : 0, displayXFlags);
+            nativeView.setFilterMode(shortcut != null ? shortcut.getRendererFilterMode()
+                    : (container != null ? container.getRendererFilterMode() : 0));
+            nativeView.setReadyCallback(() -> {
+                preloaderDialog.closeOnUiThread();
+                if (!simulateTouchScreen) nativeView.setCursorVisible(true);
+            });
+            xServerView = nativeView;
         } else if (useDisplayX || useEGL) {
             xServerView = new XServerView(this, xServer);
         } else {
@@ -1383,8 +1646,51 @@ public class XServerDisplayActivity extends AppCompatActivity {
             String presentMode = shortcut != null ? shortcut.getRendererPresentMode()
                     : (container != null ? container.getRendererPresentMode() : "fifo");
             vkRenderer.setVkPresentMode(com.winlator.cmod.contentdialog.RendererOptionsDialog.toVkPresentMode(presentMode));
+        }
+        if (supportsVulkanRendererEffects()) {
+            VulkanRendererControls vkRenderer = (VulkanRendererControls) renderer;
             vkRenderer.setFilterMode(shortcut != null ? shortcut.getRendererFilterMode()
                     : (container != null ? container.getRendererFilterMode() : 0));
+
+            String containerFrameGen = container != null ? container.getExtra("frameGen", "0") : "0";
+            String containerMultiplier = container != null
+                    ? container.getExtra("frameGenMultiplier", "2") : "2";
+            String containerTargetRate = container != null
+                    ? container.getExtra("frameGenTargetRate", "-1") : "-1";
+            String containerFlowScale = container != null
+                    ? container.getExtra("frameGenFlowScale", "70") : "70";
+            boolean frameGenRequested = "1".equals(shortcut != null
+                    ? shortcut.getExtra("frameGen", containerFrameGen) : containerFrameGen);
+            int frameGenMultiplier = safeParseInt(shortcut != null
+                    ? shortcut.getExtra("frameGenMultiplier", containerMultiplier)
+                    : containerMultiplier);
+            int frameGenTargetRate = safeParseInt(shortcut != null
+                    ? shortcut.getExtra("frameGenTargetRate", containerTargetRate)
+                    : containerTargetRate);
+            int frameGenFlowScale = safeParseInt(shortcut != null
+                    ? shortcut.getExtra("frameGenFlowScale", containerFlowScale)
+                    : containerFlowScale);
+            if (frameGenMultiplier < 2 || frameGenMultiplier > 4) frameGenMultiplier = 2;
+            if (frameGenTargetRate < -1) frameGenTargetRate = -1;
+            if (frameGenFlowScale < 25 || frameGenFlowScale > 100) frameGenFlowScale = 70;
+
+            String containerEngine = container != null ? container.getExtra("frameGenEngine", "lsfg") : "lsfg";
+            String frameGenEngine = shortcut != null
+                    ? shortcut.getExtra("frameGenEngine", containerEngine) : containerEngine;
+            boolean useWfg = "wfg".equals(frameGenEngine);
+            vkRenderer.setFrameGenerationEngine(useWfg ? "wfg" : "lsfg");
+            File frameGenCache = frameGenRequested && !useWfg
+                    ? LosslessScaling.resolveCacheFile(this, true) : null;
+            if (frameGenRequested && !useWfg && frameGenCache == null) {
+                Log.w("XServerDisplayActivity",
+                        "LSFG requested but Lossless.dll shaders have not been imported");
+            }
+            float panelRefreshRate = getWindowManager().getDefaultDisplay().getRefreshRate();
+            vkRenderer.setFrameGenerationConfig(
+                    frameGenRequested && (useWfg || frameGenCache != null),
+                    frameGenCache != null ? frameGenCache.getAbsolutePath() : null,
+                    frameGenMultiplier, frameGenTargetRate, frameGenFlowScale,
+                    panelRefreshRate);
         }
 
         if (shortcut != null) {
@@ -1424,10 +1730,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         if (container != null) {
-            String hudModeExtra = container.getExtra("hudMode");
-            int hudMode = !hudModeExtra.isEmpty()
-                    ? Integer.parseInt(hudModeExtra)
-                    : (container.isShowFPS() ? 1 : 0);
+            int hudMode = getHudMode();
 
             if (hudMode == 1) {
 
@@ -1435,6 +1738,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 classicHud.setVisibility(View.GONE);
                 rootView.addView(classicHud);
                 renderer.setFrameRating(classicHud);
+                classicHud.enableByUser();
             } else if (hudMode == 2) {
 
                 modernHud = new WinlatorHUD(this);
@@ -1621,7 +1925,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         View btItemMagnifier = findViewById(R.id.BTItemMagnifier);
         if (btItemMagnifier != null) {
             btItemMagnifier.setOnClickListener(v -> {
-                if (xServer != null && xServer.isDisplayX()) {
+                if (xServer != null && xServer.isDisplayX() && !(xServerView instanceof com.winlator.cmod.widget.NativeX11View)) {
                     showToast(this, R.string.magnifier_not_available);
                     drawerLayout.closeDrawers();
                     return;
@@ -1637,6 +1941,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                         });
                         magnifierView.setZoomValue(renderer.getMagnifierZoom());
                         magnifierView.setHideButtonCallback(() -> {
+                            renderer.setMagnifierZoom(1.0f);
                             flContainer.removeView(magnifierView);
                             magnifierView = null;
                         });
@@ -1659,19 +1964,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
         View btItemSoftStretch = findViewById(R.id.BTItemSoftStretch);
         if (btItemSoftStretch != null) {
             btItemSoftStretch.setOnClickListener(v -> {
-                if (xServerView != null) {
-                    softStretchEnabled = !softStretchEnabled;
-                    XServerRendererView rendererRef = xServerView;
-
-                    if (softStretchEnabled && !rendererRef.isFullscreen()) {
-                        rendererRef.toggleFullscreen();
-                        if (touchpadView != null) touchpadView.toggleFullscreen();
-                    }
-                    if (rendererRef instanceof VulkanXServerView) {
-                        ((VulkanXServerView) rendererRef).setStretchMode(softStretchEnabled ? 1 : 0);
-                    }
-                    btItemSoftStretch.setSelected(softStretchEnabled);
-                }
+                if (isSidebarSoftStretchSupported())
+                    setSidebarDisplayMode(softStretchEnabled ? 1 : 2);
                 drawerLayout.closeDrawers();
             });
         }
@@ -1704,6 +1998,102 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 exit();
             });
         }
+    }
+
+    // Read-only diagnostics adapted from squalle0nhart's Ludashi Plus.
+    // The bounded probe runs away from the UI thread and stops with the Activity.
+    public void cancelSidebarRuntimeStatus() {
+        if (runtimeStatusProbeThread != null) runtimeStatusProbeThread.interrupt();
+    }
+
+    public void requestSidebarRuntimeStatus() {
+        if (runtimeStatusProbeRunning || runtimeStatusProbeStopped || container == null) return;
+        runtimeStatusProbeRunning = true;
+        final java.io.File root = container.getRootDir();
+        runtimeStatusProbeThread = new Thread(() -> {
+            try {
+                for (int i = 0; i < 15 && !runtimeStatusProbeStopped; i++) {
+                    runtimeFexMode = com.winlator.cmod.core.RuntimeBackendProbe.detect(root);
+                    runOnUiThread(() -> {
+                        if (!isFinishing() && !isDestroyed() && modernSidebar != null) modernSidebar.onRuntimeStatusChanged();
+                    });
+                    if (wineInfo == null || !wineInfo.isArm64EC()
+                            || !"fexcore".equalsIgnoreCase(emulator)
+                            || runtimeFexMode != com.winlator.cmod.core.RuntimeBackendProbe.FexMode.NA) break;
+                    Thread.sleep(1000L);
+                }
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            } finally {
+                runtimeStatusProbeRunning = false;
+            }
+        }, "runtime-status-probe");
+        runtimeStatusProbeThread.setDaemon(true);
+        runtimeStatusProbeThread.start();
+    }
+
+    public String getActiveRendererName() {
+        boolean displayX = xServer != null && xServer.isDisplayX();
+        String renderer = xServerView instanceof com.winlator.cmod.widget.NativeX11View
+                ? ((com.winlator.cmod.widget.NativeX11View) xServerView).getBackendName()
+                : xServerView instanceof VulkanXServerView ? "Vulkan" : displayX ? "DisplayX" : "EGL";
+        boolean trueDisplayX = shortcut != null ? shortcut.getTrueDisplayX() : container != null && container.getTrueDisplayX();
+        return "DisplayX".equals(renderer) && trueDisplayX ? "DisplayX+" : renderer;
+    }
+
+    public String[][] getSidebarRuntimeStatusRows() {
+        boolean displayX = xServer != null && xServer.isDisplayX();
+        String renderer = getActiveRendererName();
+        Switch upscaler = findViewById(R.id.SWEnableFSR);
+        Spinner mode = findViewById(R.id.SPUpscalerMode);
+        boolean upscalerAvailable = supportsVulkanRendererEffects() || xServerView instanceof XServerView && !displayX;
+        boolean upscalerActive = upscalerAvailable && upscaler != null && upscaler.isChecked();
+        boolean arm64ec = wineInfo != null && wineInfo.isArm64EC();
+        boolean fex = arm64ec && "fexcore".equalsIgnoreCase(emulator);
+        String version = container == null ? "" : shortcut != null
+                ? shortcut.getExtra("fexcoreVersion", container.getFEXCoreVersion()) : container.getFEXCoreVersion();
+        boolean detected = runtimeFexMode != com.winlator.cmod.core.RuntimeBackendProbe.FexMode.NA;
+        boolean unixlibs = runtimeFexMode == com.winlator.cmod.core.RuntimeBackendProbe.FexMode.UNIXLIB;
+        return new String[][] {
+                {getString(R.string.ui_renderer), xServerView == null ? getString(R.string.sidebar_starting) : renderer, xServerView == null ? "off" : "active"},
+                {getString(R.string.sidebar_upscaler), !upscalerAvailable ? getString(R.string.sidebar_unavailable) : upscalerActive && mode != null ? getString(R.string.sidebar_1_s_active, mode.getSelectedItem()) : getString(R.string.ui_off), upscalerActive ? "active" : "off"},
+                {"FEXCore", !arm64ec ? getString(R.string.sidebar_not_applicable) : !fex ? getString(R.string.sidebar_off_1_s, emulator)
+                        : (version == null ? "" : version + " ") + (detected ? getString(R.string.sidebar_active) : getString(R.string.sidebar_not_detected)), fex ? detected ? "active" : "warning" : "off"},
+                {"Unixlibs", !fex ? getString(R.string.sidebar_not_applicable) : unixlibs ? getString(R.string.sidebar_active) : detected ? getString(R.string.sidebar_off_dll_mode) : getString(R.string.sidebar_not_detected), unixlibs ? "active" : fex && !detected ? "warning" : "off"}
+        };
+    }
+
+    public boolean isSidebarFullscreenStretched() {
+        return xServerView != null && xServerView.isFullscreen();
+    }
+
+    public boolean isSidebarSoftStretchSupported() {
+        // The 4.2 Native X11 renderer gained the same controls as Java Vulkan.
+        return supportsVulkanRendererEffects();
+    }
+
+    public int getSidebarDisplayMode() {
+        return softStretchEnabled && isSidebarSoftStretchSupported() ? 2 : isSidebarFullscreenStretched() ? 1 : 0;
+    }
+
+    public void setSidebarFullscreenStretched(boolean stretch) {
+        setSidebarDisplayMode(stretch ? 1 : 0);
+    }
+
+    public void setSidebarDisplayMode(int mode) {
+        if (xServerView == null || mode < 0 || mode > 2
+                || (mode == 2 && !isSidebarSoftStretchSupported())) return;
+        boolean newSoft = mode == 2;
+        if (xServerView instanceof VulkanRendererControls)
+            ((VulkanRendererControls) xServerView).setStretchMode(newSoft ? 1 : 0);
+        softStretchEnabled = newSoft;
+        boolean fullscreen = mode != 0;
+        if (xServerView.isFullscreen() != fullscreen) {
+            xServerView.toggleFullscreen();
+            if (touchpadView != null) touchpadView.toggleFullscreen();
+        }
+        View softButton = findViewById(R.id.BTItemSoftStretch);
+        if (softButton != null) softButton.setSelected(newSoft);
     }
 
     private int activeSidebarItemId = R.id.BTItemFPS;
@@ -1762,13 +2152,22 @@ public class XServerDisplayActivity extends AppCompatActivity {
         hideAllSidebarPanels();
         View sub = findViewById(subId);
         if (sub != null) {
-            float density = getResources().getDisplayMetrics().density;
             sub.setVisibility(View.VISIBLE);
-            sub.setAlpha(0.0f);
-            sub.setTranslationX(-8.0f * density);
-            sub.animate().alpha(1.0f).translationX(0.0f).setDuration(130).start();
+            if (modernSidebar != null) {
+                // The old sidebar is only a binding tree under Compose. Avoid
+                // invisible animations and drawing invalidations on its panels.
+                sub.animate().cancel();
+                sub.setAlpha(1.0f);
+                sub.setTranslationX(0.0f);
+            } else {
+                float density = getResources().getDisplayMetrics().density;
+                sub.setAlpha(0.0f);
+                sub.setTranslationX(-8.0f * density);
+                sub.animate().alpha(1.0f).translationX(0.0f).setDuration(130).start();
+            }
         }
-        setSidebarActiveItem(parentId);
+        // This updates hidden old rail buttons; Compose owns its own rail.
+        if (modernSidebar == null) setSidebarActiveItem(parentId);
         if (parentId != R.id.BTItemMouse && parentId != R.id.BTItemPause) {
             activeSidebarItemId = parentId;
             activeSidebarPanelId = subId;
@@ -1784,7 +2183,18 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private ArrayAdapter<String> createSidebarSpinnerAdapter(String[] items) {
+        return createSidebarSpinnerAdapter(items, null);
+    }
+
+    private ArrayAdapter<String> createSidebarSpinnerAdapter(String[] items, int[] labels) {
         return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+            @Nullable
+            @Override
+            public String getItem(int position) {
+                return labels != null && labels[position] != 0
+                        ? getString(labels[position]) : super.getItem(position);
+            }
+
             @NonNull
             @Override
             public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
@@ -1806,6 +2216,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
         };
     }
 
+    public void refreshSidebarControls() {
+        if (modernSidebar != null) modernSidebar.onRuntimeStatusChanged();
+    }
+
     private void setupSidebarHudControls() {
         Switch       swHudMaster     = findViewById(R.id.SWHudMaster);
         Spinner      spHudStyle      = findViewById(R.id.SPHudStyle);
@@ -1816,36 +2230,27 @@ public class XServerDisplayActivity extends AppCompatActivity {
         CheckBox     cbCpuRam        = findViewById(R.id.CBHudCpuRam);
         CheckBox     cbRam           = findViewById(R.id.CBHudRam);
         CheckBox     cbBattTemp      = findViewById(R.id.CBHudBattTemp);
-        CheckBox     cbGraph         = findViewById(R.id.CBHudGraph);
         CheckBox     cbRenderer      = findViewById(R.id.CBHudRenderer);
         SeekBar      sbScale         = findViewById(R.id.SBHudScale);
         SeekBar      sbAlpha         = findViewById(R.id.SBHudAlpha);
         View         btResetHud      = findViewById(R.id.BTResetHud);
 
-        int currentMode = 0;
-        if      (modernHud  != null) currentMode = 2;
-        else if (classicHud != null) currentMode = 1;
-        else if (container  != null) {
-            String extra = container.getExtra("hudMode");
-            if (!extra.isEmpty())           currentMode = Integer.parseInt(extra);
-            else if (container.isShowFPS()) currentMode = 1;
-        }
-
-        boolean hudOn    = currentMode != 0;
-        boolean isModern = currentMode == 2;
+        int currentMode = getHudMode();
+        boolean hudOn = currentMode != 0;
+        // An off HUD has no selected style yet; the first activation uses Modern.
+        boolean isModern = currentMode != 1;
 
         if (spHudStyle != null) {
-            ArrayAdapter<String> styleAdapter = createSidebarSpinnerAdapter(new String[]{"Classic", "Modern"});
+            ArrayAdapter<String> styleAdapter = createSidebarSpinnerAdapter(new String[]{"Classic", "Modern"}, new int[]{R.string.ui_classic, R.string.ui_modern});
             styleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             spHudStyle.setAdapter(styleAdapter);
             spHudStyle.setSelection(isModern ? 1 : 0, false);
         }
         if (llHudStyleRow  != null) llHudStyleRow.setVisibility(hudOn ? View.VISIBLE : View.GONE);
-        if (llModernOptions != null) llModernOptions.setVisibility(isModern ? View.VISIBLE : View.GONE);
+        if (llModernOptions != null) llModernOptions.setVisibility(hudOn && isModern ? View.VISIBLE : View.GONE);
 
         if (modernHud != null) {
-            syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbGraph, cbRenderer, sbScale, sbAlpha);
-            bindModernHudCheckboxes(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer);
+            syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer, sbScale, sbAlpha);
         }
         if (sbScale != null) sbScale.setOnValueChangeListener((sb, v, isFinal) -> {
             if (modernHud != null) modernHud.setHudScale(1f + (v - 50f) / 50f, isFinal);
@@ -1857,7 +2262,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             if (swHudMaster != null && swHudMaster.isChecked() && spHudStyle != null && spHudStyle.getSelectedItemPosition() == 1) {
                 if (modernHud != null) {
                     modernHud.forceReset();
-                    syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbGraph, cbRenderer, sbScale, sbAlpha);
+                    syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer, sbScale, sbAlpha);
                 }
             }
         });
@@ -1872,8 +2277,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     if (llModernOptions != null)
                         llModernOptions.setVisibility(style == 2 ? View.VISIBLE : View.GONE);
                     if (style == 2 && modernHud != null) {
-                        syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbGraph, cbRenderer, sbScale, sbAlpha);
-                        bindModernHudCheckboxes(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer);
+                        syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer, sbScale, sbAlpha);
                     }
                     saveHudModeToContainer(style);
                 } else {
@@ -1899,8 +2303,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
                         if (llModernOptions != null)
                             llModernOptions.setVisibility(newStyle == 2 ? View.VISIBLE : View.GONE);
                         if (newStyle == 2 && modernHud != null) {
-                            syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbGraph, cbRenderer, sbScale, sbAlpha);
-                            bindModernHudCheckboxes(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer);
+                            syncModernHudSidebarUI(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer, sbScale, sbAlpha);
                         }
                         saveHudModeToContainer(newStyle);
                     }
@@ -1911,10 +2314,15 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private void syncModernHudSidebarUI(CheckBox cbFps, CheckBox cbGpu, CheckBox cbCpuRam,
-                                        CheckBox cbRam, CheckBox cbBattTemp, CheckBox cbGraph,
+                                        CheckBox cbRam, CheckBox cbBattTemp,
                                         CheckBox cbRenderer, SeekBar sbScale, SeekBar sbAlpha) {
         if (modernHud == null) return;
-        modernHud.syncCheckboxes(cbFps, cbGpu, cbCpuRam, cbBattTemp, cbGraph, cbRenderer, cbRam);
+        // Detach legacy listeners before reflecting preferences into the controls.
+        for (CheckBox box : new CheckBox[]{cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer}) {
+            if (box != null) box.setOnCheckedChangeListener(null);
+        }
+        modernHud.syncCheckboxes(cbFps, cbGpu, cbCpuRam, cbBattTemp, cbRenderer, cbRam);
+        bindModernHudCheckboxes(cbFps, cbGpu, cbCpuRam, cbRam, cbBattTemp, cbRenderer);
         if (sbScale != null) sbScale.setValue((modernHud.getHudScale() - 1f) * 50f + 50f);
         if (sbAlpha != null) sbAlpha.setValue(modernHud.getHudAlpha() * 100f);
     }
@@ -1925,13 +2333,11 @@ public class XServerDisplayActivity extends AppCompatActivity {
         final XServerRendererView renderer = xServerView;
 
         boolean rendererAlreadyActive = (activeRendererWindowId != -1);
-
         if (style == 2) {
             if (modernHud == null) {
                 modernHud = new WinlatorHUD(this);
                 modernHud.setVisibility(View.GONE);
                 rootView.addView(modernHud);
-                renderer.setFrameRating(modernHud);
                 if (rendererAlreadyActive) {
 
                     frameRatingWindowId = activeRendererWindowId;
@@ -1941,19 +2347,20 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     modernHud.onRendererDetected(name);
                 }
             }
+            renderer.setFrameRating(modernHud);
             modernHud.enableByUser();
         } else {
             if (classicHud == null) {
                 classicHud = new FrameRating(this, graphicsDriverConfig);
                 classicHud.setVisibility(View.GONE);
                 rootView.addView(classicHud);
-                renderer.setFrameRating(classicHud);
                 if (rendererAlreadyActive) {
                     frameRatingWindowId = activeRendererWindowId;
                     renderer.setFpsWindowId(frameRatingWindowId);
                     runOnUiThread(() -> classicHud.update());
                 }
             }
+            renderer.setFrameRating(classicHud);
             classicHud.enableByUser();
         }
     }
@@ -1970,7 +2377,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private int resolveSelectedStyle(Spinner spHudStyle) {
-        if (spHudStyle == null) return 1;
+        if (spHudStyle == null) return 2;
         return spHudStyle.getSelectedItemPosition() == 1 ? 2 : 1;
     }
 
@@ -1979,13 +2386,54 @@ public class XServerDisplayActivity extends AppCompatActivity {
         container.putExtra("hudMode", String.valueOf(mode));
         container.setShowFPS(mode != 0);
         container.saveData();
+        if (shortcut != null) {
+            shortcut.putExtra("hudMode", String.valueOf(mode));
+            shortcut.saveData();
+        }
+        if (xServerView instanceof com.winlator.cmod.widget.NativeX11View) {
+            ((com.winlator.cmod.widget.NativeX11View) xServerView).setHudMode(mode);
+        }
         if (xServerView instanceof XServerView) {
             ((XServerView) xServerView).setShowFPS(mode != 0);
         }
     }
 
+    private String getGraphicsPreference(String key) {
+        String fallback = container != null ? container.getExtra(key) : "";
+        return shortcut != null ? shortcut.getExtra(key, fallback) : fallback;
+    }
+
+    private void saveSidebarGraphicsState() {
+        if (!graphicsControlsReady || container == null) return;
+        Switch enabled = findViewById(R.id.SWEnableFSR);
+        Spinner upscaler = findViewById(R.id.SPUpscalerMode);
+        Spinner postFx = findViewById(R.id.SPPostFXMode);
+        Spinner fps = findViewById(R.id.SPNativeFPS);
+        SeekBar sharpness = findViewById(R.id.SBSharpness);
+        if (enabled == null || upscaler == null || postFx == null || sharpness == null) return;
+        String[][] values = {
+            {"graphicsFilterMode", enabled.isChecked()
+                ? String.valueOf(Math.max(0, upscaler.getSelectedItemPosition()) + 2) : "0"},
+            {"graphicsPostFXMode", String.valueOf(Math.max(0, postFx.getSelectedItemPosition()))},
+            {"graphicsSharpness", String.valueOf(sharpness.getValue())},
+            {"graphicsFpsPreset", String.valueOf(fps != null ? Math.max(0, fps.getSelectedItemPosition()) : 0)},
+            {"graphicsColorMode", "0"}
+        };
+        for (String[] value : values) {
+            if (shortcut != null) shortcut.putExtra(value[0], value[1]);
+            else container.putExtra(value[0], value[1]);
+        }
+        if (shortcut != null) shortcut.saveData();
+        else container.saveData();
+    }
+
+    private boolean supportsVulkanRendererEffects() {
+        return xServerView instanceof VulkanRendererControls && (!(xServerView instanceof com.winlator.cmod.widget.NativeX11View)
+                || ((com.winlator.cmod.widget.NativeX11View) xServerView).isVulkanBackend());
+    }
+
     private void setupSidebarGraphicsControls() {
-        final boolean isVulkanRenderer = xServerView instanceof VulkanXServerView;
+        final boolean isVulkanRenderer = supportsVulkanRendererEffects();
 
         View reshadePanel = findViewById(R.id.LLSubReshade);
         View postFxDivider = findViewById(R.id.VPostFXDivider);
@@ -2002,7 +2450,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         final XServerRendererView renderer = xServerView;
-        final VulkanXServerView  vkRenderer = renderer instanceof VulkanXServerView ? (VulkanXServerView) renderer : null;
+        final VulkanRendererControls vkRenderer = renderer instanceof VulkanRendererControls ? (VulkanRendererControls) renderer : null;
         final XServerView nativeRenderer = renderer instanceof XServerView ? (XServerView) renderer : null;
 
         Spinner spNativeFPS        = findViewById(R.id.SPNativeFPS);
@@ -2015,10 +2463,20 @@ public class XServerDisplayActivity extends AppCompatActivity {
         Spinner spColorMode        = findViewById(R.id.SPColorMode);
         View    btSaveGraphicsPreset = findViewById(R.id.BTSaveGraphicsPreset);
         View    llFrameGenOptions  = findViewById(R.id.LLFrameGenOptions);
-        Spinner spFrameGenFPS      = findViewById(R.id.SPFrameGenFPS);
+        Switch  swEnableFrameGen   = findViewById(R.id.SWEnableFrameGen);
+        if (swEnableFrameGen != null && vkRenderer != null) {
+            swEnableFrameGen.setTag(null);
+            swEnableFrameGen.setText("wfg".equals(vkRenderer.getFrameGenerationEngine())
+                ? "WFG Frame Generation" : getString(R.string.sidebar_lsfg_frame_generation));
+        }
+        View    llFrameGenSettings = findViewById(R.id.LLFrameGenSettings);
+        View    llFrameGenMultiplierSettings = findViewById(R.id.LLFrameGenMultiplierSettings);
+        Spinner spFrameGenMode = findViewById(R.id.SPFrameGenMode);
+        Spinner spFrameGenMultiplier = findViewById(R.id.SPFrameGenMultiplier);
+        Spinner spFrameGenQuality = findViewById(R.id.SPFrameGenQuality);
 
-        if (llFrameGenOptions != null) llFrameGenOptions.setVisibility(View.GONE);
-        if (spFrameGenFPS  != null) spFrameGenFPS.setVisibility(View.GONE);
+        if (llFrameGenOptions != null)
+            llFrameGenOptions.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
         if (spColorMode    != null) spColorMode.setVisibility(View.GONE);
         if (llStandardOptions != null) llStandardOptions.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
         if (btSaveGraphicsPreset != null) btSaveGraphicsPreset.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
@@ -2031,14 +2489,26 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         final int[]    fpsValues = {0, 30, 60, 90, 120};
-        final String[] fpsLabels = {"Off", "30 FPS", "60 FPS", "90 FPS", "120 FPS"};
+        final String[] fpsLabels = {getString(R.string.ui_off), "30 FPS", "60 FPS", "90 FPS", "120 FPS"};
+        final int[] frameGenTargetValues = {-1, 0, 60, 90, 120, 144, 165};
+        final String[] frameGenModeLabels = {
+            getString(R.string.sidebar_automatic_display), getString(R.string.ui_fixed_multiplier), getString(R.string.sidebar_adaptive_1_d_fps, 60),
+            getString(R.string.sidebar_adaptive_1_d_fps, 90), getString(R.string.sidebar_adaptive_1_d_fps, 120), getString(R.string.sidebar_adaptive_1_d_fps, 144),
+            getString(R.string.sidebar_adaptive_1_d_fps, 165)
+        };
+        final int[] frameGenMultiplierValues = {2, 3, 4};
+        final String[] frameGenMultiplierLabels = {"2x", "3x", "4x"};
+        final int[] frameGenQualityValues = {40, 50, 70, 100};
+        final String[] frameGenQualityLabels = {
+            getString(R.string.ui_ultra_performance), getString(R.string.performance), getString(R.string.profile_balanced), getString(R.string.ui_quality)
+        };
 
         if (spNativeFPS != null) {
-            ArrayAdapter<String> a = createSidebarSpinnerAdapter(fpsLabels);
+            ArrayAdapter<String> a = createSidebarSpinnerAdapter(fpsLabels, new int[]{R.string.ui_off, 0, 0, 0, 0});
             a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             spNativeFPS.setAdapter(a);
-            String savedFps = container != null ? container.getExtra("graphicsFpsPreset") : "";
-            int savedFpsPos = savedFps.isEmpty() ? 0 : Integer.parseInt(savedFps);
+            String savedFps = getGraphicsPreference("graphicsFpsPreset");
+            int savedFpsPos = safeParseInt(savedFps);
             if (savedFpsPos < 0 || savedFpsPos >= fpsLabels.length) savedFpsPos = 0;
             spNativeFPS.setSelection(savedFpsPos);
             int initialFpsLimit = savedFpsPos < fpsValues.length ? fpsValues[savedFpsPos] : 0;
@@ -2047,13 +2517,18 @@ public class XServerDisplayActivity extends AppCompatActivity {
             spNativeFPS.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     if (llStandardOptions != null) llStandardOptions.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
-                    if (llFrameGenOptions != null) llFrameGenOptions.setVisibility(View.GONE);
+                    if (llFrameGenOptions != null)
+                        llFrameGenOptions.setVisibility(isVulkanRenderer ? View.VISIBLE : View.GONE);
                     int fpsLimit = pos < fpsValues.length ? fpsValues[pos] : 0;
                     if (vkRenderer != null) vkRenderer.setFpsLimit(fpsLimit);
                     if (nativeRenderer != null) nativeRenderer.setFpsLimit(fpsLimit);
+                    saveSidebarGraphicsState();
                     if (!isVulkanRenderer && container != null) {
-                        container.putExtra("graphicsFpsPreset", String.valueOf(pos));
-                        container.saveData();
+                        if (shortcut != null) {
+                            shortcut.putExtra("graphicsFpsPreset", String.valueOf(pos)); shortcut.saveData();
+                        } else {
+                            container.putExtra("graphicsFpsPreset", String.valueOf(pos)); container.saveData();
+                        }
                     }
                 }
                 @Override public void onNothingSelected(AdapterView<?> p) {}
@@ -2074,97 +2549,271 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     container.putExtra("graphicsPostFXMode",
                         String.valueOf(spPostFXMode != null ? spPostFXMode.getSelectedItemPosition() : 0));
                     container.putExtra("graphicsColorMode", "0");
+                    int modePos = spFrameGenMode != null
+                        ? spFrameGenMode.getSelectedItemPosition() : 1;
+                    int multiplierPos = spFrameGenMultiplier != null
+                        ? spFrameGenMultiplier.getSelectedItemPosition() : 0;
+                    int qualityPos = spFrameGenQuality != null
+                        ? spFrameGenQuality.getSelectedItemPosition() : 2;
+                    modePos = Math.max(0, Math.min(frameGenTargetValues.length - 1, modePos));
+                    multiplierPos = Math.max(0,
+                        Math.min(frameGenMultiplierValues.length - 1, multiplierPos));
+                    qualityPos = Math.max(0,
+                        Math.min(frameGenQualityValues.length - 1, qualityPos));
+                    String frameGenEnabledValue =
+                        vkRenderer.isFrameGenerationRequested() ? "1" : "0";
+                    String frameGenMultiplierValue =
+                        String.valueOf(frameGenMultiplierValues[multiplierPos]);
+                    String frameGenTargetValue =
+                        String.valueOf(frameGenTargetValues[modePos]);
+                    String frameGenQualityValue =
+                        String.valueOf(frameGenQualityValues[qualityPos]);
+                    container.putExtra("frameGen", frameGenEnabledValue);
+                    container.putExtra("frameGenMultiplier", frameGenMultiplierValue);
+                    container.putExtra("frameGenTargetRate", frameGenTargetValue);
+                    container.putExtra("frameGenFlowScale", frameGenQualityValue);
+                    if (shortcut != null) {
+                        shortcut.putExtra("frameGen", frameGenEnabledValue);
+                        shortcut.putExtra("frameGenMultiplier", frameGenMultiplierValue);
+                        shortcut.putExtra("frameGenTargetRate", frameGenTargetValue);
+                        shortcut.putExtra("frameGenFlowScale", frameGenQualityValue);
+                        shortcut.saveData();
+                    }
                 }
                 container.saveData();
-                Toast.makeText(this, "Preset saved", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.sidebar_preset_saved), Toast.LENGTH_SHORT).show();
             });
         }
 
-        if (vkRenderer == null) return;
+        if (vkRenderer == null || !isVulkanRenderer) return;
 
-        final String[] upscalerLabels = {"SGSR", "FSR", "Lanczos 2", "Color Boost"};
+        if (spFrameGenMode != null) {
+            ArrayAdapter<String> adapter = createSidebarSpinnerAdapter(frameGenModeLabels, new int[]{R.string.sidebar_automatic_display, R.string.ui_fixed_multiplier, R.string.sidebar_adaptive_60_fps, R.string.sidebar_adaptive_90_fps, R.string.sidebar_adaptive_120_fps, R.string.sidebar_adaptive_144_fps, R.string.sidebar_adaptive_165_fps});
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            spFrameGenMode.setAdapter(adapter);
+            int selected = 1;
+            int targetRate = vkRenderer.getFrameGenerationTargetRate();
+            for (int i = 0; i < frameGenTargetValues.length; i++) {
+                if (frameGenTargetValues[i] == targetRate) {
+                    selected = i;
+                    break;
+                }
+            }
+            spFrameGenMode.setSelection(selected, false);
+        }
+        if (spFrameGenMultiplier != null) {
+            ArrayAdapter<String> adapter = createSidebarSpinnerAdapter(frameGenMultiplierLabels);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            spFrameGenMultiplier.setAdapter(adapter);
+            int multiplier = Math.max(2, Math.min(4,
+                vkRenderer.getFrameGenerationMultiplier()));
+            spFrameGenMultiplier.setSelection(multiplier - 2, false);
+        }
+        if (spFrameGenQuality != null) {
+            ArrayAdapter<String> adapter = createSidebarSpinnerAdapter(frameGenQualityLabels, new int[]{R.string.ui_ultra_performance, R.string.performance, R.string.profile_balanced, R.string.ui_quality});
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            spFrameGenQuality.setAdapter(adapter);
+            int flowScale = vkRenderer.getFrameGenerationFlowScale();
+            int selected = 2;
+            int smallestDistance = Integer.MAX_VALUE;
+            for (int i = 0; i < frameGenQualityValues.length; i++) {
+                int distance = Math.abs(frameGenQualityValues[i] - flowScale);
+                if (distance < smallestDistance) {
+                    selected = i;
+                    smallestDistance = distance;
+                }
+            }
+            spFrameGenQuality.setSelection(selected, false);
+        }
+
+        Runnable updateFrameGenVisibility = () -> {
+            boolean enabled = swEnableFrameGen != null && swEnableFrameGen.isChecked();
+            if (llFrameGenSettings != null)
+                llFrameGenSettings.setVisibility(enabled ? View.VISIBLE : View.GONE);
+            int modePos = spFrameGenMode != null
+                ? spFrameGenMode.getSelectedItemPosition() : 1;
+            boolean fixedMultiplier = modePos >= 0 &&
+                frameGenTargetValues[Math.min(modePos, frameGenTargetValues.length - 1)] == 0;
+            if (llFrameGenMultiplierSettings != null)
+                llFrameGenMultiplierSettings.setVisibility(
+                    enabled && fixedMultiplier ? View.VISIBLE : View.GONE);
+        };
+        Runnable applyFrameGenSettings = () -> {
+            if (swEnableFrameGen == null || !swEnableFrameGen.isChecked()) return;
+            int modePos = spFrameGenMode != null
+                ? spFrameGenMode.getSelectedItemPosition() : 1;
+            int multiplierPos = spFrameGenMultiplier != null
+                ? spFrameGenMultiplier.getSelectedItemPosition() : 0;
+            int qualityPos = spFrameGenQuality != null
+                ? spFrameGenQuality.getSelectedItemPosition() : 2;
+            modePos = Math.max(0, Math.min(frameGenTargetValues.length - 1, modePos));
+            multiplierPos = Math.max(0,
+                Math.min(frameGenMultiplierValues.length - 1, multiplierPos));
+            qualityPos = Math.max(0,
+                Math.min(frameGenQualityValues.length - 1, qualityPos));
+            vkRenderer.setFrameGenerationSettings(
+                frameGenMultiplierValues[multiplierPos], frameGenTargetValues[modePos],
+                frameGenQualityValues[qualityPos]);
+        };
+
+        if (spFrameGenMode != null) {
+            spFrameGenMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    updateFrameGenVisibility.run();
+                    applyFrameGenSettings.run();
+                }
+                @Override public void onNothingSelected(AdapterView<?> p) {}
+            });
+        }
+        AdapterView.OnItemSelectedListener applyFrameGenSelection =
+            new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    applyFrameGenSettings.run();
+                }
+                @Override public void onNothingSelected(AdapterView<?> p) {}
+            };
+        if (spFrameGenMultiplier != null)
+            spFrameGenMultiplier.setOnItemSelectedListener(applyFrameGenSelection);
+        if (spFrameGenQuality != null)
+            spFrameGenQuality.setOnItemSelectedListener(applyFrameGenSelection);
+
+        if (swEnableFrameGen != null) {
+            final boolean[] updatingFrameGenSwitch = {false};
+            swEnableFrameGen.setOnCheckedChangeListener((button, checked) -> {
+                if (updatingFrameGenSwitch[0]) return;
+                if (checked && !"wfg".equals(vkRenderer.getFrameGenerationEngine()) && LosslessScaling.getStatus(this, true) !=
+                        LosslessScaling.STATUS_OK) {
+                    updatingFrameGenSwitch[0] = true;
+                    swEnableFrameGen.setChecked(false);
+                    updatingFrameGenSwitch[0] = false;
+                    updateFrameGenVisibility.run();
+                    Toast.makeText(this,
+                        "Import a valid Lossless.dll in the container settings first.",
+                        Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (!vkRenderer.setFrameGenerationEnabled(checked)) {
+                    updatingFrameGenSwitch[0] = true;
+                    swEnableFrameGen.setChecked(false);
+                    updatingFrameGenSwitch[0] = false;
+                    updateFrameGenVisibility.run();
+                    Toast.makeText(this,
+                        "Frame generation could not be enabled with the current Vulkan driver or surface.",
+                        Toast.LENGTH_LONG).show();
+                    return;
+                }
+                updateFrameGenVisibility.run();
+                if (checked) applyFrameGenSettings.run();
+                Log.i("XServerDisplayActivity",
+                    "LSFG runtime toggle: " + (checked ? "enabled" : "disabled"));
+            });
+            vkRenderer.setOnFrameGenerationStateChangedListener(() -> {
+                updatingFrameGenSwitch[0] = true;
+                swEnableFrameGen.setChecked(vkRenderer.isFrameGenerationRequested());
+                updatingFrameGenSwitch[0] = false;
+                updateFrameGenVisibility.run();
+                if (modernSidebar != null) modernSidebar.onRuntimeStatusChanged();
+            });
+            updatingFrameGenSwitch[0] = true;
+            swEnableFrameGen.setChecked(vkRenderer.isFrameGenerationRequested());
+            updatingFrameGenSwitch[0] = false;
+        }
+        updateFrameGenVisibility.run();
+
+        final int baseFilterMode = Math.min(1, shortcut != null ? shortcut.getRendererFilterMode()
+                : container != null ? container.getRendererFilterMode() : 0);
+        String savedFilter = getGraphicsPreference("graphicsFilterMode");
+        int initialFilter = savedFilter.isEmpty()
+                ? (shortcut != null ? shortcut.getRendererFilterMode()
+                    : container != null ? container.getRendererFilterMode() : 0)
+                : safeParseInt(savedFilter);
+        boolean fsrOn = initialFilter >= 2 && initialFilter <= 5;
+        final String[] upscalerLabels = {"SGSR", "FSR", "Lanczos 2", getString(R.string.ui_color_boost)};
         if (spUpscalerMode != null) {
-            ArrayAdapter<String> a = createSidebarSpinnerAdapter(upscalerLabels);
+            ArrayAdapter<String> a = createSidebarSpinnerAdapter(upscalerLabels, new int[]{0, 0, 0, R.string.ui_color_boost});
             a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             spUpscalerMode.setAdapter(a);
+            spUpscalerMode.setSelection(fsrOn ? initialFilter - 2 : 0, false);
             spUpscalerMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     if (swEnableFSR != null && swEnableFSR.isChecked())
                         vkRenderer.setFilterMode(pos + 2);
+                    saveSidebarGraphicsState();
                 }
                 @Override public void onNothingSelected(AdapterView<?> p) {}
             });
         }
 
-        String savedSharp = container != null ? container.getExtra("graphicsSharpness") : "";
-        float  initSharp  = savedSharp.isEmpty() ? 50f : Float.parseFloat(savedSharp);
+        String savedSharp = getGraphicsPreference("graphicsSharpness");
+        float initSharp = 50f;
+        try {
+            float value = Float.parseFloat(savedSharp);
+            if (Float.isFinite(value)) initSharp = Math.max(0f, Math.min(100f, value));
+        } catch (NumberFormatException ignored) {}
         if (sbSharpness != null) {
             sbSharpness.setValue(initSharp);
             vkRenderer.setSharpness(initSharp / 100f);
-            sbSharpness.setOnValueChangeListener((sb, v, isFinal) -> vkRenderer.setSharpness(v / 100f));
+            sbSharpness.setOnValueChangeListener((sb, v, isFinal) -> {
+                vkRenderer.setSharpness(v / 100f);
+                if (isFinal) saveSidebarGraphicsState();
+            });
         }
 
         Runnable updateSharpnessVis = () -> {
-            boolean fsrOn = swEnableFSR  != null && swEnableFSR.isChecked();
+            boolean upscalerChecked = swEnableFSR != null && swEnableFSR.isChecked();
             boolean dlsOn = spPostFXMode != null && spPostFXMode.getSelectedItemPosition() == 1;
-            int vis = (fsrOn || dlsOn) ? View.VISIBLE : View.GONE;
+            int vis = (upscalerChecked || dlsOn) ? View.VISIBLE : View.GONE;
             if (lblSharpnessHeader != null) lblSharpnessHeader.setVisibility(vis);
             if (sbSharpness        != null) sbSharpness.setVisibility(vis);
         };
 
-        String savedFilter = container != null ? container.getExtra("graphicsFilterMode") : "";
-        boolean fsrOn = !savedFilter.isEmpty() && Integer.parseInt(savedFilter) > 0;
         if (swEnableFSR != null) {
             swEnableFSR.setChecked(fsrOn);
             if (spUpscalerMode != null)
                 spUpscalerMode.setVisibility(fsrOn ? View.VISIBLE : View.GONE);
-            if (fsrOn)
-                vkRenderer.setFilterMode(spUpscalerMode != null
-                    ? spUpscalerMode.getSelectedItemPosition() + 2 : 2);
+            vkRenderer.setFilterMode(fsrOn
+                    ? (spUpscalerMode != null ? spUpscalerMode.getSelectedItemPosition() + 2 : 2)
+                    : baseFilterMode);
             swEnableFSR.setOnCheckedChangeListener((btn, checked) -> {
                 if (spUpscalerMode != null)
                     spUpscalerMode.setVisibility(checked ? View.VISIBLE : View.GONE);
                 vkRenderer.setFilterMode(checked
                     ? (spUpscalerMode != null ? spUpscalerMode.getSelectedItemPosition() + 2 : 2)
-                    : (container != null ? container.getRendererFilterMode() : 0));
+                    : baseFilterMode);
                 updateSharpnessVis.run();
+                saveSidebarGraphicsState();
             });
         }
 
-        final String[] pfxLabels = {"None", "DLS", "CRT", "HDR", "Natural"};
+        final String[] pfxLabels = {getString(R.string.none), "DLS", "CRT", "HDR", "Natural"};
         if (spPostFXMode != null) {
-            ArrayAdapter<String> a = createSidebarSpinnerAdapter(pfxLabels);
+            ArrayAdapter<String> a = createSidebarSpinnerAdapter(pfxLabels, new int[]{R.string.none, 0, 0, 0, 0});
             a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             spPostFXMode.setAdapter(a);
 
-            String savedPFX = container != null ? container.getExtra("graphicsPostFXMode") : "";
-            int initPFX = savedPFX.isEmpty() ? 0 : Integer.parseInt(savedPFX);
+            String savedPFX = getGraphicsPreference("graphicsPostFXMode");
+            int initPFX = safeParseInt(savedPFX);
             if (initPFX < 0 || initPFX >= pfxLabels.length) initPFX = 0;
 
             spPostFXMode.setSelection(initPFX, false);
-            if (initPFX > 0) vkRenderer.setPostFXMode(initPFX);
+            vkRenderer.setPostFXMode(initPFX);
 
             spPostFXMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     vkRenderer.setPostFXMode(pos);
                     updateSharpnessVis.run();
+                    saveSidebarGraphicsState();
                 }
                 @Override public void onNothingSelected(AdapterView<?> p) {}
             });
         }
 
-        String savedPFXInit = container != null ? container.getExtra("graphicsPostFXMode") : "";
-        boolean dlsRestored = !savedPFXInit.isEmpty() && Integer.parseInt(savedPFXInit) == 1;
+        String savedPFXInit = getGraphicsPreference("graphicsPostFXMode");
+        boolean dlsRestored = safeParseInt(savedPFXInit) == 1;
         int sharpVis = (fsrOn || dlsRestored) ? View.VISIBLE : View.GONE;
         if (lblSharpnessHeader != null) lblSharpnessHeader.setVisibility(sharpVis);
         if (sbSharpness        != null) sbSharpness.setVisibility(sharpVis);
-
-        final String[] frameGenLabels = {"2x Interpolation", "Always On"};
-        if (spFrameGenFPS != null) {
-            ArrayAdapter<String> a = createSidebarSpinnerAdapter(frameGenLabels);
-            a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            spFrameGenFPS.setAdapter(a);
-        }
+        graphicsControlsReady = true;
 
     }
 
@@ -2193,7 +2842,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 profileItems.add(profile.getName());
             }
 
-            ArrayAdapter<String> adapter = createSidebarSpinnerAdapter(profileItems.toArray(new String[0]));
+            int[] profileLabels = new int[profileItems.size()];
+            profileLabels[0] = R.string.sidebar_disabled_profile;
+            ArrayAdapter<String> adapter = createSidebarSpinnerAdapter(profileItems.toArray(new String[0]), profileLabels);
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             spInputControlsProfile.setAdapter(adapter);
             spInputControlsProfile.setSelection(selectedPosition, false);
@@ -2466,6 +3117,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
         }
 
         inputControlsView.setProfile(profile);
+        profile.prepareGamepad();
         inputControlsView.setVisibility(View.VISIBLE);
         inputControlsView.requestFocus();
 
@@ -2493,29 +3145,29 @@ public class XServerDisplayActivity extends AppCompatActivity {
         winHandler.sendGamepadState();
     }
 
+    public String getHudGraphicsFallback() {
+        String backend = getActiveRendererName();
+        if ("DisplayX".equals(backend) || "DisplayX+".equals(backend)) return backend;
+        return "freedreno".equalsIgnoreCase(graphicsDriver) ? "freedreno" : backend;
+    }
+
+    private String openGlLibraryPath;
+
     private String getSelectedOpenGLDriver() {
         return "freedreno".equalsIgnoreCase(graphicsDriver) ? "freedreno" : "zink";
     }
 
     private void extractOpenGLDriver(File rootDir) {
         String selectedDriver = getSelectedOpenGLDriver();
-        String installedDriver = container.getExtra("installedOpenGLDriver", "");
-
-        if (!firstTimeBoot && selectedDriver.equals(installedDriver))
-            return;
-
-        Log.d("XServerDisplayActivity", "Installing OpenGL driver " + selectedDriver
-                + " (installed: '" + installedDriver + "')");
-
-        boolean extracted = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this,
-                "graphics_driver/opengl_" + selectedDriver + ".tzst", rootDir);
-        if (!extracted) {
-            Log.e("XServerDisplayActivity", "Failed to extract OpenGL driver " + selectedDriver);
-            return;
+        String version = shortcut != null ? shortcut.getExtra("freedrenoVersion", container.getExtra("freedrenoVersion", "Bundled"))
+                : container.getExtra("freedrenoVersion", "Bundled");
+        try {
+            File directory = new com.winlator.cmod.contents.OpenGLDriverManager(this).resolve(selectedDriver, version);
+            openGlLibraryPath = directory.getAbsolutePath() + ":" + imageFs.getLibDir() + ":/system/lib64";
+            envVars.put("LD_LIBRARY_PATH", openGlLibraryPath);
+        } catch (Exception error) {
+            throw new IllegalStateException("Cannot load selected OpenGL driver: " + error.getMessage(), error);
         }
-
-        container.putExtra("installedOpenGLDriver", selectedDriver);
-        container.saveData();
     }
 
     private boolean isMesaGlVersionOverrideManual() {
@@ -2536,7 +3188,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private void applyOpenGLDriverEnvVars() {
         boolean freedreno = "freedreno".equals(getSelectedOpenGLDriver());
 
-        envVars.put("GALLIUM_DRIVER", freedreno ? "freedreno" : "zink");
+        envVars.remove("GALLIUM_DRIVER");
+        if (openGlLibraryPath != null) envVars.put("LD_LIBRARY_PATH", openGlLibraryPath);
         envVars.put("MESA_LOADER_DRIVER_OVERRIDE", freedreno ? "kgsl" : "zink");
 
         if (freedreno) {
@@ -2544,7 +3197,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             envVars.remove("ZINK_DESCRIPTORS");
             envVars.remove("ZINK_DEBUG");
             envVars.remove("ZINK_INLINE_UNIFORMS");
-            if (!envVars.has("FD_MESA_DEBUG")) envVars.put("FD_MESA_DEBUG", "hiprio");
+            if (!envVars.has("FD_MESA_DEBUG")) envVars.put("FD_MESA_DEBUG", "hiprio,sysmem");
             if (!envVars.has("vblank_mode")) envVars.put("vblank_mode", "0");
         } else {
             if (!isMesaGlVersionOverrideManual()
@@ -2581,8 +3234,10 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
         envVars.put("VK_ICD_FILENAMES", imageFs.getShareDir() + "/vulkan/icd.d/wrapper_icd.aarch64.json");
 
+        // Refresh existing containers that may have received the CI-repacked
+        // Gamescope wrapper instead of the repository's common wrapper asset.
         File graphicsRuntimeMarker = new File(rootDir,
-                "usr/lib/.winlator-graphics-runtime-c7474f7e-25b50a11-v2");
+                "usr/lib/.winlator-graphics-runtime-c7474f7e-25b50a11-v3-stock-wrapper");
         if (firstTimeBoot || !graphicsRuntimeMarker.isFile()) {
             Log.d("XServerDisplayActivity", "Installing paired Pipetto wrapper and common graphics runtime");
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper" + ".tzst",
@@ -2674,7 +3329,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
-        if (isPaused && (drawerLayout == null || !drawerLayout.isDrawerOpen(GravityCompat.START))) return true;
+        if (isPaused && (drawerLayout == null || !drawerLayout.isDrawerOpen(GravityCompat.START))
+                && !com.winlator.cmod.ui.ThemedAlertHost.isShowing()
+                && (debugDialog == null || !debugDialog.isShowing())) return true;
         return super.dispatchTouchEvent(event);
     }
 
@@ -2707,22 +3364,27 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private static final int RECAPTURE_DELAY_MS = 10000;
 
+    static boolean isSidebarKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BUTTON_MODE || code == KeyEvent.KEYCODE_HOME) return true;
+        return code == KeyEvent.KEYCODE_BACK && (event.getFlags() & KeyEvent.FLAG_FALLBACK) == 0
+                && (event.isFromSource(InputDevice.SOURCE_GAMEPAD)
+                        || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
+                        || ExternalController.isGameController(event.getDevice()));
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-
-        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_MODE || event.getKeyCode() == KeyEvent.KEYCODE_HOME
-                    || event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_SELECT) {
-                boolean handled = inputControlsView.onKeyEvent(event)
-                        || (winHandler != null && winHandler.onKeyEvent(event))
-                                && (xServer != null && xServer.keyboard.onKeyEvent(event));
-                return true;
-            }
+        if (isSidebarKey(event)) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0)
+                onBackPressed();
+            return true;
         }
 
-        return (!inputControlsView.onKeyEvent(event) && !winHandler.onKeyEvent(event)
-                && xServer.keyboard.onKeyEvent(event)) ||
-                (!ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event));
+        if (inputControlsView != null && inputControlsView.onKeyEvent(event)) return true;
+        if (winHandler != null && winHandler.onKeyEvent(event)) return true;
+        if (xServer != null && xServer.keyboard.onKeyEvent(event)) return true;
+        return !ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event);
     }
 
     public InputControlsView getInputControlsView() {
@@ -2780,7 +3442,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "ddrawrapper/nglide.tzst", windowsDir,
                     onExtractFileListener);
 
-            if (ddrawrapper.contains("None")) {
+            if ("none".equalsIgnoreCase(ddrawrapper)) {
                 Log.d(TAG, "No DDRaw wrapper has been selected, restoring original ddraw files");
                 restoreOriginalDllFiles(new String[] { "ddraw.dll", "d3dimm.dll" });
             } else {
@@ -2866,6 +3528,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
                     continue;
                 String identifier = wincomponent[0];
                 boolean useNative = wincomponent[1].equals("1");
+
+                if (firstTimeBoot && com.winlator.cmod.components.ComponentUndo.keepsLegacyComponent(
+                        container.getRootDir(), wincomponentsJSONObject.getJSONArray(identifier))) continue;
 
                 if (useNative) {
                     TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this,
@@ -3056,9 +3721,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
             File rootDir = imageFs.getRootDir();
             File userRegFile = new File(rootDir, ImageFs.WINEPREFIX + "/user.reg");
             try (WineRegistryEditor registryEditor = new WineRegistryEditor(userRegFile)) {
-                if (audioDriver.equals("alsa")) {
+                if (audioDriver.equals("alsa-oboe")) {
                     registryEditor.setStringValue("Software\\Wine\\Drivers", "Audio", "alsa");
-                } else if (audioDriver.equals("pulseaudio") || audioDriver.equals("pulse-audio-gn")) {
+                } else if (audioDriver.equals("pulse-audio-gn")) {
                     registryEditor.setStringValue("Software\\Wine\\Drivers", "Audio", "pulse");
                 }
             }
@@ -3081,6 +3746,9 @@ public class XServerDisplayActivity extends AppCompatActivity {
                 registryEditor.removeValue(x11DriverKey, "EmulateModelist");
                 registryEditor.removeValue(x11DriverKey, "EmulateModeset");
             }
+            // Keep Wine GDI on its existing core drawing path.
+            if (isNativeX11Enabled())
+                registryEditor.setStringValue(x11DriverKey, "ClientSideWithRender", "N");
         }
 
         Log.d("XServerDisplayActivity", "RandR Wine mode emulation: "
@@ -3168,10 +3836,17 @@ public class XServerDisplayActivity extends AppCompatActivity {
         return refreshRate;
     }
 
+    private int getHudMode() {
+        if (container == null) return 0;
+        String base = container.getExtra("hudMode");
+        String mode = shortcut != null ? shortcut.getExtra("hudMode", base) : base;
+        if (mode.isEmpty()) return container.isShowFPS() ? 2 : 0;
+        int parsed = safeParseInt(mode);
+        return parsed == 1 || parsed == 2 ? parsed : 0;
+    }
+
     public boolean isShowFPS() {
-        if (container == null) return false;
-        String hudMode = container.getExtra("hudMode");
-        return !hudMode.isEmpty() ? !"0".equals(hudMode) : container.isShowFPS();
+        return getHudMode() != 0;
     }
 
     public void updateFrameRating(Window window) {

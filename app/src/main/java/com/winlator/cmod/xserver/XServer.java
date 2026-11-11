@@ -16,6 +16,7 @@ import com.winlator.cmod.xserver.extensions.MITSHMExtension;
 import com.winlator.cmod.xserver.extensions.PresentExtension;
 import com.winlator.cmod.xserver.extensions.RandrExtension;
 import com.winlator.cmod.xserver.extensions.SyncExtension;
+import com.winlator.cmod.xserver.extensions.XInputExtension;
 
 import com.winlator.cmod.xserver.extensions.XCompositeExtension;
 import java.nio.charset.Charset;
@@ -53,6 +54,10 @@ public class XServer {
     private int surfaceFormat = Drawable.HAL_PIXEL_FORMAT_BGRA_8888;
     private XServerRendererView xServerView;
     private XClient grabbingClient = null;
+    private XInputExtension xInputExtension;
+    private boolean absolutePointerAnchored;
+    private int absolutePointerX;
+    private int absolutePointerY;
 
     public XServer(ScreenInfo screenInfo, String displayDriver, KeyValueSet displayxConfig) {
         this.screenInfo = screenInfo;
@@ -205,27 +210,47 @@ public class XServer {
 
     public void injectPointerMove(int x, int y) {
         try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+            if (disableMouse) return;
+            if (absolutePointerAnchored)
+                xInputExtension.sendRawMotion(x - absolutePointerX, y - absolutePointerY);
+            absolutePointerAnchored = true;
+            absolutePointerX = x;
+            absolutePointerY = y;
+            pointer.setPosition(x, y);
+        }
+    }
+
+    public void injectPointerWarp(int x, int y) {
+        try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+            if (disableMouse) return;
+            absolutePointerAnchored = true;
+            absolutePointerX = x;
+            absolutePointerY = y;
             pointer.setPosition(x, y);
         }
     }
 
     public void injectPointerMoveDelta(int dx, int dy) {
-        try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
-            Rect confinement = grabManager.getConfinementBounds();
-            if (confinement != null) {
-                int minX = Math.max(0, confinement.left);
-                int minY = Math.max(0, confinement.top);
-                int maxX = Math.min(screenInfo.width, confinement.right) - 1;
-                int maxY = Math.min(screenInfo.height, confinement.bottom) - 1;
-                int nextX = Math.max(minX, Math.min(maxX, pointer.getX() + dx));
-                int nextY = Math.max(minY, Math.min(maxY, pointer.getY() + dy));
-                pointer.setPosition(nextX, nextY);
-            }
-            else {
-                pointer.setPosition(pointer.getX() + dx, pointer.getY() + dy);
-            }
+    try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
+        if (disableMouse) return;
+        xInputExtension.sendRawMotion(dx, dy);
+        absolutePointerAnchored = false;
+
+        Rect confinement = grabManager.getConfinementBounds();
+        if (confinement != null) {
+            int minX = Math.max(0, confinement.left);
+            int minY = Math.max(0, confinement.top);
+            int maxX = Math.min(screenInfo.width, confinement.right) - 1;
+            int maxY = Math.min(screenInfo.height, confinement.bottom) - 1;
+            int nextX = Math.max(minX, Math.min(maxX, pointer.getX() + dx));
+            int nextY = Math.max(minY, Math.min(maxY, pointer.getY() + dy));
+            pointer.setPosition(nextX, nextY);
+        }
+        else {
+            pointer.setPosition(pointer.getX() + dx, pointer.getY() + dy);
         }
     }
+}
 
     public void injectPointerButtonPress(Pointer.Button buttonCode) {
         try (XLock lock = lock(Lockable.WINDOW_MANAGER, Lockable.INPUT_DEVICE)) {
@@ -264,7 +289,11 @@ public class XServer {
         extensions.put(SyncExtension.MAJOR_OPCODE, new SyncExtension(this));
         extensions.put(GLXExtension.MAJOR_OPCODE, new GLXExtension(this));
         extensions.put(XCompositeExtension.MAJOR_OPCODE, new XCompositeExtension(this));
+        xInputExtension = new XInputExtension(this);
+        extensions.put(XInputExtension.MAJOR_OPCODE, xInputExtension);
     }
+
+    public XInputExtension getXInputExtension() { return xInputExtension; }
 
     public <T extends Extension> T getExtension(int opcode) {
         return (T)extensions.get(opcode);

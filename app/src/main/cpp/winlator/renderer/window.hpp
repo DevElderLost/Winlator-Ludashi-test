@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <array>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -9,6 +12,8 @@
 #include "cursor.hpp"
 
 struct Window {
+    inline static std::atomic<uint64_t> nextGeneration{1};
+    uint64_t generation{nextGeneration.fetch_add(1, std::memory_order_relaxed)};
     int id;
     int width;
     int height;
@@ -30,7 +35,10 @@ struct Window {
     std::unordered_map<int, std::unique_ptr<struct Drawable>> directContents;
     Drawable *externalContent;
     ASurfaceControl *control;
-    bool backPressureEnabled;
+    bool backPressureEnabled{};
+    uint32_t displayXColorSpace{UINT32_MAX};
+    std::array<float, 12> displayXHdr{};
+    bool displayXHasHdr{};
     Window *surface;
         
     bool hasExternalContents() {

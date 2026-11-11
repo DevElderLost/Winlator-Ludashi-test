@@ -10,6 +10,7 @@
     <uses-feature android:name="oculus.software.overlay_keyboard" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -25,7 +26,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
+        android:name="com.winlator.cmod.WinlatorApplication"
+        android:localeConfig="@xml/locales_config"
         android:label="Winlator Ludashi"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -38,6 +43,18 @@
         android:supportsRtl="true"
         tools:ignore="DataExtractionRules,GoogleAppIndexingWarning">
 
+        <activity android:name=".steam.SteamFriendsActivity" android:screenOrientation="sensor" android:exported="false" android:theme="@style/AppThemeFullscreen" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".steam.StoreSettingsActivity" android:screenOrientation="sensor" android:theme="@style/AppThemeFullscreen" android:windowSoftInputMode="adjustResize" android:exported="false" />
+        <activity android:name=".steam.SteamActivity" android:screenOrientation="sensor" android:theme="@style/AppThemeFullscreen" android:windowSoftInputMode="adjustResize" android:exported="false" />
+        <service android:name=".steam.SteamService" android:foregroundServiceType="dataSync" android:exported="false" />
+
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
+
         <service
             android:name="com.winlator.cmod.services.NotificationService"
             android:foregroundServiceType="specialUse"
@@ -47,6 +64,28 @@
             android:name="com.winlator.cmod.OnboardingActivity"
             android:theme="@style/AppThemeFullscreen.Dark"
             android:screenOrientation="sensor"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
+            android:exported="false" />
+
+        <service
+            android:name="com.winlator.cmod.ui.settings.GpuTestWorkerService"
+            android:process=":labs_gpu_test"
+            android:exported="false"
+            android:stopWithTask="true" />
+
+        <activity
+            android:name="com.winlator.cmod.ui.settings.GpuTestsActivity"
+            android:theme="@style/AppThemeFullscreen.Dark"
+            android:screenOrientation="sensor"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
+            android:exported="false" />
+
+        <activity
+            android:name="com.winlator.cmod.ui.settings.WinlatorLabsActivity"
+            android:theme="@style/AppThemeFullscreen.Dark"
+            android:screenOrientation="sensor"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
             android:exported="false" />
 
@@ -78,7 +117,7 @@
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:screenOrientation="sensorLandscape"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation|locale|layoutDirection"
             android:exported="true" />
 
         <activity
@@ -88,7 +127,7 @@
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
             android:process=":vr_process"
-            android:configChanges="density|orientation|screenSize|keyboard|keyboardHidden|uiMode"
+            android:configChanges="density|orientation|screenSize|keyboard|keyboardHidden|uiMode|locale|layoutDirection"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -10,6 +10,9 @@
 #include <chrono>
 #include <inttypes.h>
 #include <dlfcn.h>
+#include "vk_dispatch.h"
+#include "lsfg/vkr_lsfg.h"
+#include "wfg/vkr_wfg.h"
 #include "window_vert.h"
 #include "window_frag.h"
 #include "window_sgsr_frag.h"
@@ -40,6 +43,16 @@ VulkanRendererContext::VulkanRendererContext(ANativeWindow* win, int cW, int cH,
     createInstance(); createSurface(); pickPhysicalDevice(); createLogicalDevice();
     createSwapchain(); createRenderPass(); createDSLayout();
     createPipeline(true, pipeline);
+#ifdef LUDASHI_NATIVE_X11
+    // Compile once at startup, never while processing a game frame. Keep the
+    // blended pipeline for the alpha cursor and as a driver-error fallback.
+    try { createPipeline(false, opaquePipeline); }
+    catch (const std::exception& e) {
+        opaquePipeline = VK_NULL_HANDLE;
+        RLOG_E("Native opaque pipeline unavailable: %s", e.what());
+    }
+    opaquePipelineAttempted = true;
+#endif
     createFramebuffers(); createCmdPool(); createSampler();
     createWinTexPool(); createCursorDS(); createCmdBufs(); createSyncObjects();
     isRunning = true;
@@ -56,6 +69,7 @@ VulkanRendererContext::~VulkanRendererContext() {
 
     for (auto& retired : deleteQueue) destroyTexNow(retired);
     deleteQueue.clear();
+    destroyFrameGeneration();
     cleanupSwapchain(); cleanupCursorTex();
 
     vk_.DestroySampler(device, sampler, nullptr);
@@ -65,6 +79,10 @@ VulkanRendererContext::~VulkanRendererContext() {
     if (stretchPipeline != VK_NULL_HANDLE) vk_.DestroyPipeline(device, stretchPipeline, nullptr);
     if (postfxPipeline != VK_NULL_HANDLE) vk_.DestroyPipeline(device, postfxPipeline, nullptr);
     vk_.DestroyPipeline(device, pipeline, nullptr);
+#ifdef LUDASHI_NATIVE_X11
+    if (opaquePipeline != VK_NULL_HANDLE) vk_.DestroyPipeline(device, opaquePipeline, nullptr);
+    if (nativeNoClearPass != VK_NULL_HANDLE) vk_.DestroyRenderPass(device, nativeNoClearPass, nullptr);
+#endif
     vk_.DestroyPipelineLayout(device, pipeLayout, nullptr);
     vk_.DestroyDescriptorSetLayout(device, dsLayout, nullptr);
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -72,7 +90,12 @@ VulkanRendererContext::~VulkanRendererContext() {
         vk_.DestroyFence(device, inFlightFences[i], nullptr);
     }
     vk_.DestroyCommandPool(device, cmdPool, nullptr);
+    if (frameGenRenderPass != VK_NULL_HANDLE)
+        vk_.DestroyRenderPass(device, frameGenRenderPass, nullptr);
     vk_.DestroyRenderPass(device, renderPass, nullptr);
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeGpuQueries != VK_NULL_HANDLE) vk_.DestroyQueryPool(device, nativeGpuQueries, nullptr);
+#endif
     vk_.DestroyDevice(device, nullptr);
     vk_.DestroySurfaceKHR(instance, surface, nullptr);
     if (validationMessenger != VK_NULL_HANDLE) {
@@ -81,6 +104,7 @@ VulkanRendererContext::~VulkanRendererContext() {
         if (destroyMessenger) destroyMessenger(instance, validationMessenger, nullptr);
     }
     vk_.DestroyInstance(instance, nullptr);
+    vkd_unload();
     if (adrenotoolsHandle) { dlclose(adrenotoolsHandle); adrenotoolsHandle = nullptr; }
 }
 
@@ -91,6 +115,8 @@ void VulkanRendererContext::loadInstanceDispatch() {
     LOAD_I2(EnumeratePhysicalDevices);
     LOAD_I2(GetPhysicalDeviceProperties);
     LOAD_I2(GetPhysicalDeviceMemoryProperties);
+    LOAD_I2(GetPhysicalDeviceFeatures2);
+    LOAD_I2(GetPhysicalDeviceFormatProperties);
     LOAD_I2(GetPhysicalDeviceSurfaceCapabilitiesKHR);
     LOAD_I2(GetPhysicalDeviceSurfaceFormatsKHR);
     LOAD_I2(GetPhysicalDeviceSurfacePresentModesKHR);
@@ -159,6 +185,7 @@ void VulkanRendererContext::loadDeviceDispatch() {
     LOAD_D2(CmdBindPipeline);
     LOAD_D2(CmdBindDescriptorSets);
     LOAD_D2(CmdDraw);
+    LOAD_D2(CmdExecuteCommands);
     LOAD_D2(CmdPushConstants);
     LOAD_D2(CmdSetViewport);
     LOAD_D2(CmdSetScissor);
@@ -174,6 +201,13 @@ void VulkanRendererContext::loadDeviceDispatch() {
     LOAD_D2(WaitForFences);
     LOAD_D2(ResetFences);
     LOAD_D2(GetFenceStatus);
+#ifdef LUDASHI_NATIVE_X11
+    LOAD_D2(CreateQueryPool);
+    LOAD_D2(DestroyQueryPool);
+    LOAD_D2(GetQueryPoolResults);
+    LOAD_D2(CmdResetQueryPool);
+    LOAD_D2(CmdWriteTimestamp);
+#endif
 
     vk_.GetAndroidHardwareBufferPropertiesANDROID =
         (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)d("vkGetAndroidHardwareBufferPropertiesANDROID");
@@ -197,13 +231,23 @@ void VulkanRendererContext::createInstance() {
     if (!vk_.CreateInstance) throw std::runtime_error("vkCreateInstance unavailable");
     VkApplicationInfo ai{}; ai.sType=VK_STRUCTURE_TYPE_APPLICATION_INFO;
     ai.pApplicationName="Winlator"; ai.apiVersion=VK_API_VERSION_1_3;
+    auto enumerateVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        gipa(nullptr, "vkEnumerateInstanceVersion"));
+    uint32_t loaderVersion = VK_API_VERSION_1_0;
+    if (enumerateVersion && enumerateVersion(&loaderVersion) == VK_SUCCESS)
+        ai.apiVersion = std::min(ai.apiVersion, loaderVersion);
     const char* ext[]={"VK_KHR_surface","VK_KHR_android_surface",
-                       VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+                       VK_EXT_DEBUG_UTILS_EXTENSION_NAME, nullptr};
     VkInstanceCreateInfo ci{}; ci.sType=VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     ci.pApplicationInfo=&ai; ci.enabledExtensionCount=2; ci.ppEnabledExtensionNames=ext;
 
     const char* validationLayer = "VK_LAYER_KHRONOS_validation";
     bool enableValidation = false;
+    bool enableDebugUtils = false;
+#ifdef LUDASHI_NATIVE_X11
+    const VkValidationFeatureEnableEXT syncFeature = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+    VkValidationFeaturesEXT validationFeatures{};
+#endif
     VkDebugUtilsMessengerCreateInfoEXT debugInfo{};
     if (validationRequested) {
         auto enumerateLayers = reinterpret_cast<PFN_vkEnumerateInstanceLayerProperties>(
@@ -224,18 +268,20 @@ void VulkanRendererContext::createInstance() {
 
             auto enumerateExtensions = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
                 gipa(nullptr, "vkEnumerateInstanceExtensionProperties"));
-            auto hasDebugUtils = [&](const char* layerName) {
+            auto hasExtension = [&](const char* layerName, const char* name) {
                 uint32_t extensionCount = 0;
                 if (!enumerateExtensions ||
                     enumerateExtensions(layerName, &extensionCount, nullptr) != VK_SUCCESS)
                     return false;
                 std::vector<VkExtensionProperties> extensions(extensionCount);
                 return enumerateExtensions(layerName, &extensionCount, extensions.data()) == VK_SUCCESS &&
-                    std::any_of(extensions.begin(), extensions.end(), [](const VkExtensionProperties& e) {
-                        return strcmp(e.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0;
+                    std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& e) {
+                        return strcmp(e.extensionName, name) == 0;
                     });
             };
-            if (hasDebugUtils(nullptr) || hasDebugUtils(validationLayer)) {
+            if (hasExtension(nullptr, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) ||
+                hasExtension(validationLayer, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+                enableDebugUtils = true;
                 ci.enabledExtensionCount = 3;
                 debugInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
                 debugInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -246,6 +292,19 @@ void VulkanRendererContext::createInstance() {
                 debugInfo.pfnUserCallback = logValidationMessage;
                 ci.pNext = &debugInfo;
             }
+#ifdef LUDASHI_NATIVE_X11
+            // Explicit validation opt-in only. Core validation alone does not
+            // enable the read/write hazard checks needed for stale-frame diagnosis.
+            if (hasExtension(validationLayer, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) ||
+                hasExtension(nullptr, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME)) {
+                ext[ci.enabledExtensionCount++] = VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME;
+                validationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+                validationFeatures.pNext = ci.pNext;
+                validationFeatures.enabledValidationFeatureCount = 1;
+                validationFeatures.pEnabledValidationFeatures = &syncFeature;
+                ci.pNext = &validationFeatures;
+            }
+#endif
         } else {
             RLOG_E("WINLATOR_VULKAN_VALIDATION requested, but VK_LAYER_KHRONOS_validation is unavailable");
         }
@@ -255,6 +314,7 @@ void VulkanRendererContext::createInstance() {
     if (result != VK_SUCCESS && enableValidation) {
         RLOG_E("validation instance creation failed (%d), retrying without the layer", result);
         enableValidation = false;
+        enableDebugUtils = false;
         ci.enabledLayerCount = 0;
         ci.ppEnabledLayerNames = nullptr;
         ci.enabledExtensionCount = 2;
@@ -266,8 +326,8 @@ void VulkanRendererContext::createInstance() {
     loadInstanceDispatch();
     if (enableValidation) {
         RLOG_E("VK_LAYER_KHRONOS_validation enabled for Vulkan renderer (debug_utils=%d)",
-               ci.pNext ? 1 : 0);
-        if (ci.pNext) {
+               enableDebugUtils ? 1 : 0);
+        if (enableDebugUtils) {
             auto createMessenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
                 gipa(instance, "vkCreateDebugUtilsMessengerEXT"));
             if (!createMessenger ||
@@ -300,6 +360,7 @@ void VulkanRendererContext::pickPhysicalDevice() {
             if ((qProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && present) {
                 physicalDevice = d;
                 graphicsQueueFamilyIndex = i;
+                graphicsQueueSupportsCompute = (qProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
                 return;
             }
         }
@@ -343,9 +404,84 @@ void VulkanRendererContext::createLogicalDevice() {
     };
     for (const char* ext : extList)
         RLOG("Enabled Vulkan device extension: %s", ext);
+
+    VkPhysicalDeviceProperties props{};
+    vk_.GetPhysicalDeviceProperties(physicalDevice, &props);
+
+    VkPhysicalDeviceShaderFloat16Int8Features float16Probe{};
+    float16Probe.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    VkPhysicalDeviceVulkanMemoryModelFeatures memoryModelProbe{};
+    memoryModelProbe.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
+    memoryModelProbe.pNext = &float16Probe;
+    VkPhysicalDeviceFeatures2 featureProbe{};
+    featureProbe.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    featureProbe.pNext = props.apiVersion >= VK_API_VERSION_1_3 ? &memoryModelProbe : nullptr;
+    if (vk_.GetPhysicalDeviceFeatures2)
+        vk_.GetPhysicalDeviceFeatures2(physicalDevice, &featureProbe);
+
+    const VkFormat requiredFormats[] = {
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_FORMAT_R8_UNORM,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+    };
+    bool formatsSupported = vk_.GetPhysicalDeviceFormatProperties != nullptr;
+    for (VkFormat format : requiredFormats) {
+        VkFormatProperties formatProps{};
+        if (formatsSupported)
+            vk_.GetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProps);
+        const VkFormatFeatureFlags required =
+            VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+            const VkFormatFeatureFlags compositeRequired = required |
+                VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+                VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+            frameGenCompositeFormatSupported =
+                (formatProps.optimalTilingFeatures & compositeRequired) == compositeRequired;
+        }
+        if ((formatProps.optimalTilingFeatures & required) != required) {
+            formatsSupported = false;
+            break;
+        }
+    }
+
+    frameGenDeviceSupported = props.apiVersion >= VK_API_VERSION_1_3 && graphicsQueueSupportsCompute &&
+        formatsSupported && memoryModelProbe.vulkanMemoryModel == VK_TRUE &&
+        featureProbe.features.shaderStorageImageWriteWithoutFormat == VK_TRUE &&
+        featureProbe.features.shaderStorageImageExtendedFormats == VK_TRUE;
+
+    // WFG's embedded SPIR-V 1.3 shaders use typed storage images and FP32
+    // arithmetic. The LSFG Vulkan-1.3/memory-model gate must not reject WFG.
+    wfgDeviceSupported = props.apiVersion >= VK_API_VERSION_1_1 && graphicsQueueSupportsCompute &&
+        frameGenCompositeFormatSupported &&
+        featureProbe.features.shaderStorageImageExtendedFormats == VK_TRUE;
+
+    VkPhysicalDeviceFeatures enabledFeatures{};
+    if (wfgDeviceSupported)
+        enabledFeatures.shaderStorageImageExtendedFormats = VK_TRUE;
+    VkPhysicalDeviceVulkanMemoryModelFeatures memoryModelEnable{};
+    memoryModelEnable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
+    VkPhysicalDeviceShaderFloat16Int8Features float16Enable{};
+    float16Enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    void* featureChain = nullptr;
+    if (frameGenDeviceSupported) {
+        enabledFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+        enabledFeatures.shaderStorageImageExtendedFormats = VK_TRUE;
+        memoryModelEnable.vulkanMemoryModel = VK_TRUE;
+        memoryModelEnable.pNext = featureChain;
+        featureChain = &memoryModelEnable;
+        if (float16Probe.shaderFloat16 == VK_TRUE) {
+            float16Enable.shaderFloat16 = VK_TRUE;
+            float16Enable.pNext = featureChain;
+            featureChain = &float16Enable;
+            frameGenShaderFloat16 = true;
+        }
+    }
+
     VkDeviceCreateInfo ci{}; ci.sType=VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     ci.pQueueCreateInfos=&qi; ci.queueCreateInfoCount=1;
     ci.enabledExtensionCount=(uint32_t)extList.size(); ci.ppEnabledExtensionNames=extList.data();
+    ci.pEnabledFeatures = &enabledFeatures;
+    ci.pNext = featureChain;
     if (vk_.CreateDevice(physicalDevice,&ci,nullptr,&device)!=VK_SUCCESS) throw std::runtime_error("device");
     vk_.GetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)gipa(instance, "vkGetDeviceProcAddr");
     loadDeviceDispatch();
@@ -353,8 +489,6 @@ void VulkanRendererContext::createLogicalDevice() {
 
     vk_.GetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
 
-    VkPhysicalDeviceProperties props{};
-    vk_.GetPhysicalDeviceProperties(physicalDevice, &props);
     maxAnisotropy = props.limits.maxSamplerAnisotropy;
 }
 
@@ -402,6 +536,22 @@ void VulkanRendererContext::createSwapchain() {
     uint32_t fmtN=0; vk_.GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice,surface,&fmtN,nullptr);
     std::vector<VkSurfaceFormatKHR> fmts(fmtN); vk_.GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice,surface,&fmtN,fmts.data());
     swapchainFmt = VK_FORMAT_R8G8B8A8_UNORM;
+    VkColorSpaceKHR colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    for (const auto& format : fmts) {
+        if (format.format == swapchainFmt) {
+            colorSpace = format.colorSpace;
+            break;
+        }
+    }
+
+    const bool transferDstSupported =
+        (caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0;
+    const bool storageUsageSupported =
+        (caps.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT) != 0;
+    frameGenSurfaceSupported = transferDstSupported &&
+                               frameGenCompositeFormatSupported;
+    const bool wantsFrameGen = frameGenRequested && frameGenerationDeviceSupported() && frameGenSurfaceSupported;
+
     uint32_t imgCount=caps.minImageCount+1;
     if (caps.maxImageCount>0&&imgCount>caps.maxImageCount) imgCount=caps.maxImageCount;
 
@@ -410,7 +560,9 @@ void VulkanRendererContext::createSwapchain() {
     availablePresentModes.resize(pmCount);
     vk_.GetPhysicalDeviceSurfacePresentModesKHR(physicalDevice,surface,&pmCount,availablePresentModes.data());
     VkPresentModeKHR presentMode=VK_PRESENT_MODE_FIFO_KHR;
-    for (auto pm:availablePresentModes) if(pm==requestedPresentMode){presentMode=pm;break;}
+    if (!wantsFrameGen) {
+        for (auto pm:availablePresentModes) if(pm==requestedPresentMode){presentMode=pm;break;}
+    }
     if(verboseLog){
         std::string pmList;
         for(auto pm:availablePresentModes) pmList+=std::to_string((int)pm)+" ";
@@ -427,14 +579,42 @@ void VulkanRendererContext::createSwapchain() {
 
     VkSwapchainCreateInfoKHR ci{}; ci.sType=VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     ci.surface=surface; ci.minImageCount=imgCount; ci.imageFormat=swapchainFmt;
-    ci.imageColorSpace=VK_COLOR_SPACE_SRGB_NONLINEAR_KHR; ci.imageExtent=swapchainExt;
+    ci.imageColorSpace=colorSpace; ci.imageExtent=swapchainExt;
     ci.imageArrayLayers=1; ci.imageUsage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (wantsFrameGen) ci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    // Direct storage writes remove the intermediate generated images and their
+    // copies.  Acquisition remains strictly sequential because Android
+    // BufferQueue implementations may allow only one dequeued image.
+    frameGenSwapchainStorage = wantsFrameGen && storageUsageSupported &&
+                               !frameGenSwapchainStorageRejected;
+    if (frameGenSwapchainStorage) ci.imageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
     ci.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE; ci.preTransform=pre;
     ci.compositeAlpha=compositeAlpha; ci.presentMode=presentMode; ci.clipped=VK_TRUE;
     ci.oldSwapchain=oldSwapchain;
-    VkSwapchainKHR newSwapchain=VK_NULL_HANDLE;
-    if (vk_.CreateSwapchainKHR(device,&ci,nullptr,&newSwapchain)!=VK_SUCCESS) throw std::runtime_error("swapchain");
-    swapchain=newSwapchain;
+    VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
+    VkResult swapchainResult = vk_.CreateSwapchainKHR(device,&ci,nullptr,&newSwapchain);
+    if (swapchainResult != VK_SUCCESS && wantsFrameGen && frameGenSwapchainStorage) {
+        FGLOG_E("Frame generation fast swapchain failed result=%d usage=0x%x supportedUsage=0x%x; "
+                "retrying without STORAGE",
+                (int)swapchainResult, (unsigned)ci.imageUsage,
+                (unsigned)caps.supportedUsageFlags);
+        frameGenSwapchainStorage = false;
+        frameGenSwapchainStorageRejected = true;
+        ci.imageUsage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+        newSwapchain = VK_NULL_HANDLE;
+        swapchainResult = vk_.CreateSwapchainKHR(device,&ci,nullptr,&newSwapchain);
+    }
+    if (swapchainResult != VK_SUCCESS) {
+        FGLOG_E("createSwapchain failed result=%d requested=%d usage=0x%x "
+                "supportedUsage=0x%x images=%u min=%u max=%u extent=%ux%u",
+                (int)swapchainResult, (int)frameGenRequested, (unsigned)ci.imageUsage,
+                (unsigned)caps.supportedUsageFlags, imgCount, caps.minImageCount,
+                caps.maxImageCount, swapchainExt.width, swapchainExt.height);
+        throw std::runtime_error("swapchain");
+    }
+    swapchain = newSwapchain;
+    RLOG("swapchain created: %dx%d format=%d presentMode=%d compositeAlpha=%d imgCount=%u",
+        swapchainExt.width,swapchainExt.height,(int)swapchainFmt,(int)presentMode,(int)compositeAlpha,imgCount);
     if (oldSwapchain!=VK_NULL_HANDLE) vk_.DestroySwapchainKHR(device,oldSwapchain,nullptr);
     vk_.GetSwapchainImagesKHR(device,swapchain,&imgCount,nullptr);
     swapchainImages.resize(imgCount); vk_.GetSwapchainImagesKHR(device,swapchain,&imgCount,swapchainImages.data());
@@ -476,6 +656,53 @@ void VulkanRendererContext::createRenderPass() {
     ci.attachmentCount=1; ci.pAttachments=&att; ci.subpassCount=1; ci.pSubpasses=&sub;
     ci.dependencyCount=1; ci.pDependencies=&dep;
     if (vk_.CreateRenderPass(device,&ci,nullptr,&renderPass)!=VK_SUCCESS) throw std::runtime_error("renderpass");
+#ifdef LUDASHI_NATIVE_X11
+    // Load/store operations do not affect render-pass compatibility. The same
+    // framebuffers/pipelines can use this pass when an opaque draw covers them.
+    att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    if (vk_.CreateRenderPass(device,&ci,nullptr,&nativeNoClearPass)!=VK_SUCCESS) {
+        nativeNoClearPass = VK_NULL_HANDLE;
+        RLOG_E("Native no-clear render pass unavailable; using CLEAR");
+    }
+#endif
+}
+
+void VulkanRendererContext::createFrameGenRenderPass() {
+    if (frameGenRenderPass != VK_NULL_HANDLE) return;
+    VkAttachmentDescription att{}; att.format=swapchainFmt; att.samples=VK_SAMPLE_COUNT_1_BIT;
+    att.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR; att.storeOp=VK_ATTACHMENT_STORE_OP_STORE;
+    att.stencilLoadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE; att.stencilStoreOp=VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    att.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED; att.finalLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkAttachmentReference ref{0,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkSubpassDescription sub{}; sub.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS;
+    sub.colorAttachmentCount=1; sub.pColorAttachments=&ref;
+    VkSubpassDependency dep{}; dep.srcSubpass=VK_SUBPASS_EXTERNAL; dep.dstSubpass=0;
+    dep.srcStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; dep.srcAccessMask=0;
+    dep.dstStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    VkRenderPassCreateInfo ci{}; ci.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    ci.attachmentCount=1; ci.pAttachments=&att; ci.subpassCount=1; ci.pSubpasses=&sub;
+    ci.dependencyCount=1; ci.pDependencies=&dep;
+    att.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+    VkSubpassDependency frameGenDeps[2]{};
+    frameGenDeps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    frameGenDeps[0].dstSubpass = 0;
+    frameGenDeps[0].srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    frameGenDeps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    frameGenDeps[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+    frameGenDeps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    frameGenDeps[1].srcSubpass = 0;
+    frameGenDeps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    frameGenDeps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    frameGenDeps[1].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    frameGenDeps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    frameGenDeps[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+    ci.dependencyCount = 2;
+    ci.pDependencies = frameGenDeps;
+    if (vk_.CreateRenderPass(device, &ci, nullptr, &frameGenRenderPass) != VK_SUCCESS)
+        throw std::runtime_error("framegen renderpass");
 }
 
 void VulkanRendererContext::createDSLayout() {
@@ -520,8 +747,9 @@ void VulkanRendererContext::createPipeline(bool blend, VkPipeline& out) {
     pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
     pi.pViewportState=&vp; pi.pRasterizationState=&rast; pi.pMultisampleState=&ms;
     pi.pColorBlendState=&cb; pi.pDynamicState=&ds; pi.layout=pipeLayout; pi.renderPass=renderPass; pi.subpass=0;
-    if (vk_.CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&out)!=VK_SUCCESS) throw std::runtime_error("pipeline");
+    const VkResult pipelineResult = vk_.CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&out);
     vk_.DestroyShaderModule(device,frag,nullptr); vk_.DestroyShaderModule(device,vert,nullptr);
+    if (pipelineResult!=VK_SUCCESS) throw std::runtime_error("pipeline");
 }
 
 void VulkanRendererContext::createCursorPipeline() {  }
@@ -659,6 +887,19 @@ void VulkanRendererContext::createFramebuffers() {
         fi.width=swapchainExt.width; fi.height=swapchainExt.height; fi.layers=1;
         if (vk_.CreateFramebuffer(device,&fi,nullptr,&swapchainFBs[i])!=VK_SUCCESS) throw std::runtime_error("fb");
     }
+
+    if (frameGenRequested && frameGenSurfaceSupported) {
+        createFrameGenRenderPass();
+        frameGenRenderDoneSems.resize(swapchainImages.size(), VK_NULL_HANDLE);
+        VkSemaphoreCreateInfo si{};
+        si.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        for (VkSemaphore& semaphore : frameGenRenderDoneSems) {
+            if (vk_.CreateSemaphore(device, &si, nullptr, &semaphore) != VK_SUCCESS)
+                throw std::runtime_error("framegen present semaphore");
+        }
+        if (!ensureFrameGenerationResources())
+            FGLOG_E("Frame generation resources unavailable; renderer will use the direct path");
+    }
 }
 
 void VulkanRendererContext::createCmdPool() {
@@ -698,6 +939,25 @@ void VulkanRendererContext::createCmdBufs() {
     VkCommandBufferAllocateInfo ai{}; ai.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     ai.commandPool=cmdPool; ai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount=MAX_FRAMES_IN_FLIGHT;
     if (vk_.AllocateCommandBuffers(device,&ai,cmdBufs.data())!=VK_SUCCESS) throw std::runtime_error("cmdbuf");
+
+#ifdef LUDASHI_NATIVE_X11
+    ai.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+    if (vk_.AllocateCommandBuffers(device, &ai, nativeCursorCommands.data()) != VK_SUCCESS)
+        throw std::runtime_error("native cursor cmdbuf");
+    ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+#endif
+    if (frameGenRequested && frameGenSurfaceSupported) {
+        VkSemaphoreCreateInfo si{}; si.sType=VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        for (auto& semaphores : frameGenAcquireSems)
+            for (auto& semaphore : semaphores)
+                if (vk_.CreateSemaphore(device, &si, nullptr, &semaphore) != VK_SUCCESS)
+                    throw std::runtime_error("framegen acquire semaphore");
+        ai.commandBufferCount = MAX_FRAMEGEN_GENERATIONS;
+        for (auto& buffers : frameGenPresentCmdBufs) {
+            if (vk_.AllocateCommandBuffers(device, &ai, buffers.data()) != VK_SUCCESS)
+                throw std::runtime_error("framegen present cmdbuf");
+        }
+    }
 }
 
 void VulkanRendererContext::createSyncObjects() {
@@ -711,17 +971,310 @@ void VulkanRendererContext::createSyncObjects() {
 }
 
 void VulkanRendererContext::cleanupSwapchain() {
-    for (auto fb:swapchainFBs) vk_.DestroyFramebuffer(device,fb,nullptr); swapchainFBs.clear();
-    for (auto iv:swapchainViews) vk_.DestroyImageView(device,iv,nullptr); swapchainViews.clear();
+#ifdef LUDASHI_NATIVE_X11
+    // All callers drain GPU work before destroying the swapchain.
+    nativeCommands.Clear([&](VkCommandBuffer cb) { vk_.FreeCommandBuffers(device, cmdPool, 1, &cb); });
+    for (auto& cb : nativeCursorCommands) if (cb != VK_NULL_HANDLE) {
+        vk_.FreeCommandBuffers(device, cmdPool, 1, &cb); cb = VK_NULL_HANDLE;
+    }
+    nativeSceneCommand = VK_NULL_HANDLE;
+    nativeGpuPending.fill(false);
+#endif
+    for (auto& semaphores : frameGenAcquireSems)
+        for (auto& semaphore : semaphores) {
+            if (semaphore != VK_NULL_HANDLE) vk_.DestroySemaphore(device, semaphore, nullptr);
+            semaphore = VK_NULL_HANDLE;
+        }
+    destroyFrameGenTargets();
+    for (VkSemaphore semaphore : frameGenRenderDoneSems)
+        if (semaphore != VK_NULL_HANDLE) vk_.DestroySemaphore(device, semaphore, nullptr);
+    frameGenRenderDoneSems.clear();
+    for (auto fb:swapchainFBs)
+        if (fb != VK_NULL_HANDLE) vk_.DestroyFramebuffer(device,fb,nullptr);
+    swapchainFBs.clear();
+    for (auto iv:swapchainViews)
+        if (iv != VK_NULL_HANDLE) vk_.DestroyImageView(device,iv,nullptr);
+    swapchainViews.clear();
     for (auto sem:renderDoneSems) if (sem!=VK_NULL_HANDLE) vk_.DestroySemaphore(device,sem,nullptr);
     renderDoneSems.clear();
     if (!cmdBufs.empty()){vk_.FreeCommandBuffers(device,cmdPool,(uint32_t)cmdBufs.size(),cmdBufs.data());cmdBufs.clear();}
+    for (auto& buffers : frameGenPresentCmdBufs) {
+        if (buffers[0] != VK_NULL_HANDLE)
+            vk_.FreeCommandBuffers(device, cmdPool, MAX_FRAMEGEN_GENERATIONS, buffers.data());
+        buffers.fill(VK_NULL_HANDLE);
+    }
     if (swapchain!=VK_NULL_HANDLE) {
         vk_.DestroySwapchainKHR(device,swapchain,nullptr);
         swapchain=VK_NULL_HANDLE;
     }
     swapchainImages.clear();
     imgInFlight.clear();
+    frameGenSwapchainStorage = false;
+}
+
+uint32_t VulkanRendererContext::desiredFrameGenGenerations() const {
+    if (!frameGenRequested) return 0;
+    if (frameGenTargetRate != 0) return MAX_FRAMEGEN_GENERATIONS;
+    const uint32_t multiplier = std::clamp(frameGenMultiplier, 2u, 4u);
+    return std::min(multiplier - 1u, MAX_FRAMEGEN_GENERATIONS);
+}
+
+uint32_t VulkanRendererContext::frameGenCapacity() const {
+    if (swapchainImages.empty()) return 0;
+    return std::min(desiredFrameGenGenerations(), MAX_FRAMEGEN_GENERATIONS);
+}
+
+bool VulkanRendererContext::frameGenerationActive() const {
+    if (!frameGenRequested || !frameGenerationDeviceSupported() || !frameGenSurfaceSupported ||
+        !frameGenPrepared || (frameGenEngine == 1 ? !wfg : !frameGen) || frameGenCapacity() == 0 ||
+        frameGenRenderDoneSems.size() != swapchainImages.size()) {
+        return false;
+    }
+    for (const auto& buffers : frameGenPresentCmdBufs)
+        for (uint32_t i = 0; i < frameGenCapacity(); ++i)
+            if (buffers[i] == VK_NULL_HANDLE) return false;
+    const uint32_t requiredTargets = MAX_FRAMES_IN_FLIGHT +
+        (frameGenSwapchainStorage ? 0u : frameGenCapacity());
+    return frameGenTargets.size() >= requiredTargets;
+}
+
+bool VulkanRendererContext::createFrameGenTargets(uint32_t count) {
+    if (count < MAX_FRAMES_IN_FLIGHT || count > MAX_FRAMEGEN_TARGETS ||
+        swapchainExt.width == 0 || swapchainExt.height == 0 ||
+        frameGenRenderPass == VK_NULL_HANDLE) {
+        return false;
+    }
+    if (frameGenTargets.size() == count && !frameGenTargets.empty() &&
+        frameGenTargets[0].width == swapchainExt.width &&
+        frameGenTargets[0].height == swapchainExt.height) {
+        return true;
+    }
+
+    destroyFrameGenTargets();
+    frameGenTargets.resize(count);
+    try {
+        for (FrameGenTarget& target : frameGenTargets) {
+            target.width = swapchainExt.width;
+            target.height = swapchainExt.height;
+
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.format = swapchainFmt;
+            imageInfo.extent = {target.width, target.height, 1};
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                              VK_IMAGE_USAGE_SAMPLED_BIT |
+                              VK_IMAGE_USAGE_STORAGE_BIT |
+                              VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            if (vk_.CreateImage(device, &imageInfo, nullptr, &target.image) != VK_SUCCESS)
+                throw std::runtime_error("framegen image");
+
+            VkMemoryRequirements requirements{};
+            vk_.GetImageMemoryRequirements(device, target.image, &requirements);
+            VkMemoryAllocateInfo memoryInfo{};
+            memoryInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            memoryInfo.allocationSize = requirements.size;
+            memoryInfo.memoryTypeIndex = findMemType(
+                requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            if (vk_.AllocateMemory(device, &memoryInfo, nullptr, &target.memory) != VK_SUCCESS ||
+                vk_.BindImageMemory(device, target.image, target.memory, 0) != VK_SUCCESS) {
+                throw std::runtime_error("framegen image memory");
+            }
+
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = target.image;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = swapchainFmt;
+            viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            if (vk_.CreateImageView(device, &viewInfo, nullptr, &target.view) != VK_SUCCESS)
+                throw std::runtime_error("framegen image view");
+
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = frameGenRenderPass;
+            framebufferInfo.attachmentCount = 1;
+            framebufferInfo.pAttachments = &target.view;
+            framebufferInfo.width = target.width;
+            framebufferInfo.height = target.height;
+            framebufferInfo.layers = 1;
+            if (vk_.CreateFramebuffer(device, &framebufferInfo, nullptr,
+                                      &target.framebuffer) != VK_SUCCESS) {
+                throw std::runtime_error("framegen framebuffer");
+            }
+        }
+    } catch (...) {
+        destroyFrameGenTargets();
+        return false;
+    }
+    return true;
+}
+
+void VulkanRendererContext::destroyFrameGenTargets() {
+    if (frameGen) vkr_lsfg_forget_targets(frameGen);
+    if (wfg) vkr_wfg_forget_targets(wfg);
+    for (FrameGenTarget& target : frameGenTargets) {
+        if (target.framebuffer != VK_NULL_HANDLE)
+            vk_.DestroyFramebuffer(device, target.framebuffer, nullptr);
+        if (target.view != VK_NULL_HANDLE)
+            vk_.DestroyImageView(device, target.view, nullptr);
+        if (target.image != VK_NULL_HANDLE)
+            vk_.DestroyImage(device, target.image, nullptr);
+        if (target.memory != VK_NULL_HANDLE)
+            vk_.FreeMemory(device, target.memory, nullptr);
+    }
+    frameGenTargets.clear();
+    frameGenPrepared = false;
+}
+
+void VulkanRendererContext::destroyFrameGeneration() {
+    destroyFrameGenTargets();
+    if (frameGen) {
+        vkr_lsfg_destroy(frameGen);
+        frameGen = nullptr;
+    }
+    frameGenPrepared = false;
+    if (wfg) { vkr_wfg_destroy(wfg); wfg = nullptr; }
+    frameGenGeneratedFrames.store(0, std::memory_order_relaxed);
+}
+
+bool VulkanRendererContext::ensureFrameGenerationResources() {
+    if (!frameGenRequested || !frameGenerationDeviceSupported() || !frameGenSurfaceSupported ||
+        (frameGenEngine == 0 && frameGenCachePath.empty()) || frameGenCapacity() == 0) {
+        frameGenPrepared = false;
+        return false;
+    }
+
+    if (frameGenEngine == 1) {
+        if (!wfgDispatchReady) {
+            wfgDispatchReady = vkr_wfg_bind_dispatch(gipa, instance);
+            if (!wfgDispatchReady) return false;
+        }
+        if (!wfg) wfg = vkr_wfg_create(device, physicalDevice);
+        if (!wfg) return false;
+        vkr_wfg_configure(wfg, frameGenMultiplier, frameGenTargetRate,
+                          static_cast<uint32_t>(std::lround(frameGenFlowScale * 100.f)),
+                          frameGenRefreshRate);
+        const uint32_t count = MAX_FRAMES_IN_FLIGHT +
+            (frameGenSwapchainStorage ? 0u : frameGenCapacity());
+        if (!createFrameGenTargets(count)) return false;
+        vkr_wfg_forget_targets(wfg);
+        frameGenPrepared = vkr_wfg_prepare(wfg, swapchainExt.width, swapchainExt.height, swapchainFmt);
+        return frameGenPrepared;
+    }
+
+    // Keep the LSFG dispatch unloaded until a real enable request.
+    if (!frameGenDispatchReady) {
+        frameGenDispatchReady = vkd_init_from_gipa(gipa) && vkd_load_instance(instance);
+        if (!frameGenDispatchReady) return false;
+    }
+    if (!frameGen) {
+        std::string firstPath = frameGenCachePath;
+        const std::string fp16Name = "shaders-fp16.cache";
+        const size_t fp16At = firstPath.rfind(fp16Name);
+        if (!frameGenShaderFloat16 && fp16At != std::string::npos)
+            firstPath.replace(fp16At, fp16Name.size(), "shaders-fp32.cache");
+
+        frameGen = vkr_lsfg_create(device, physicalDevice, firstPath.c_str(), frameGenShaderFloat16);
+        if (!frameGen && firstPath != frameGenCachePath)
+            frameGen = vkr_lsfg_create(device, physicalDevice, frameGenCachePath.c_str(), frameGenShaderFloat16);
+        if (!frameGen && fp16At != std::string::npos && firstPath == frameGenCachePath) {
+            std::string fallback = frameGenCachePath;
+            fallback.replace(fp16At, fp16Name.size(), "shaders-fp32.cache");
+            frameGen = vkr_lsfg_create(device, physicalDevice, fallback.c_str(), frameGenShaderFloat16);
+        }
+        if (!frameGen) return false;
+    }
+
+    vkr_lsfg_configure(frameGen, frameGenMultiplier, frameGenTargetRate,
+                       frameGenFlowScale, frameGenRefreshRate);
+    vkr_lsfg_set_guest_extent(frameGen, static_cast<uint32_t>(std::max(containerWidth, 1)),
+                              static_cast<uint32_t>(std::max(containerHeight, 1)));
+
+    const uint32_t targetCount = MAX_FRAMES_IN_FLIGHT +
+        (frameGenSwapchainStorage ? 0u : frameGenCapacity());
+    if (!createFrameGenTargets(targetCount)) return false;
+
+    vkr_lsfg_forget_targets(frameGen);
+    frameGenPrepared = vkr_lsfg_prepare(frameGen, swapchainExt.width,
+                                        swapchainExt.height, swapchainFmt);
+    return frameGenPrepared;
+}
+
+void VulkanRendererContext::copyFrameGenTarget(VkCommandBuffer cb,
+                                                const FrameGenTarget& src,
+                                                VkImage dst) {
+    transition(cb, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+               0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+               VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkImageCopy copy{};
+    copy.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.extent = {swapchainExt.width, swapchainExt.height, 1};
+    vk_.CmdCopyImage(cb, src.image, VK_IMAGE_LAYOUT_GENERAL,
+                     dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+
+    transition(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+               VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+}
+
+void VulkanRendererContext::recordFrameGenOutputCmd(VkCommandBuffer cb,
+                                                     uint32_t output,
+                                                     uint32_t generatedCount,
+                                                     uint32_t swapchainIndex) {
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vk_.BeginCommandBuffer(cb, &begin) != VK_SUCCESS)
+        throw std::runtime_error("begin framegen output cmdbuf");
+
+    if (frameGenSwapchainStorage && output < generatedCount) {
+        // Every preceding generated submission is fenced before this command
+        // is recorded, so one descriptor target can be rebound safely.  This
+        // keeps the direct path independent of the swapchain image count.
+        generateFrameGeneration(cb, output, 0, swapchainImages[swapchainIndex],
+                                swapchainViews[swapchainIndex]);
+        transitionGeneratedSwapchainImage(cb, swapchainImages[swapchainIndex]);
+    } else {
+        const FrameGenTarget& src = output < generatedCount
+            ? frameGenTargets[MAX_FRAMES_IN_FLIGHT + output]
+            : frameGenTargets[currentFrame];
+
+        VkImageMemoryBarrier sourceReady{};
+        sourceReady.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        sourceReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT |
+                                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sourceReady.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        sourceReady.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        sourceReady.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        sourceReady.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceReady.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceReady.image = src.image;
+        sourceReady.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vk_.CmdPipelineBarrier(cb,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &sourceReady);
+
+        copyFrameGenTarget(cb, src, swapchainImages[swapchainIndex]);
+    }
+    if (vk_.EndCommandBuffer(cb) != VK_SUCCESS)
+        throw std::runtime_error("end framegen output cmdbuf");
+}
+
+void VulkanRendererContext::transitionGeneratedSwapchainImage(VkCommandBuffer cb,
+                                                               VkImage image) {
+    transition(cb, image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+               VK_ACCESS_SHADER_WRITE_BIT, 0, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+               VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
 }
 
 uint32_t VulkanRendererContext::findMemType(uint32_t filter, VkMemoryPropertyFlags props) {
@@ -931,6 +1484,9 @@ void VulkanRendererContext::ensureCursorTex(short w, short h) {
 }
 
 void VulkanRendererContext::cleanupCursorTex() {
+#ifdef LUDASHI_NATIVE_X11
+    ++nativeTextureEpoch;
+#endif
     if (cursorView!=VK_NULL_HANDLE){vk_.DestroyImageView(device,cursorView,nullptr);cursorView=VK_NULL_HANDLE;}
     if (cursorImg!=VK_NULL_HANDLE){vk_.DestroyImage(device,cursorImg,nullptr);cursorImg=VK_NULL_HANDLE;}
     if (cursorMem!=VK_NULL_HANDLE){vk_.FreeMemory(device,cursorMem,nullptr);cursorMem=VK_NULL_HANDLE;}
@@ -964,7 +1520,7 @@ void VulkanRendererContext::recordCmdBuf(VkCommandBuffer cb, uint32_t imgIdx,
     float ox, float oy, float sx, float sy, float cw, float ch,
     short ptrX, short ptrY, short curHotX, short curHotY,
     short curW, short curH, bool curVis,
-    VkRect2D scissorRect)
+    VkRect2D scissorRect, uint32_t, bool)
 {
     VkCommandBufferBeginInfo bi{}; bi.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     if (vk_.BeginCommandBuffer(cb,&bi)!=VK_SUCCESS) throw std::runtime_error("begin cb");
@@ -1177,6 +1733,11 @@ void VulkanRendererContext::flushDeleteQueue() {
 }
 
 void VulkanRendererContext::destroyTexNow(RetiredTex& retired) {
+#ifdef LUDASHI_NATIVE_X11
+    // Handle values may be reused after destruction. Never reuse an executable
+    // command buffer recorded against the previous lifetime of that handle.
+    ++nativeTextureEpoch;
+#endif
     WinTex& wt=retired.wt;
     if (wt.ds  !=VK_NULL_HANDLE) vk_.FreeDescriptorSets(device,winTexPool,1,&wt.ds);
     if (wt.view!=VK_NULL_HANDLE) vk_.DestroyImageView(device,wt.view,nullptr);
@@ -1186,8 +1747,97 @@ void VulkanRendererContext::destroyTexNow(RetiredTex& retired) {
     if (retired.ahb) AHardwareBuffer_release(retired.ahb);
 }
 
+#ifdef LUDASHI_NATIVE_X11
+void VulkanRendererContext::prepareNativeGpuTiming(uint32_t slot) {
+    if (!nativeGpuAttempted) {
+        nativeGpuAttempted = true;
+        VkPhysicalDeviceProperties properties{};
+        vk_.GetPhysicalDeviceProperties(physicalDevice, &properties);
+        nativeTimestampPeriod = properties.limits.timestampPeriod;
+        uint32_t count{};
+        vk_.GetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, nullptr);
+        std::vector<VkQueueFamilyProperties> queues(count);
+        vk_.GetPhysicalDeviceQueueFamilyProperties(physicalDevice, &count, queues.data());
+        if (graphicsQueueFamilyIndex < count)
+            nativeTimestampBits = queues[graphicsQueueFamilyIndex].timestampValidBits;
+        if (nativeTimestampBits && nativeTimestampPeriod > 0.f &&
+            vk_.CreateQueryPool && vk_.DestroyQueryPool && vk_.GetQueryPoolResults &&
+            vk_.CmdResetQueryPool && vk_.CmdWriteTimestamp) {
+            VkQueryPoolCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            info.queryCount = MAX_FRAMES_IN_FLIGHT * 2;
+            if (vk_.CreateQueryPool(device, &info, nullptr, &nativeGpuQueries) != VK_SUCCESS)
+                nativeGpuQueries = VK_NULL_HANDLE;
+        }
+        __android_log_print(ANDROID_LOG_INFO, "Winlator_NativeX11",
+            "X11GpuTiming supported=%d timestamp_bits=%u period_ns=%.3f mode=nonblocking device=%s driver=%u",
+            nativeGpuQueries != VK_NULL_HANDLE, nativeTimestampBits, nativeTimestampPeriod, properties.deviceName, properties.driverVersion);
+    }
+    if (!nativeGpuPending[slot]) return;
+    nativeGpuPending[slot] = false;
+    // Slot fence has already signaled. Never add WAIT_BIT or a driver wait for
+    // diagnostics, including when a driver returns an unavailable query.
+    uint64_t values[4]{}; // timestamp, availability for each query
+    const VkResult result = vk_.GetQueryPoolResults(device, nativeGpuQueries, slot * 2, 2,
+        sizeof(values), values, sizeof(uint64_t) * 2,
+        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (result == VK_SUCCESS && values[1] && values[3]) {
+        const uint64_t mask = nativeTimestampBits >= 64 ? UINT64_MAX :
+            ((uint64_t(1) << nativeTimestampBits) - 1);
+        const double ns = double((values[2] - values[0]) & mask) * nativeTimestampPeriod;
+        if (std::isfinite(ns) && ns >= 0. && ns < double(UINT64_MAX))
+            nativeMetrics.gpu.Add(uint64_t(ns));
+        else ++nativeMetrics.gpuUnavailable;
+    } else ++nativeMetrics.gpuUnavailable;
+}
+void VulkanRendererContext::beginNativeGpuTiming(VkCommandBuffer cb) {
+    if (!nativeDiagnosticsEnabled || nativeGpuQueries == VK_NULL_HANDLE) return;
+    vk_.CmdResetQueryPool(cb, nativeGpuQueries, currentFrame * 2, 2);
+    vk_.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, nativeGpuQueries, currentFrame * 2);
+}
+void VulkanRendererContext::endNativeGpuTiming(VkCommandBuffer cb) {
+    if (!nativeDiagnosticsEnabled || nativeGpuQueries == VK_NULL_HANDLE) return;
+    vk_.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, nativeGpuQueries, currentFrame * 2 + 1);
+}
+
+void VulkanRendererContext::reportNativeMetrics() {
+    auto& m = nativeMetrics;
+    const auto now = NativeVulkanMetrics::Clock::now();
+    if (m.window == NativeVulkanMetrics::Clock::time_point{}) m.window = now;
+    const double seconds = std::chrono::duration<double>(now - m.window).count();
+    if (seconds < 1.) return;
+    const auto& s = m.stages;
+    __android_log_print(ANDROID_LOG_INFO, "Winlator_NativeX11",
+        "X11VulkanMetrics seconds=%.2f frames=%llu opaque=%llu no_clear=%llu "
+        "slot_us(avg/max)=%.1f/%.1f acquire_us(avg/max)=%.1f/%.1f "
+        "image_wait_us(avg/max)=%.1f/%.1f prepare_us(avg/max)=%.1f/%.1f record_us(avg/max)=%.1f/%.1f "
+        "submit_us(avg/max)=%.1f/%.1f present_us(avg/max)=%.1f/%.1f "
+        "gpu_span_us(avg/max)=%.1f/%.1f gpu_samples=%llu gpu_unavailable=%llu "
+        "cmd_cache_hit=%llu cmd_cache_miss=%llu cmd_cache_bypass=%llu cmd_cache_enabled=%d "
+        "cache_layers=%llu cache_upload=%llu cache_transition=%llu cache_non_ahb=%llu cache_effect=%llu cache_layer_limit=4",
+        seconds, (unsigned long long)m.frames, (unsigned long long)m.opaque, (unsigned long long)m.noClear,
+        s[0].AverageUs(), s[0].MaximumUs(), s[1].AverageUs(), s[1].MaximumUs(),
+        s[2].AverageUs(), s[2].MaximumUs(), s[3].AverageUs(), s[3].MaximumUs(),
+        s[4].AverageUs(), s[4].MaximumUs(), s[5].AverageUs(), s[5].MaximumUs(),
+        s[6].AverageUs(), s[6].MaximumUs(),
+        m.gpu.AverageUs(), m.gpu.MaximumUs(), (unsigned long long)m.gpu.count,
+        (unsigned long long)m.gpuUnavailable, (unsigned long long)m.cacheHits,
+        (unsigned long long)m.cacheMisses, (unsigned long long)m.cacheBypass, nativeCommandCacheEnabled,
+        (unsigned long long)m.bypassLayers, (unsigned long long)m.bypassUploads,
+        (unsigned long long)m.bypassTransitions, (unsigned long long)m.bypassNonAHB,
+        (unsigned long long)m.bypassEffects);
+    m = {};
+    m.window = now;
+}
+#endif
+
 void VulkanRendererContext::renderFrame() {
     std::shared_lock<std::shared_mutex> frameLock(frameMutex);
+#ifdef LUDASHI_NATIVE_X11
+    using NativeClock = NativeVulkanMetrics::Clock;
+    const bool nativeTrace = nativeDiagnosticsEnabled;
+#endif
 
     needsRender.store(false,std::memory_order_relaxed);
     cursorMoved.store(false,std::memory_order_relaxed);
@@ -1233,12 +1883,22 @@ void VulkanRendererContext::renderFrame() {
         return;
     }
     bool currentFenceWaited = false;
+#ifdef LUDASHI_NATIVE_X11
+    const auto nativeSlotStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
     VkResult fenceState=vk_.GetFenceStatus ? vk_.GetFenceStatus(device,inFlightFences[currentFrame]) : VK_NOT_READY;
     if (fenceState==VK_NOT_READY) {
         if (vk_.WaitForFences(device,1,&inFlightFences[currentFrame],VK_TRUE,UINT64_MAX)!=VK_SUCCESS)
             throw std::runtime_error("frame fence wait");
         currentFenceWaited = true;
     } else if (fenceState!=VK_SUCCESS) throw std::runtime_error("frame fence status");
+#ifdef LUDASHI_NATIVE_X11
+    NativeForgetCompletedImageFence(imgInFlight, inFlightFences[currentFrame]);
+    if (nativeTrace) {
+        nativeMetrics.RecordStage(NativeVulkanMetrics::Slot, nativeSlotStart);
+        prepareNativeGpuTiming(currentFrame);
+    } else nativeGpuPending[currentFrame] = false;
+#endif
     completedSerial=std::max(completedSerial,slotSerial[currentFrame]);
     if (retirePending.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> lk(renderMutex);
@@ -1253,8 +1913,23 @@ void VulkanRendererContext::renderFrame() {
         retirePending.store(!deleteQueue.empty(),std::memory_order_release);
     }
 
+    bool useFrameGeneration = frameGenRequested && frameGenerationActive();
+    uint32_t generatedCount = 0;
+    if (useFrameGeneration && frameGenEngine == 0) {
+        vkr_lsfg_set_refresh_rate(frameGen, frameGenRefreshRate);
+        generatedCount = std::min({vkr_lsfg_plan(frameGen, frameGenCapacity(),
+            frameGenSourceFrames.load(std::memory_order_relaxed)),
+            frameGenCapacity(), MAX_FRAMEGEN_GENERATIONS});
+    }
+
     uint32_t imgIdx;
+#ifdef LUDASHI_NATIVE_X11
+    const auto nativeAcquireStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
     VkResult res=vk_.AcquireNextImageKHR(device,swapchain,UINT64_MAX,imgAvailSems[currentFrame],VK_NULL_HANDLE,&imgIdx);
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) nativeMetrics.RecordStage(NativeVulkanMetrics::Acquire, nativeAcquireStart);
+#endif
     if (res==VK_ERROR_OUT_OF_DATE_KHR||res==VK_ERROR_SURFACE_LOST_KHR){fbResized.store(true);return;}
     if (res!=VK_SUCCESS&&res!=VK_SUBOPTIMAL_KHR) return;
     if (imgIdx >= swapchainFBs.size() || imgIdx >= swapchainImages.size()) {
@@ -1263,6 +1938,9 @@ void VulkanRendererContext::renderFrame() {
         return;
     }
 
+#ifdef LUDASHI_NATIVE_X11
+    const auto nativeImageWaitStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
     if (imgInFlight.size()!=swapchainImages.size()) imgInFlight.assign(swapchainImages.size(),VK_NULL_HANDLE);
     if (imgInFlight[imgIdx]!=VK_NULL_HANDLE &&
         (!currentFenceWaited || imgInFlight[imgIdx] != inFlightFences[currentFrame])) {
@@ -1271,7 +1949,26 @@ void VulkanRendererContext::renderFrame() {
     }
     imgInFlight[imgIdx]=inFlightFences[currentFrame];
 
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) nativeMetrics.RecordStage(NativeVulkanMetrics::ImageWait, nativeImageWaitStart);
+    const auto nativePrepareStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+    // Java updates its scene while acquire blocks. The native adapter must also
+    // bind the newest retained scene here, rather than pinning a producer buffer
+    // throughout a potentially whole-refresh acquire wait.
+    try {
+        if (nativeFrameReady) nativeFrameReady(nativeFrameReadyData);
+    } catch (...) {
+        // Acquire already signaled its semaphore. Recover through the existing
+        // swapchain path before another acquire can reuse it after an import error.
+        fbResized.store(true);
+        swapchainRetryPending.store(true);
+        throw;
+    }
+#endif
+#ifndef LUDASHI_NATIVE_X11
     vk_.ResetCommandBuffer(cmdBufs[currentFrame],0);
+#endif
+    // Native command reset is deferred until cache selection.
 
     float ox,oy,sx,sy,cw,ch;
     short ptrX,ptrY,curHotX,curHotY,curW,curH; bool curVis;
@@ -1284,6 +1981,15 @@ void VulkanRendererContext::renderFrame() {
 
     {
         std::lock_guard<std::mutex> lk(renderMutex);
+
+        // WFG samples the committed source count under the same lock as the
+        // textures. Java publishes it with content; X++ has finished late latch.
+        if (useFrameGeneration && frameGenEngine == 1) {
+            generatedCount = std::min({vkr_wfg_plan(wfg, frameGenCapacity(),
+                frameGenSourceFrames.load(std::memory_order_relaxed), frameGenRefreshRate),
+                frameGenCapacity(), MAX_FRAMEGEN_GENERATIONS});
+            if (!vkr_wfg_needs_history(wfg)) useFrameGeneration = false;
+        }
 
         // Pin the draw list before releasing renderMutex: removeWindow may run
         // while commands are recorded but before their submit reaches the GPU.
@@ -1346,21 +2052,130 @@ void VulkanRendererContext::renderFrame() {
         curW=cursorTexW; curH=cursorTexH;
     }
 
-    recordCmdBuf(cmdBufs[currentFrame],imgIdx,frameDraws,
-        frameAhbTransitions,framePreUpload,framePostUpload,
-        curUpload,hasCurUpload,
-        ox,oy,sx,sy,cw,ch,ptrX,ptrY,curHotX,curHotY,curW,curH,curVis,
-        effectiveScissor);
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) nativeMetrics.RecordStage(NativeVulkanMetrics::Prepare, nativePrepareStart);
+    const auto nativeRecordStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
+    VkCommandBuffer selectedCommand = cmdBufs[currentFrame];
+    bool reuseCommand = false;
+#ifdef LUDASHI_NATIVE_X11
+    // A game may have static CPU-origin desktop/overlay textures behind it.
+    // Reuse their read-only GPU commands too, but never cache uploads/transitions.
+    const bool cacheLayers = !frameDraws.empty() && frameDraws.size() <= NATIVE_COMMAND_MAX_LAYERS;
+    const bool cacheHasAHB = cacheLayers && std::any_of(frameDraws.begin(), frameDraws.end(), [](const auto& d) { return d.isAHB; });
+    const bool cacheTexturesReady = cacheLayers && std::all_of(frameDraws.begin(), frameDraws.end(), [](const auto& d) {
+        return d.img != VK_NULL_HANDLE && d.ds != VK_NULL_HANDLE && !d.needsTransition && d.upload == VK_NULL_HANDLE;
+    });
+    const bool cacheEligible = nativeCommandCacheEnabled && !useFrameGeneration && cacheLayers && cacheHasAHB &&
+        cacheTexturesReady && !hasCurUpload && (filterMode == 0 || filterMode == 1) && postFXMode == 0 && stretchMode == 0;
+    // A secondary scene buffer keeps cursor motion out of the scene cache key.
+    // Hidden cursors keep the existing complete-primary replay fast path.
+    const bool splitCursor = cacheEligible && curVis && cursorImg != VK_NULL_HANDLE && cursorDS != VK_NULL_HANDLE;
+    nativeSceneCommand = VK_NULL_HANDLE;
+    nativeSceneReplay = false;
+    NativeCommandKey commandKey;
+    NativeCommandCache<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT>::Entry* cacheEntry = nullptr;
+    if (cacheEligible) {
+        commandKey.Add(nativeTextureEpoch); commandKey.Add(imgIdx);
+        commandKey.Add(frameDraws.size());
+        for (const auto& d : frameDraws) {
+            commandKey.Add(d.img); commandKey.Add(d.ds); commandKey.Add(d.isAHB);
+            commandKey.Add(d.x); commandKey.Add(d.y); commandKey.Add(d.w); commandKey.Add(d.h);
+        }
+        commandKey.Add(filterMode);
+        commandKey.Add(ox); commandKey.Add(oy); commandKey.Add(sx); commandKey.Add(sy);
+        commandKey.Add(cw); commandKey.Add(ch);
+        commandKey.Add(effectiveScissor.offset.x); commandKey.Add(effectiveScissor.offset.y);
+        commandKey.Add(effectiveScissor.extent.width); commandKey.Add(effectiveScissor.extent.height);
+        commandKey.Add(pipeline); commandKey.Add(opaquePipeline); commandKey.Add(renderPass);
+        commandKey.Add(nativeNoClearPass); commandKey.Add(swapRB);
+        const auto queryPool = nativeTrace ? nativeGpuQueries : VK_NULL_HANDLE;
+        commandKey.Add(queryPool);
+        const bool drawsCursor = curVis && cursorImg != VK_NULL_HANDLE && cursorDS != VK_NULL_HANDLE;
+        commandKey.Add(drawsCursor); commandKey.Add(splitCursor);
+        if (drawsCursor && !splitCursor) {
+            commandKey.Add(cursorImg); commandKey.Add(cursorDS);
+            commandKey.Add(ptrX); commandKey.Add(ptrY); commandKey.Add(curHotX); commandKey.Add(curHotY);
+            commandKey.Add(curW); commandKey.Add(curH);
+        }
+        const auto cached = nativeCommands.Find(currentFrame, commandKey);
+        if (cached != VK_NULL_HANDLE) {
+            if (splitCursor) { nativeSceneCommand = cached; nativeSceneReplay = true; }
+            else { selectedCommand = cached; reuseCommand = true; }
+            if (nativeTrace) ++nativeMetrics.cacheHits;
+        } else {
+            cacheEntry = &nativeCommands.Replace(currentFrame);
+            // Vulkan command-buffer level is fixed at allocation. Eviction may
+            // reuse a slot previously occupied by the other cursor path.
+            if (cacheEntry->command != VK_NULL_HANDLE && cacheEntry->secondary != splitCursor) {
+                vk_.FreeCommandBuffers(device, cmdPool, 1, &cacheEntry->command);
+                cacheEntry->command = VK_NULL_HANDLE;
+            }
+            if (cacheEntry->command == VK_NULL_HANDLE) {
+                cacheEntry->secondary = splitCursor;
+                VkCommandBufferAllocateInfo allocation{};
+                allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+                allocation.commandPool = cmdPool; allocation.level = splitCursor ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+                allocation.commandBufferCount = 1;
+                if (vk_.AllocateCommandBuffers(device, &allocation, &cacheEntry->command) != VK_SUCCESS) {
+                    cacheEntry->command = VK_NULL_HANDLE;
+                    cacheEntry = nullptr; // Allocation failure retains the general path.
+                }
+            }
+            if (cacheEntry) {
+                if (splitCursor) nativeSceneCommand = cacheEntry->command;
+                else selectedCommand = cacheEntry->command;
+            }
+            if (nativeTrace) ++nativeMetrics.cacheMisses;
+        }
+    } else if (nativeTrace) {
+        ++nativeMetrics.cacheBypass;
+        nativeMetrics.bypassLayers += !cacheLayers;
+        nativeMetrics.bypassUploads += hasCurUpload || std::any_of(frameDraws.begin(), frameDraws.end(), [](const auto& d) { return d.upload != VK_NULL_HANDLE; });
+        nativeMetrics.bypassTransitions += std::any_of(frameDraws.begin(), frameDraws.end(), [](const auto& d) { return d.needsTransition; });
+        nativeMetrics.bypassNonAHB += !std::any_of(frameDraws.begin(), frameDraws.end(), [](const auto& d) { return d.isAHB; });
+        nativeMetrics.bypassEffects += useFrameGeneration || (filterMode != 0 && filterMode != 1) || postFXMode != 0 || stretchMode != 0;
+    }
+#endif
+    if (!reuseCommand) {
+#ifdef LUDASHI_NATIVE_X11
+        vk_.ResetCommandBuffer(selectedCommand, 0);
+#endif
+        recordCmdBuf(selectedCommand,imgIdx,frameDraws,
+            frameAhbTransitions,framePreUpload,framePostUpload,
+            curUpload,hasCurUpload,
+            ox,oy,sx,sy,cw,ch,ptrX,ptrY,curHotX,curHotY,curW,curH,curVis,
+            effectiveScissor, generatedCount, useFrameGeneration);
+#ifdef LUDASHI_NATIVE_X11
+        if (cacheEntry) { cacheEntry->key = commandKey; cacheEntry->valid = true; }
+#endif
+    }
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) nativeMetrics.RecordStage(NativeVulkanMetrics::Record, nativeRecordStart);
+#endif
 
-    VkSemaphore wSem[]={imgAvailSems[currentFrame]}, sSem[]={renderDoneSems[imgIdx]};
-    VkPipelineStageFlags wStage[]={VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore wSem[]={imgAvailSems[currentFrame]};
+    VkSemaphore sSem[]={useFrameGeneration ? frameGenRenderDoneSems[imgIdx] : renderDoneSems[imgIdx]};
+    VkPipelineStageFlags waitStage=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (useFrameGeneration) {
+        waitStage=VK_PIPELINE_STAGE_TRANSFER_BIT;
+        if (frameGenSwapchainStorage) waitStage|=VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    }
+    VkPipelineStageFlags wStage[]={waitStage};
     VkSubmitInfo si{}; si.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO;
     si.waitSemaphoreCount=1; si.pWaitSemaphores=wSem; si.pWaitDstStageMask=wStage;
-    si.commandBufferCount=1; si.pCommandBuffers=&cmdBufs[currentFrame];
+    si.commandBufferCount=1; si.pCommandBuffers=&selectedCommand;
     si.signalSemaphoreCount=1; si.pSignalSemaphores=sSem;
 
     vk_.ResetFences(device,1,&inFlightFences[currentFrame]);
-    if (vk_.QueueSubmit(graphicsQueue,1,&si,inFlightFences[currentFrame])!=VK_SUCCESS) {
+#ifdef LUDASHI_NATIVE_X11
+    const auto nativeSubmitStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
+    const VkResult submitResult = vk_.QueueSubmit(graphicsQueue,1,&si,inFlightFences[currentFrame]);
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) nativeMetrics.RecordStage(NativeVulkanMetrics::Submit, nativeSubmitStart);
+#endif
+    if (submitResult!=VK_SUCCESS) {
         { std::lock_guard<std::mutex> lk(renderMutex);
           pendingFrameSerial=0;
           if (hasCurUpload) isCursorImageDirty.store(true);
@@ -1372,6 +2187,9 @@ void VulkanRendererContext::renderFrame() {
         swapchainRetryPending.store(true);
         return;
     }
+#ifdef LUDASHI_NATIVE_X11
+    nativeGpuPending[currentFrame] = nativeTrace && nativeGpuQueries != VK_NULL_HANDLE;
+#endif
     {
         std::lock_guard<std::mutex> lk(renderMutex);
         slotSerial[currentFrame]=pendingFrameSerial;
@@ -1391,9 +2209,114 @@ void VulkanRendererContext::renderFrame() {
     VkPresentInfoKHR pi{}; pi.sType=VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     pi.waitSemaphoreCount=1; pi.pWaitSemaphores=sSem; pi.swapchainCount=1; pi.pSwapchains=scs; pi.pImageIndices=&imgIdx;
 
+#ifdef LUDASHI_NATIVE_X11
+    const auto nativePresentStart = nativeTrace ? NativeClock::now() : NativeClock::time_point{};
+#endif
     res = vk_.QueuePresentKHR(graphicsQueue, &pi);
+#ifdef LUDASHI_NATIVE_X11
+    if (nativeTrace) {
+        nativeMetrics.RecordStage(NativeVulkanMetrics::Present, nativePresentStart);
+        ++nativeMetrics.frames;
+        reportNativeMetrics();
+    }
+#endif
 
-    if (res==VK_ERROR_OUT_OF_DATE_KHR||res==VK_ERROR_SURFACE_LOST_KHR||res==VK_SUBOPTIMAL_KHR) fbResized.store(true);
+    bool recreateSwapchain = res==VK_ERROR_OUT_OF_DATE_KHR || res==VK_ERROR_SURFACE_LOST_KHR || res==VK_SUBOPTIMAL_KHR;
+    const bool firstPresented = res==VK_SUCCESS || res==VK_SUBOPTIMAL_KHR;
+    if (useFrameGeneration && generatedCount > 0 && firstPresented)
+        frameGenGeneratedFrames.fetch_add(1, std::memory_order_relaxed);
+    auto presentImage = [&](uint32_t index, VkSemaphore semaphore) -> bool {
+        VkPresentInfoKHR pi{}; pi.sType=VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        pi.waitSemaphoreCount=1; pi.pWaitSemaphores=&semaphore;
+        pi.swapchainCount=1; pi.pSwapchains=&swapchain; pi.pImageIndices=&index;
+        const VkResult result=vk_.QueuePresentKHR(graphicsQueue,&pi);
+        if (result==VK_ERROR_OUT_OF_DATE_KHR || result==VK_ERROR_SURFACE_LOST_KHR || result==VK_SUBOPTIMAL_KHR)
+            recreateSwapchain=true;
+        const bool queued=result==VK_SUCCESS || result==VK_SUBOPTIMAL_KHR;
+        return queued;
+    };
+    // Some Android WSI implementations expose several swapchain images but
+    // permit only one image to be dequeued at a time.  Present each output
+    // before acquiring the next one.  With storage-capable swapchains,
+    // interpolated outputs are generated directly into the acquired image;
+    // the final output is the real frame and needs only one image copy.
+    if (useFrameGeneration && generatedCount > 0 && firstPresented &&
+        !recreateSwapchain) {
+        for (uint32_t output = 1; output <= generatedCount; ++output) {
+            const uint32_t slot = output - 1;
+            if (!vk_.GetFenceStatus ||
+                vk_.GetFenceStatus(device, inFlightFences[currentFrame]) == VK_NOT_READY) {
+                vk_.WaitForFences(device, 1, &inFlightFences[currentFrame],
+                                  VK_TRUE, UINT64_MAX);
+            }
+
+            uint32_t nextIndex = 0;
+            const VkResult acquireResult = vk_.AcquireNextImageKHR(
+                device, swapchain, UINT64_MAX,
+                frameGenAcquireSems[currentFrame][slot], VK_NULL_HANDLE, &nextIndex);
+            if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
+                acquireResult == VK_ERROR_SURFACE_LOST_KHR) {
+                recreateSwapchain = true;
+                break;
+            }
+            if ((acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) ||
+                nextIndex >= swapchainImages.size()) {
+                FGLOG_E("Frame generation sequential acquire %u/%u failed: %d index=%u",
+                       output, generatedCount, (int)acquireResult, nextIndex);
+                recreateSwapchain = true;
+                break;
+            }
+
+            VkFence imageFence = imgInFlight[nextIndex];
+            if (imageFence != VK_NULL_HANDLE &&
+                imageFence != inFlightFences[currentFrame] &&
+                (!vk_.GetFenceStatus || vk_.GetFenceStatus(device, imageFence) == VK_NOT_READY)) {
+                vk_.WaitForFences(device, 1, &imageFence, VK_TRUE, UINT64_MAX);
+            }
+
+            VkCommandBuffer presentCmd = frameGenPresentCmdBufs[currentFrame][slot];
+            vk_.ResetCommandBuffer(presentCmd, 0);
+            recordFrameGenOutputCmd(presentCmd, output, generatedCount, nextIndex);
+
+            VkPipelineStageFlags waitStage =
+                frameGenSwapchainStorage && output < generatedCount
+                    ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    : VK_PIPELINE_STAGE_TRANSFER_BIT;
+            VkSemaphore waitSemaphore = frameGenAcquireSems[currentFrame][slot];
+            VkSemaphore signalSemaphore = frameGenRenderDoneSems[nextIndex];
+            VkSubmitInfo presentSubmit{};
+            presentSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            presentSubmit.waitSemaphoreCount = 1;
+            presentSubmit.pWaitSemaphores = &waitSemaphore;
+            presentSubmit.pWaitDstStageMask = &waitStage;
+            presentSubmit.commandBufferCount = 1;
+            presentSubmit.pCommandBuffers = &presentCmd;
+            presentSubmit.signalSemaphoreCount = 1;
+            presentSubmit.pSignalSemaphores = &signalSemaphore;
+
+            vk_.ResetFences(device, 1, &inFlightFences[currentFrame]);
+            imgInFlight[nextIndex] = inFlightFences[currentFrame];
+            if (vk_.QueueSubmit(graphicsQueue, 1, &presentSubmit,
+                                inFlightFences[currentFrame]) != VK_SUCCESS) {
+                vk_.DestroyFence(device, inFlightFences[currentFrame], nullptr);
+                VkFenceCreateInfo fi{}; fi.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+                fi.flags=VK_FENCE_CREATE_SIGNALED_BIT;
+                vk_.CreateFence(device, &fi, nullptr, &inFlightFences[currentFrame]);
+                fbResized.store(true);
+                swapchainRetryPending.store(true);
+                return;
+            }
+            const bool outputPresented = presentImage(nextIndex, signalSemaphore);
+            if (output < generatedCount && outputPresented)
+                frameGenGeneratedFrames.fetch_add(1, std::memory_order_relaxed);
+            if (!outputPresented || recreateSwapchain) break;
+        }
+    }
+
+    if (recreateSwapchain) {
+        fbResized.store(true);
+        dirtyCV.notify_one();
+    }
     currentFrame=(currentFrame+1)%MAX_FRAMES_IN_FLIGHT;
 }
 
@@ -1502,6 +2425,11 @@ void VulkanRendererContext::updateWindowContent(int64_t id, void* px, short w, s
         std::lock_guard<std::mutex> lk(renderMutex);
         auto it=texMap.find(id);
         if (it!=texMap.end()) it->second.dirty=true;
+#ifndef LUDASHI_NATIVE_X11
+        if (frameGenRequested && frameGenEngine == 1)
+            frameGenSourceFrames.store(wfgPendingSourceFrames.load(std::memory_order_relaxed),
+                                       std::memory_order_relaxed);
+#endif
     }
     needsRender.store(true); dirtyCV.notify_one();
 }
@@ -1529,6 +2457,11 @@ void VulkanRendererContext::updateWindowContentAHB(int64_t id, AHardwareBuffer* 
     wt.img  = src.img; wt.mem  = src.mem; wt.view = src.view; wt.ds   = src.ds;
     wt.isAHB = true; wt.ahb  = ahb; wt.w = src.w; wt.h = src.h;
     wt.needsTransition = false; // The first-use layout belongs to the cached VkImage.
+#ifndef LUDASHI_NATIVE_X11
+        if (frameGenRequested && frameGenEngine == 1)
+            frameGenSourceFrames.store(wfgPendingSourceFrames.load(std::memory_order_relaxed),
+                                       std::memory_order_relaxed);
+#endif
     needsRender.store(true); dirtyCV.notify_one();
 }
 
@@ -1717,6 +2650,9 @@ void VulkanRendererContext::rebuildRenderListFromTree() {
 }
 
 void VulkanRendererContext::cleanupAllAHBCache() {
+#ifdef LUDASHI_NATIVE_X11
+    ++nativeTextureEpoch;
+#endif
     for (auto& [ahb, wt] : ahbImportCache) {
         if (wt.ds   != VK_NULL_HANDLE) vk_.FreeDescriptorSets(device, winTexPool, 1, &wt.ds);
         if (wt.view != VK_NULL_HANDLE) vk_.DestroyImageView(device, wt.view, nullptr);
@@ -1758,6 +2694,11 @@ void VulkanRendererContext::setFilterMode(int mode) {
     if (mode == 3 && fsr1Pipeline == VK_NULL_HANDLE) createFsr1Pipeline();
     if (mode == 5 && postfxPipeline == VK_NULL_HANDLE) createPostFXPipeline();
     vk_.DeviceWaitIdle(device);
+#ifdef LUDASHI_NATIVE_X11
+    // Updating a descriptor without UPDATE_AFTER_BIND invalidates recordings
+    // that used it, even after their submissions have finished.
+    ++nativeTextureEpoch;
+#endif
     if (sampler!=VK_NULL_HANDLE){vk_.DestroySampler(device,sampler,nullptr);sampler=VK_NULL_HANDLE;}
     createSampler();
     auto updateDS=[&](VkDescriptorSet ds, VkImageView view){
@@ -1799,6 +2740,117 @@ void VulkanRendererContext::setPresentMode(VkPresentModeKHR mode) {
     fbResized.store(true); dirtyCV.notify_one();
 }
 
+void VulkanRendererContext::configureFrameGeneration(bool enabled, const char* cachePath,
+                                                       int multiplier, int targetRate,
+                                                       int flowScalePercent,
+                                                       float refreshRate) {
+    const uint32_t newMultiplier = static_cast<uint32_t>(std::clamp(multiplier, 2, 4));
+    const uint32_t newTargetRate = static_cast<uint32_t>(std::max(targetRate, 0));
+    const float newFlowScale = static_cast<float>(
+        std::clamp(flowScalePercent, 25, 100)) / 100.0f;
+    const float newRefreshRate = refreshRate > 0.0f ? refreshRate : 0.0f;
+    const std::string newCachePath = cachePath ? cachePath : "";
+
+    std::unique_lock<std::shared_mutex> frameLock(frameMutex);
+    std::lock_guard<std::mutex> renderLock(renderMutex);
+
+    const uint32_t oldExtra = desiredFrameGenGenerations();
+    const bool requestChanged = frameGenRequested != enabled;
+    const bool cacheChanged = frameGenCachePath != newCachePath;
+    const bool settingsChanged = frameGenMultiplier != newMultiplier ||
+        frameGenTargetRate != newTargetRate || frameGenFlowScale != newFlowScale ||
+        frameGenRefreshRate != newRefreshRate;
+
+    frameGenRequested = enabled;
+    frameGenCachePath = newCachePath;
+    frameGenMultiplier = newMultiplier;
+    frameGenTargetRate = newTargetRate;
+    frameGenFlowScale = newFlowScale;
+    frameGenRefreshRate = newRefreshRate;
+    const bool topologyChanged = requestChanged ||
+        (enabled && oldExtra != desiredFrameGenGenerations());
+
+    if (!requestChanged && !cacheChanged && !settingsChanged) return;
+    // Disabled settings are only pending CPU state; no GPU drain or repaint.
+    if ((!enabled && !requestChanged) || device == VK_NULL_HANDLE) return;
+
+    vk_.DeviceWaitIdle(device);
+    if (!enabled || cacheChanged) destroyFrameGeneration();
+
+    if (topologyChanged && swapchain != VK_NULL_HANDLE) {
+        cleanupSwapchain();
+        try {
+            createSwapchain();
+            createFramebuffers();
+            createCmdBufs();
+            imgInFlight.assign(swapchainImages.size(), VK_NULL_HANDLE);
+            if (enabled && !frameGenerationActive())
+                throw std::runtime_error("frame generation resources");
+            fbResized.store(false);
+        } catch (const std::exception& error) {
+            FGLOG_E("Frame generation: swapchain rebuild failed while applying settings: %s; "
+                    "restoring direct renderer", error.what());
+            frameGenRequested = false;
+            destroyFrameGeneration();
+            cleanupSwapchain();
+            try {
+                createSwapchain();
+                createFramebuffers();
+                createCmdBufs();
+                imgInFlight.assign(swapchainImages.size(), VK_NULL_HANDLE);
+                fbResized.store(false);
+            } catch (const std::exception& fallbackError) {
+                RLOG_E("Direct renderer swapchain restore failed: %s", fallbackError.what());
+                fbResized.store(true);
+            }
+        }
+    } else if (enabled && swapchain != VK_NULL_HANDLE) {
+        if (!ensureFrameGenerationResources()) {
+            FGLOG_E("Frame generation: unable to apply settings");
+            frameGenRequested = false;
+            destroyFrameGeneration();
+            cleanupSwapchain();
+            try {
+                createSwapchain();
+                createFramebuffers();
+                createCmdBufs();
+                imgInFlight.assign(swapchainImages.size(), VK_NULL_HANDLE);
+                fbResized.store(false);
+            } catch (const std::exception& fallbackError) {
+                RLOG_E("Direct renderer swapchain restore failed: %s", fallbackError.what());
+                fbResized.store(true);
+            }
+        }
+    }
+
+    needsRender.store(true, std::memory_order_release);
+    dirtyCV.notify_one();
+}
+
+void VulkanRendererContext::setFrameGenerationSourceCount(uint64_t count) {
+#ifndef LUDASHI_NATIVE_X11
+    // Java sends its count immediately before the content JNI call. Do not
+    // expose that count to WFG until the matching image is installed.
+    if (frameGenEngine == 1) {
+        wfgPendingSourceFrames.store(count, std::memory_order_relaxed);
+        return;
+    }
+#endif
+    frameGenSourceFrames.store(count, std::memory_order_relaxed);
+}
+
+bool VulkanRendererContext::isFrameGenerationSupported() const {
+    return frameGenerationDeviceSupported() && frameGenSurfaceSupported;
+}
+
+bool VulkanRendererContext::isFrameGenerationEnabled() const {
+    return frameGenerationActive();
+}
+
+uint64_t VulkanRendererContext::getGeneratedFrameCount() const {
+    return frameGenGeneratedFrames.load(std::memory_order_relaxed);
+}
+
 std::vector<int> VulkanRendererContext::getSupportedPresentModes() const {
     std::vector<int> out;
     for (auto pm:availablePresentModes) out.push_back((int)pm);
@@ -1819,3 +2871,6 @@ void VulkanRendererContext::clearCustomScissor() {
 }
 
 #pragma GCC diagnostic pop
+
+
+

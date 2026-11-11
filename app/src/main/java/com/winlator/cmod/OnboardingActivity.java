@@ -27,6 +27,7 @@ import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.contents.ContentProfile;
 import com.winlator.cmod.contents.ContentsManager;
+import com.winlator.cmod.contents.LocalDriverArchive;
 import com.winlator.cmod.contents.RemoteDriverCatalog;
 import com.winlator.cmod.core.DefaultVersion;
 import com.winlator.cmod.core.OpenGLDriverDefaults;
@@ -45,6 +46,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -397,6 +399,7 @@ public class OnboardingActivity extends AppCompatActivity {
         if (key.contains("fexcore")) return "FEXCore";
         if (key.contains("vkd3d")) return "VKD3D";
         if (key.contains("dxvk")) return "DXVK";
+        if (key.equals("freedreno")) return "Freedreno";
         if (key.contains("proton")) return "Proton";
         if (key.contains("wine")) return "Wine";
         return "";
@@ -425,7 +428,9 @@ public class OnboardingActivity extends AppCompatActivity {
                 ui.add(new OnboardingComponent(
                         componentId(item),
                         item.type,
-                        item.name,
+                        item.type.equals("Freedreno") && item.installed && item.profile != null
+                                ? new com.winlator.cmod.contents.OpenGLDriverManager(this).versionLabel(
+                                        ContentsManager.getInstallDir(this, item.profile).getName()) : item.name,
                         item.installed,
                         item.recommended,
                         item.installed,
@@ -798,29 +803,56 @@ public class OnboardingActivity extends AppCompatActivity {
             Uri uri = data.getData();
             String displayName = localDisplayName(uri);
             composeController.updateInstallProgress("Preparing " + displayName, 0);
-            io.execute(() -> installContentArchive(uri, displayName, 5, () -> {
-                rebuildCatalog();
-                runOnUiThread(() -> finishInstall("local", null));
-            }, error -> runOnUiThread(() -> finishInstall("local", error))));
+            io.execute(() -> {
+                // "Local package" is shared by Wine components and AdrenoTools drivers.
+                // ZIP metadata selects Freedreno OpenGL or AdrenoTools Vulkan in both pickers.
+                // WCP / tar.xz / tar.zst archives retain the original component importer.
+                try (InputStream input = getContentResolver().openInputStream(uri)) {
+                    if (input == null) throw new IOException("Unable to open local package");
+                    if (LocalDriverArchive.isZip(input)) {
+                        installLocalDriverPackage(uri, displayName, "local");
+                        return;
+                    }
+                } catch (Exception error) {
+                    runOnUiThread(() -> finishInstall("local", "Unable to read local package: " + error.getMessage()));
+                    return;
+                }
+
+                installContentArchive(uri, displayName, 5, () -> {
+                    rebuildCatalog();
+                    runOnUiThread(() -> finishInstall("local", null));
+                }, error -> runOnUiThread(() -> finishInstall("local", error)));
+            });
         } else if (requestCode == REQUEST_LOCAL_DRIVER && resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
             if (installBusy) return;
             installBusy = true;
             composeController.setInstallBusy("driver-local", true);
             Uri uri = data.getData();
             composeController.updateInstallProgress("Installing " + localDisplayName(uri), -1);
-            io.execute(() -> {
-                String installed = adrenotoolsManager.installDriver(uri);
-                runOnUiThread(() -> {
-                    installBusy = false;
-                    composeController.setInstallBusy(null, false);
-                    syncComposeCatalog();
-                    if (installed == null || installed.isEmpty()) {
-                        Toast.makeText(this, "Unable to install the driver.", Toast.LENGTH_LONG).show();
-                    }
-                });
-            });
+            io.execute(() -> installLocalDriverPackage(uri, localDisplayName(uri), "driver-local"));
         } else if (requestCode == REQUEST_ALL_FILES) {
             continuePermissionFlow();
+        }
+    }
+
+    // Runs on the import worker. Both pickers must use the same package classifier.
+    private void installLocalDriverPackage(Uri uri, String displayName, String progressId) {
+        try {
+            postInstallProgress("Installing driver " + displayName, -1);
+            com.winlator.cmod.contents.DriverPackageInstaller.Result result =
+                    com.winlator.cmod.contents.DriverPackageInstaller.install(this, uri);
+            android.util.Log.i("DriverPackageInstaller", "Installed " + result.id
+                    + " as " + (result.freedreno ? "Freedreno OpenGL" : "AdrenoTools Vulkan"));
+            contentsManager.syncContents();
+            rebuildCatalog();
+            postInstallProgress("Installed " + result.id, 100);
+            runOnUiThread(() -> {
+                syncComposeCatalog();
+                finishInstall(progressId, null);
+            });
+        } catch (Exception error) {
+            android.util.Log.e("DriverPackageInstaller", "Local driver import failed", error);
+            runOnUiThread(() -> finishInstall(progressId, error.getMessage()));
         }
     }
 
@@ -886,7 +918,7 @@ public class OnboardingActivity extends AppCompatActivity {
         WineInfo wineInfo = WineInfo.fromIdentifier(this, contentsManager, runtime);
         if (wineInfo.path == null || wineInfo.path.isEmpty()) {
             finishing = false;
-            Toast.makeText(this, "The selected Wine/Proton layer is no longer installed.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_the_selected_wine_proton_layer_is_no_longer_installed), Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -915,14 +947,14 @@ public class OnboardingActivity extends AppCompatActivity {
             manager.createContainerAsync(data, contentsManager, created -> {
                 if (created == null) {
                     finishing = false;
-                    Toast.makeText(this, "Unable to create the first container.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_unable_to_create_the_first_container), Toast.LENGTH_LONG).show();
                 } else {
                     enterMainApp();
                 }
             });
         } catch (Exception error) {
             finishing = false;
-            Toast.makeText(this, "Unable to prepare the first container.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_unable_to_prepare_the_first_container), Toast.LENGTH_LONG).show();
         }
     }
 

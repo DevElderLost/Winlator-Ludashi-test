@@ -58,6 +58,7 @@ public class PreloaderDialog {
         if (dialog != null) return;
         dialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        if (dialog.getWindow() != null) dialog.getWindow().setWindowAnimations(R.style.WinZDialogAnimation);
         dialog.setCancelable(false);
         dialog.setCanceledOnTouchOutside(false);
         dialog.setContentView(R.layout.preloader_dialog);
@@ -223,7 +224,7 @@ public class PreloaderDialog {
             }
         }
 
-        return TextUtils.isEmpty(title) ? activity.getString(R.string.app_name) : title;
+        return TextUtils.isEmpty(title) ? activity.getString(R.string.app_name) : com.winlator.cmod.steam.SteamGames.launchTitle(activity, shortcutPath, title);
     }
 
     private String resolveLaunchBaseName() {
@@ -443,3 +444,4 @@ public class PreloaderDialog {
         return dialog != null && dialog.isShowing();
     }
 }
+

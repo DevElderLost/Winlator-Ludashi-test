@@ -137,6 +137,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             File destination) {
         ContentProfile profile = resolveInstalledRuntimeProfile(type, version);
         if (profile != null) return contentsManager.applyContent(profile);
+        if (type == ContentProfile.ContentType.CONTENT_TYPE_FEXCORE && "2611".equals(version))
+            destination = environment.getImageFs().getRootDir();
         return TarCompressorUtils.extract(
                 TarCompressorUtils.Type.ZSTD,
                 context,
@@ -152,6 +154,11 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         if (shortcut != null)
             box64Version = shortcut.getExtra("box64Version", shortcut.container.getBox64Version());
+
+        // The retired bundled Box64 archive is no longer shipped. Migrate the
+        // standard Box64 path only; ARM64EC/WOWBox64 has its own installer.
+        boolean retiredBundledBox64 = "0.4.2".equals(box64Version);
+        if (retiredBundledBox64) box64Version = com.winlator.cmod.core.DefaultVersion.BOX64;
 
         Log.d("GuestProgramLauncherComponent", "box64Version: " + box64Version);
 
@@ -170,6 +177,15 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             } else {
                 Log.e("GuestProgramLauncherComponent", "Unable to apply Box64 version " + box64Version);
             }
+        }
+
+        if (retiredBundledBox64 && box64Version.equals(container.getExtra("box64Version"))) {
+            if ("0.4.2".equals(container.getBox64Version())) container.setBox64Version(box64Version);
+            if (shortcut != null && "0.4.2".equals(shortcut.getExtra("box64Version", null))) {
+                shortcut.putExtra("box64Version", box64Version);
+                shortcut.saveData();
+            }
+            container.saveData();
         }
 
         File box64File = new File(rootDir, "/usr/bin/box64");
@@ -214,7 +230,13 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexcoreVersion);
         boolean fexcoreFilesMissing = fexcoreProfile != null
                 && !contentsManager.isContentApplied(fexcoreProfile);
-        if (!fexcoreVersion.equals(container.getExtra("fexcoreVersion")) || fexcoreFilesMissing) {
+        boolean bundledUnixlibs = fexcoreProfile == null && "2611".equals(fexcoreVersion);
+        File unixlibDir = new File(rootDir, "usr/lib/wine/aarch64-unix");
+        boolean bundledUnixlibsMissing = bundledUnixlibs
+                && (!"2611-unixlibs".equals(container.getExtra("fexcoreBundledRevision"))
+                || !new File(unixlibDir, "libarm64ecfex.so").isFile()
+                || !new File(unixlibDir, "libwow64fex.so").isFile());
+        if (!fexcoreVersion.equals(container.getExtra("fexcoreVersion")) || fexcoreFilesMissing || bundledUnixlibsMissing) {
             if (fexcoreFilesMissing) {
                 Log.w("GuestProgramLauncherComponent",
                         "FEXCore files are missing or incomplete; reapplying " + fexcoreVersion);
@@ -227,6 +249,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     system32dir);
             if (applied) {
                 container.putExtra("fexcoreVersion", fexcoreVersion);
+                if (bundledUnixlibs) container.putExtra("fexcoreBundledRevision", "2611-unixlibs");
                 containerDataChanged = true;
             } else {
                 Log.e("GuestProgramLauncherComponent", "Unable to apply FEXCore version " + fexcoreVersion);
@@ -403,7 +426,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         execEnvVars.put("DISPLAY", ":0");
         execEnvVars.put("WINE_DISABLE_FULLSCREEN_HACK", "1");
         execEnvVars.put("GST_PLUGIN_FEATURE_RANK", "ximagesink:3000");
-        execEnvVars.put("ALSA_CONFIG_PATH", rootDir.getPath() + "/usr/share/alsa/alsa.conf" + ":" + rootDir.getPath() + "/usr/etc/alsa/conf.d/android_aserver.conf");
+        execEnvVars.put("ALSA_CONFIG_PATH", rootDir.getPath() + "/usr/share/alsa/alsa.conf" + ":" + rootDir.getPath() + "/usr/etc/alsa/conf.d/android_alsa.conf");
         execEnvVars.put("ALSA_PLUGIN_DIR", rootDir.getPath() + "/usr/lib/alsa-lib");
         execEnvVars.put("OPENSSL_CONF", rootDir.getPath() + "/usr/etc/tls/openssl.cnf");
         execEnvVars.put("SSL_CERT_FILE", rootDir.getPath() + "/usr/etc/tls/cert.pem");
@@ -528,39 +551,22 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         }
         com.winlator.cmod.droiddeck.DDDeck.applyLaunchEnv(execEnvVars);
 
-        boolean useDisplayX = shortcut != null
-                ? shortcut.getUseDisplayX()
-                : container != null && container.getUseDisplayX();
-        boolean trueDisplayX = shortcut != null
-                ? shortcut.getTrueDisplayX()
-                : container != null && container.getTrueDisplayX();
-        String surfaceFormat = shortcut != null
-                ? shortcut.getSurfaceFormat()
-                : container != null ? container.getSurfaceFormat() : "rgba8";
-
-        execEnvVars.put("WRAPPER_SURFACE_FORMAT", surfaceFormat);
-        if (useDisplayX) execEnvVars.put("DISPLAYX_SURFACE_FORMAT", surfaceFormat);
-        else execEnvVars.remove("DISPLAYX_SURFACE_FORMAT");
-
-        final String displayXLayer = "VK_LAYER_DISPLAYX_display_x";
-        String enabledLayers = execEnvVars.get("VK_INSTANCE_LAYERS");
-        if (useDisplayX && trueDisplayX) {
-            execEnvVars.put("VK_INSTANCE_LAYERS", displayXLayer);
-        } else {
-            StringBuilder filteredLayers = new StringBuilder();
-            if (enabledLayers != null && !enabledLayers.isEmpty()) {
-                for (String layer : enabledLayers.split(":")) {
-                    if (layer.isEmpty() || layer.equals(displayXLayer)) continue;
-                    if (filteredLayers.length() > 0) filteredLayers.append(':');
-                    filteredLayers.append(layer);
-                }
-            }
-            if (filteredLayers.length() > 0) {
-                execEnvVars.put("VK_INSTANCE_LAYERS", filteredLayers.toString());
-            } else {
-                execEnvVars.remove("VK_INSTANCE_LAYERS");
-            }
+        // Evaluate on every launch, even when the component DLL cache is unchanged.
+        if (container != null) {
+            com.winlator.cmod.core.VideoDecoderSettings.apply(execEnvVars,
+                    shortcut != null ? shortcut.getBuiltinDecoder() : container.getBuiltinDecoder(),
+                    shortcut != null ? shortcut.getSoftwareDecoding() : container.getSoftwareDecoding());
         }
+
+        // Apply after custom environment variables so the saved compatibility option wins.
+        // Older Wine builds simply ignore this; the correction lives in ARM64 ntdll.
+        if (wineInfo.isArm64EC() && container != null) {
+            boolean ssbs = com.winlator.cmod.core.SsbsSettings.resolve(container.isForceSsbs(),
+                    shortcut != null ? shortcut.getExtra("forceSsbs") : "");
+            execEnvVars.put("WINE_FORCE_SSBS", ssbs ? "1" : "0");
+        }
+
+        configureDisplayXEnvironment(execEnvVars, container, shortcut);
 
         String emulator = container.getEmulator();
         if (shortcut != null)
@@ -603,6 +609,51 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             if (terminationCallback != null)
                 terminationCallback.call(status);
         });
+    }
+
+    static void configureDisplayXEnvironment(EnvVars execEnvVars, Container container, Shortcut shortcut) {
+        boolean useDisplayX = (shortcut != null
+                ? shortcut.getUseDisplayX()
+                : container != null && container.getUseDisplayX());
+        boolean trueDisplayX = shortcut != null
+                ? shortcut.getTrueDisplayX()
+                : container != null && container.getTrueDisplayX();
+        String surfaceFormat = shortcut != null
+                ? shortcut.getSurfaceFormat()
+                : container != null ? container.getSurfaceFormat() : "rgba8";
+
+        execEnvVars.put("WRAPPER_SURFACE_FORMAT", surfaceFormat);
+        if (useDisplayX) execEnvVars.put("DISPLAYX_SURFACE_FORMAT", surfaceFormat);
+        else execEnvVars.remove("DISPLAYX_SURFACE_FORMAT");
+        if (useDisplayX) {
+            execEnvVars.put("DISPLAYX_PRESENT_MODE", shortcut != null
+                    ? shortcut.getDisplayXPresentMode() : container.getDisplayXPresentMode());
+        } else {
+            execEnvVars.remove("DISPLAYX_PRESENT_MODE");
+        }
+
+        final String displayXLayer = "VK_LAYER_DISPLAYX_display_x";
+        String enabledLayers = execEnvVars.get("VK_INSTANCE_LAYERS");
+        if (useDisplayX && trueDisplayX) {
+            execEnvVars.put("VK_INSTANCE_LAYERS", displayXLayer);
+            String range = shortcut != null ? shortcut.getDisplayXDynamicRange() : container.getDisplayXDynamicRange();
+            if ("hdr".equals(range)) execEnvVars.put("DXVK_HDR", "1");
+        } else {
+            StringBuilder filteredLayers = new StringBuilder();
+            if (enabledLayers != null && !enabledLayers.isEmpty()) {
+                for (String layer : enabledLayers.split(":")) {
+                    if (layer.isEmpty() || layer.equals(displayXLayer)) continue;
+                    if (filteredLayers.length() > 0) filteredLayers.append(':');
+                    filteredLayers.append(layer);
+                }
+            }
+            if (filteredLayers.length() > 0) {
+                execEnvVars.put("VK_INSTANCE_LAYERS", filteredLayers.toString());
+            } else {
+                execEnvVars.remove("VK_INSTANCE_LAYERS");
+            }
+        }
+
     }
 
     private void addBox64EnvVars(EnvVars envVars, boolean enableLogs) {

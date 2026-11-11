@@ -1,0 +1,117 @@
+#pragma once
+// Host model for compiling and exercising the actual native Vulkan adapter.
+#include <condition_variable>
+inline int ANativeWindow_getWidth(ANativeWindow*) { return 1280; }
+inline int ANativeWindow_getHeight(ANativeWindow*) { return 720; }
+
+struct TestFence {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool signaled{true};
+    void Signal() { std::lock_guard lock(mutex); signaled = true; cv.notify_all(); }
+};
+using VkPresentModeKHR = int;
+using VkDevice = int;
+using VkFence = TestFence*;
+using VkResult = int;
+constexpr int VK_SUCCESS = 0, VK_NOT_READY = 1, VK_TIMEOUT = 2, VK_TRUE = 1;
+using PFN_vkGetFenceStatus = VkResult (*)(VkDevice, VkFence);
+using PFN_vkWaitForFences = VkResult (*)(VkDevice, uint32_t, const VkFence*, int, uint64_t);
+
+class VulkanRendererContext {
+public:
+    inline static VulkanRendererContext* instance{};
+    inline static std::atomic<unsigned> waits{};
+    inline static bool holdWait{};
+    bool nativeCommandCacheEnabled{true};
+    void (*nativeFrameReady)(void*){};
+    void* nativeFrameReadyData{};
+    std::atomic<bool> acquireBlocked{}, acquireEntered{};
+    bool acquireFails{};
+    std::vector<int64_t> boundImages;
+    bool validationRequested{};
+    bool swapRB{};
+    void setSwapRB(bool value) { swapRB = value; }
+    int presentMode = -1;
+    void setPresentMode(VkPresentModeKHR value) { presentMode = value; }
+    VulkanRendererContext(ANativeWindow* w, int, int, void* = nullptr, bool validation = false) : validationRequested(validation), window(w) { instance = this; }
+    ~VulkanRendererContext() { ANativeWindow_release(window); instance = nullptr; }
+    void detachSurface() { surfaceDetached = true; }
+    bool reattachSurface(ANativeWindow* w) {
+        ANativeWindow_release(window); window = w; surfaceDetached = false; return true;
+    }
+    void onSurfaceResized(int, int) {}
+    void setVerboseLog(bool) {}
+    int filter{}, postFX{}, stretch{};
+    float sharpness{.5f};
+    bool frameGenSupported{true}, frameGenEnabled{}, frameGenRequested{};
+    std::string frameGenCache;
+    int multiplier{}, targetRate{}, flowScale{}, frameGenEngine{};
+    void setFrameGenerationEngine(int engine) { if (!frameGenRequested) frameGenEngine = engine; }
+    float refresh{};
+    uint64_t sourceFrames{}, generatedFrames{};
+    void setFilterMode(int value) { filter = value; }
+    void setPostFXMode(int value) { postFX = value; }
+    void setStretchMode(int value) { stretch = value; }
+    void setSharpness(float value) { sharpness = value; }
+    void configureFrameGeneration(bool enabled, const char* cache, int m, int target, int flow, float hz) {
+        frameGenRequested = enabled;
+        frameGenCache = cache; multiplier = m; targetRate = target; flowScale = flow; refresh = hz;
+        frameGenEnabled = enabled && frameGenSupported && (frameGenEngine == 1 || !frameGenCache.empty());
+    }
+    bool isFrameGenerationSupported() const { return frameGenSupported; }
+    bool isFrameGenerationEnabled() const { return frameGenEnabled; }
+    void setFrameGenerationSourceCount(uint64_t value) { sourceFrames = value; }
+    uint64_t getGeneratedFrameCount() const { return generatedFrames; }
+    void setNativeDiagnostics(bool) {}
+    void setTransform(float, float, float, float) {}
+    void setCursorVisible(bool) {}
+    void updatePointerPosition(int, int) {}
+    void updateCursorImage(void*, int, int, int, int, int) {}
+    struct Texture { bool isAHB{}; AHardwareBuffer* ahb{}; void* img{}; int w{}, h{}; };
+    std::unordered_map<int64_t, Texture> texMap;
+    std::unordered_map<AHardwareBuffer*, Texture> ahbImportCache;
+    void updateWindowContentAHB(int64_t id, AHardwareBuffer* b, int w, int h, int, int) {
+        auto [it, inserted] = ahbImportCache.try_emplace(b, Texture{true, b, b, w, h});
+        (void)inserted;
+        texMap[id] = it->second;
+    }
+    void updateWindowContent(int64_t id, void*, int, int, int, int, int) { texMap[id] = {}; }
+    void removeWindow(int64_t id) { texMap.erase(id); }
+    void setExternalRenderList(const int64_t* ids, const int*, const int*, int count) {
+        if (count) boundImages.assign(ids, ids + count); else boundImages.clear();
+    }
+    void renderFrame() {
+        if (acquireFails) return;
+        acquireEntered = true;
+        while (acquireBlocked.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (nativeFrameReady) nativeFrameReady(nativeFrameReadyData);
+        auto& fence = fences[currentFrame];
+        { std::lock_guard lock(fence.mutex); fence.signaled = false; }
+        slotSerial[currentFrame] = ++serial;
+        currentFrame = (currentFrame + 1) % 2;
+    }
+    static VkResult Status(VkDevice, VkFence fence) {
+        std::lock_guard lock(fence->mutex); return fence->signaled ? VK_SUCCESS : VK_NOT_READY;
+    }
+    static VkResult Wait(VkDevice, uint32_t, const VkFence* fence, int, uint64_t timeout) {
+        ++waits;
+        std::unique_lock lock((*fence)->mutex);
+        if (holdWait || timeout == UINT64_MAX) (*fence)->cv.wait(lock, [&] { return (*fence)->signaled; });
+        else if (!(*fence)->cv.wait_for(lock, std::chrono::nanoseconds(timeout),
+                                      [&] { return (*fence)->signaled; })) return VK_TIMEOUT;
+        return VK_SUCCESS;
+    }
+    struct { PFN_vkGetFenceStatus GetFenceStatus{Status}; PFN_vkWaitForFences WaitForFences{Wait}; } vk_;
+    TestFence fences[2];
+    VkFence inFlightFences[2]{&fences[0], &fences[1]};
+    uint64_t slotSerial[2]{}, serial{};
+    uint32_t currentFrame{};
+    VkDevice device{1};
+    ANativeWindow* window;
+    int surfaceWidth{1280}, surfaceHeight{720};
+    std::atomic<bool> isRunning{true}, surfaceDetached{false};
+    std::condition_variable dirtyCV;
+    std::thread renderThread;
+};
+

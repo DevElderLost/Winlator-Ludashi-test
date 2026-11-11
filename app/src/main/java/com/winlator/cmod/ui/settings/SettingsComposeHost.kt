@@ -1,5 +1,6 @@
 package com.winlator.cmod.ui.settings
 
+import com.winlator.cmod.ui.uiStr
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Apps
@@ -94,7 +96,6 @@ data class SettingsModel(
     val soundFonts: List<SettingChoice>,
     val winlatorPath: String,
     val shortcutPath: String,
-    val bigPicture: Boolean,
     val cursorSpeedPercent: Int,
     val cursorLock: Boolean,
     val xInput: Boolean,
@@ -110,12 +111,11 @@ data class SettingsModel(
     val gameSavesAllShortcuts: Boolean,
     val steamClientTweaks: Boolean,
     val saveMemOnRunFromSteam: Boolean,
+    val autoDownloadGameArtwork: Boolean,
     val wineDebug: Boolean,
     val wineDebugChannels: String,
     val winlatorLogs: Boolean,
     val box64Logs: Boolean,
-    val customApiKeyEnabled: Boolean,
-    val customApiKey: String,
     val contentsUrl: String,
     val wineDebugOptions: List<String>
 )
@@ -131,7 +131,6 @@ interface SettingsCallbacks {
     fun onChooseShortcutPath()
     fun onBooleanChanged(key: String, value: Boolean)
     fun onCursorSpeedChanged(percent: Int)
-    fun onCustomApiKeyChanged(value: String)
     fun onContentsUrlChanged(value: String)
     fun onWineDebugChannelsChanged(value: String)
     fun onReinstallImageFs()
@@ -178,26 +177,32 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (landscape) LandscapeMainNavigation(activity, R.id.main_menu_settings, "Settings")
+        if (landscape) LandscapeMainNavigation(activity, R.id.main_menu_settings, uiStr(R.string.settings))
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            item("appearance-title") { SectionTitle("APPEARANCE") }
+            item("appearance-title") { SectionTitle(uiStr(R.string.ui_appearance)) }
             item("theme") { WinlatorThemePreferenceCard() }
+            item("language") { GroupCard { AppLanguagePreference() } }
 
-            item("environment-title") { SectionTitle("ENVIRONMENTS") }
-            item("containers") {
-                NavigationRow(Icons.Outlined.Dns, "Containers", "Create and manage Windows environments") {
-                    context.startActivity(Intent(context, ContainersSettingsActivity::class.java))
+            item("stores") {
+                NavigationRow(Icons.Outlined.Storefront, uiStr(R.string.steam_ui_stores), uiStr(R.string.steam_ui_stores_summary)) {
+                    context.startActivity(Intent(context, com.winlator.cmod.steam.StoreSettingsActivity::class.java))
                 }
             }
+            item("environment-title") { SectionTitle(uiStr(R.string.ui_environments)) }
             item("components") {
-                NavigationRow(Icons.Outlined.Apps, "Components", "Wine, Proton, DXVK, VKD3D and runtimes", callbacks::onOpenComponents)
+                NavigationRow(Icons.Outlined.Apps, uiStr(R.string.ui_components), null, callbacks::onOpenComponents)
             }
 
-            item("presets-title") { SectionTitle("PRESETS") }
+            item("file-manager") {
+                NavigationRow(Icons.Outlined.FolderOpen, uiStr(R.string.ui_file_manager), null) {
+                    activity?.navigateToMainDestination(R.id.main_menu_file_manager)
+                }
+            }
+            item("presets-title") { SectionTitle(uiStr(R.string.ui_presets)) }
             item("presets") {
                 GroupCard {
                     PresetChoiceRow(
@@ -222,22 +227,23 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                 }
             }
 
-            item("sound-title") { SectionTitle(stringResource(R.string.sound)) }
-            item("soundfonts") {
-                SoundFontCard(model.soundFonts, callbacks::onInstallSoundFont, callbacks::onRemoveSoundFont)
-            }
+            item("paths-title") { SectionTitle(uiStr(R.string.ui_path_settings)) }
+            item("winlator-path") { NavigationRow(Icons.Outlined.Storage, uiStr(R.string.ui_winlator_path), model.winlatorPath, callbacks::onChooseWinlatorPath) }
+            item("shortcut-path") { NavigationRow(Icons.Outlined.FolderOpen, uiStr(R.string.ui_shortcut_export_path), model.shortcutPath, callbacks::onChooseShortcutPath) }
 
-            item("paths-title") { SectionTitle("PATH SETTINGS") }
-            item("winlator-path") { NavigationRow(Icons.Outlined.Storage, "Winlator Path", model.winlatorPath, callbacks::onChooseWinlatorPath) }
-            item("shortcut-path") { NavigationRow(Icons.Outlined.FolderOpen, "Shortcut Export Path", model.shortcutPath, callbacks::onChooseShortcutPath) }
-
-            item("game-saves-title") { SectionTitle("GAME SAVES") }
-            item("game-saves") {
+            item("library-title") { SectionTitle(uiStr(R.string.ui_library)) }
+            item("library-artwork") {
                 GroupCard {
                     ToggleRow(
-                        "Game Saves for all shortcuts",
+                        uiStr(R.string.ui_download_game_artwork_automatically),
+                        model.autoDownloadGameArtwork,
+                        null
+                    ) { callbacks.onBooleanChanged("auto_download_game_artwork", it) }
+                    GroupDivider()
+                    ToggleRow(
+                        uiStr(R.string.ui_game_saves_for_all_shortcuts),
                         model.gameSavesAllShortcuts,
-                        "Automatically detect and back up saves when any shortcut exits"
+                        null
                     ) { callbacks.onBooleanChanged("game_saves_all_shortcuts", it) }
                 }
             }
@@ -264,11 +270,10 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                 GroupCard {
                     ToggleRow("Enable Big Picture Mode on App Launch", model.bigPicture) { callbacks.onBooleanChanged("enable_big_picture_mode", it) }
                     GroupDivider()
-                    ToggleRow("Set SteamGrid API Key? (Cover Art)", model.customApiKeyEnabled) { callbacks.onBooleanChanged("enable_custom_api_key", it) }
+                    ToggleRow(uiStr(R.string.ui_animated_artwork), com.winlator.cmod.ui.library.rememberArtworkMotionEnabled()) {
+                        callbacks.onBooleanChanged("animated_artwork", it)
+                    }
                 }
-            }
-            if (model.customApiKeyEnabled) {
-                item("api-key") { EditableValueCard("SteamGridDB API Key", model.customApiKey, callbacks::onCustomApiKeyChanged) }
             }
 
             item("xserver-title") { SectionTitle(stringResource(R.string.xserver)) }
@@ -282,9 +287,9 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                         ToggleRow(stringResource(R.string.use_xr), model.useXr) { callbacks.onBooleanChanged("use_xr", it) }
                     }
                     GroupDivider()
-                    ToggleRow("Capture External Pointer", model.cursorLock) { callbacks.onBooleanChanged("cursor_lock", it) }
+                    ToggleRow(uiStr(R.string.ui_capture_external_pointer), model.cursorLock) { callbacks.onBooleanChanged("cursor_lock", it) }
                     GroupDivider()
-                    ToggleRow("Disable Xinput (Used for Exclusive M/KB support)", model.xInput) { callbacks.onBooleanChanged("xinput_toggle", it) }
+                    ToggleRow(uiStr(R.string.ui_disable_xinput_used_for_exclusive_m_kb_support), model.xInput) { callbacks.onBooleanChanged("xinput_toggle", it) }
                 }
             }
 
@@ -323,14 +328,25 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                     ToggleRow(stringResource(R.string.remove_loading_bar_when_booting_games), model.removeLoadingBar) { callbacks.onBooleanChanged("remove_loading_bar_when_booting_games", it) }
                 }
             }
-            item("contents-url") { EditableValueCard("Downloadable Contents URL", model.contentsUrl, callbacks::onContentsUrlChanged) }
+            item("contents-url") { EditableValueCard(uiStr(R.string.ui_downloadable_contents_url), model.contentsUrl, callbacks::onContentsUrlChanged) }
 
             item("imagefs-title") { SectionTitle(stringResource(R.string.imagefs)) }
             item("imagefs") { NavigationRow(Icons.Outlined.Refresh, stringResource(R.string.reinstall_imagefs), null, callbacks::onReinstallImageFs) }
 
-            item("about-title") { SectionTitle("ABOUT") }
+            item("labs") {
+                NavigationRow(Icons.Outlined.Memory, uiStr(R.string.ui_labs), null) {
+                    context.startActivity(Intent(context, WinlatorLabsActivity::class.java))
+                }
+            }
+
+            item("about-title") { SectionTitle(uiStr(R.string.ui_about)) }
+            item("app-updates") {
+                NavigationRow(Icons.Outlined.Refresh, uiStr(R.string.ui_app_updates), uiStr(R.string.ui_check_for_upstream_updates)) {
+                    activity?.let { com.winlator.cmod.core.UpstreamUpdates.show(it) }
+                }
+            }
             item("about") {
-                NavigationRow(Icons.Outlined.Info, "About", null) { activity?.showAboutDialog() }
+                NavigationRow(Icons.Outlined.Info, uiStr(R.string.about), null) { activity?.showAboutDialog() }
             }
         }
     }
@@ -420,7 +436,7 @@ private fun CursorSpeedRow(value: Int, onChanged: (Int) -> Unit) {
     var draft by remember(value) { mutableFloatStateOf(value.coerceIn(10, 200).toFloat()) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Cursor speed", modifier = Modifier.weight(1f))
+            Text(uiStr(R.string.ui_cursor_speed), modifier = Modifier.weight(1f))
             Text("${draft.roundToInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Slider(
@@ -468,11 +484,11 @@ private fun PresetChoiceRow(
             }
             Box {
                 IconButton(onClick = { actionsOpen = true }) {
-                    Icon(Icons.Outlined.MoreVert, "Preset actions")
+                    Icon(Icons.Outlined.MoreVert, uiStr(R.string.ui_preset_actions))
                 }
                 DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("Create new") },
+                        text = { Text(uiStr(R.string.ui_create_new)) },
                         leadingIcon = { Icon(Icons.Outlined.Add, null) },
                         onClick = {
                             actionsOpen = false
@@ -481,7 +497,7 @@ private fun PresetChoiceRow(
                     )
                     if (selectedId.isNotBlank()) {
                         DropdownMenuItem(
-                            text = { Text("Clone") },
+                            text = { Text(uiStr(R.string.ui_clone)) },
                             leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) },
                             onClick = {
                                 actionsOpen = false
@@ -489,7 +505,7 @@ private fun PresetChoiceRow(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Edit") },
+                            text = { Text(uiStr(R.string.edit)) },
                             leadingIcon = { Icon(Icons.Outlined.Edit, null) },
                             onClick = {
                                 actionsOpen = false
@@ -497,7 +513,7 @@ private fun PresetChoiceRow(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete") },
+                            text = { Text(uiStr(R.string.ui_delete)) },
                             leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) },
                             onClick = {
                                 actionsOpen = false
@@ -549,7 +565,7 @@ private fun WineDebugChannelsRow(
         selectedValue.split(',').map { it.trim() }.filter { it.isNotEmpty() }
     }
     val summary = when {
-        selectedChannels.isEmpty() -> "No channels selected"
+        selectedChannels.isEmpty() -> uiStr(R.string.ui_no_channels_selected)
         selectedChannels.size <= 3 -> selectedChannels.joinToString(", ")
         else -> selectedChannels.take(3).joinToString(", ") + " +${selectedChannels.size - 3}"
     }
@@ -562,7 +578,7 @@ private fun WineDebugChannelsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Wine debug channels", style = MaterialTheme.typography.bodyLarge)
+            Text(uiStr(R.string.ui_wine_debug_channels), style = MaterialTheme.typography.bodyLarge)
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
@@ -606,13 +622,13 @@ private fun WineDebugChannelsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Wine debug channels") },
+        title = { Text(uiStr(R.string.ui_wine_debug_channels)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search channels") },
+                    label = { Text(uiStr(R.string.ui_search_channels)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -645,10 +661,10 @@ private fun WineDebugChannelsDialog(
         },
         confirmButton = {
             TextButton(onClick = { onApply(allOptions.filter { it in selected }.joinToString(",")) }) {
-                Text("Apply")
+                Text(uiStr(R.string.ui_apply))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(uiStr(R.string.cancel)) } }
     )
 }
 
@@ -667,7 +683,7 @@ private fun SoundFontCard(choices: List<SettingChoice>, onInstall: () -> Unit, o
         Button(onClick = onInstall, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Icon(Icons.Outlined.Add, null)
             Spacer(Modifier.width(7.dp))
-            Text("Install SoundFont")
+            Text(uiStr(R.string.ui_install_soundfont))
         }
     }
 }
@@ -682,6 +698,6 @@ private fun EditableInlineValue(label: String, initial: String, onSave: (String)
     var value by remember(initial) { mutableStateOf(initial) }
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        Button(onClick = { onSave(value) }, modifier = Modifier.align(Alignment.End)) { Text("Save") }
+        Button(onClick = { onSave(value) }, modifier = Modifier.align(Alignment.End)) { Text(uiStr(R.string.save)) }
     }
 }

@@ -1,5 +1,7 @@
 package com.winlator.cmod.ui.container
 
+import com.winlator.cmod.ui.uiOptionLabel
+import com.winlator.cmod.ui.uiStr
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color as AndroidColor
@@ -80,6 +82,7 @@ private val advancedEnvSpecs = mapOf(
     "MESA_SHADER_CACHE_DISABLE" to AdvancedEnvSpec(AdvancedEnvKind.CHECKBOX, listOf("false", "true")),
     "mesa_glthread" to AdvancedEnvSpec(AdvancedEnvKind.CHECKBOX, listOf("false", "true")),
     "WINEESYNC" to AdvancedEnvSpec(AdvancedEnvKind.CHECKBOX, listOf("0", "1")),
+    "WINE_FAST_YIELD" to AdvancedEnvSpec(AdvancedEnvKind.CHECKBOX, listOf("0", "1")),
     "TU_DEBUG" to AdvancedEnvSpec(AdvancedEnvKind.MULTI, listOf("forcecb", "nocb", "deck_emu", "startup", "nir", "nobin", "sysmem", "gmem", "forcebin", "layout", "noubwc", "nomultipos", "nolrz", "nolrzfc", "perf", "perfc", "flushall", "syncdraw", "push_consts_per_stage", "rast_order", "unaligned_store", "log_skip_gmem_ops", "dynamic", "bos", "3d_load", "fdm", "noconform", "rd")),
     "DXVK_HUD" to AdvancedEnvSpec(AdvancedEnvKind.MULTI, listOf("scale=0.5", "scale=0.7", "opacity=0.5", "opacity=0.7", "devinfo", "fps", "frametimes", "submissions", "drawcalls", "pipelines", "descriptors", "memory", "gpuload", "version", "api", "cs", "compiler", "samplers")),
     "MESA_EXTENSION_MAX_YEAR" to AdvancedEnvSpec(AdvancedEnvKind.TEXT),
@@ -152,6 +155,8 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
     val components = remember(container.getWinComponents()) {
         mutableStateMapOf<String, Int>().apply { putAll(parseComponents(container.getWinComponents())) }
     }
+    var builtinDecoder by remember { mutableStateOf(container.getBuiltinDecoder()) }
+    var softwareDecoding by remember { mutableStateOf(container.getSoftwareDecoding()) }
     var startup by remember { mutableIntStateOf(container.getStartupSelection().toInt().coerceIn(0, 2)) }
     var exclusive by remember { mutableStateOf(container.isExclusiveXInput()) }
     var xinput by remember { mutableStateOf((container.getInputType() and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0) }
@@ -176,9 +181,9 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text("Advanced", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(uiStr(R.string.advanced), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Environment, Windows components, startup, game controller and processor affinity",
+                    uiStr(R.string.ui_environment_windows_components_startup_game_controller_and_proces),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -204,7 +209,8 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
                 ) {
                     when (tab) {
                         0 -> AdvancedEnvironmentPage(envRows)
-                        1 -> AdvancedComponentsPage(components)
+                        1 -> AdvancedComponentsPage(components, builtinDecoder, softwareDecoding,
+                            { builtinDecoder = it }, { softwareDecoding = it })
                         2 -> AdvancedStartupInputPage(
                             startup = startup,
                             onStartup = { startup = it },
@@ -241,7 +247,7 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
                     modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text(uiStr(R.string.cancel)) }
                     Button(
                         onClick = {
                             container.setEnvVars(envRows.joinToString(" ") {
@@ -250,6 +256,8 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
                             container.setWinComponents(componentRows.joinToString(",") { (key, _) ->
                                 "$key=${components[key] ?: 0}"
                             })
+                            container.setBuiltinDecoder(builtinDecoder)
+                            container.setSoftwareDecoding(softwareDecoding)
                             container.setStartupSelection(startup.toByte())
                             container.setExclusiveXInput(exclusive)
                             var inputType = 0
@@ -263,7 +271,7 @@ private fun AdvancedContainerScreen(containerId: Int, onCancel: () -> Unit, onSa
                             onSaved()
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Save") }
+                    ) { Text(uiStr(R.string.save)) }
                 }
             }
         }
@@ -289,7 +297,7 @@ private fun AdvancedEnvironmentPage(rows: MutableList<AdvancedEnvEntry>) {
             ) {
                 Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(7.dp))
-                Text("Add variable")
+                Text(uiStr(R.string.ui_add_variable))
             }
         }
     }
@@ -303,14 +311,14 @@ private fun AdvancedEnvironmentPage(rows: MutableList<AdvancedEnvEntry>) {
                     val clean = name.trim().replace(" ", "")
                     if (clean.isNotEmpty() && rows.none { it.name == clean }) rows.add(AdvancedEnvEntry(clean, value.trim()))
                     addOpen = false
-                }) { Text("Add") }
+                }) { Text(uiStr(R.string.add)) }
             },
-            dismissButton = { TextButton(onClick = { addOpen = false }) { Text("Cancel") } },
-            title = { Text("Add environment variable") },
+            dismissButton = { TextButton(onClick = { addOpen = false }) { Text(uiStr(R.string.cancel)) } },
+            title = { Text(uiStr(R.string.ui_add_environment_variable)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-                    OutlinedTextField(value, { value = it }, label = { Text("Value") }, singleLine = true)
+                    OutlinedTextField(name, { name = it }, label = { Text(uiStr(R.string.name)) }, singleLine = true)
+                    OutlinedTextField(value, { value = it }, label = { Text(uiStr(R.string.value)) }, singleLine = true)
                 }
             }
         )
@@ -330,7 +338,7 @@ private fun AdvancedEnvRow(item: AdvancedEnvEntry, onValue: (String) -> Unit, on
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            IconButton(onClick = onRemove) { Icon(Icons.Outlined.Delete, "Remove") }
+            IconButton(onClick = onRemove) { Icon(Icons.Outlined.Delete, uiStr(R.string.remove)) }
             if (spec.kind == AdvancedEnvKind.CHECKBOX) {
                 val off = spec.options.getOrElse(0) { "0" }
                 val on = spec.options.getOrElse(1) { "1" }
@@ -356,7 +364,8 @@ private fun AdvancedEnvRow(item: AdvancedEnvEntry, onValue: (String) -> Unit, on
 }
 
 @Composable
-private fun AdvancedComponentsPage(values: MutableMap<String, Int>) {
+private fun AdvancedComponentsPage(values: MutableMap<String, Int>, decoder: String, software: Boolean,
+    onDecoder: (String) -> Unit, onSoftware: (Boolean) -> Unit) {
     val entries = listOf("Builtin (Wine)", "Native (Windows)")
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(10.dp)) {
         items(componentRows) { (key, label) ->
@@ -364,6 +373,7 @@ private fun AdvancedComponentsPage(values: MutableMap<String, Int>) {
             AdvancedChoice(label, entries[selected], entries) { values[key] = entries.indexOf(it).coerceAtLeast(0) }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
         }
+        item { com.winlator.cmod.ui.settings.CodecsSettings(decoder, software, onDecoder, onSoftware) }
     }
 }
 
@@ -385,20 +395,20 @@ private fun AdvancedStartupInputPage(
     )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(10.dp)) {
         item {
-            Text("System", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
-            AdvancedChoice("Startup Selection", startupEntries[startup.coerceIn(0, 2)], startupEntries) {
+            Text(uiStr(R.string.system), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
+            AdvancedChoice(uiStr(R.string.startup_selection), startupEntries[startup.coerceIn(0, 2)], startupEntries) {
                 onStartup(startupEntries.indexOf(it).coerceAtLeast(0))
             }
         }
         item { HorizontalDivider(Modifier.padding(vertical = 10.dp)) }
         item {
-            Text("Game Controller", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
-            AdvancedToggle("Enable XInput for Games in Wine", xinput, exclusive, onXInput)
-            AdvancedToggle("Enable DInput for Games in Wine", dinput, exclusive, onDInput)
-            AdvancedToggle("Exclusive Input", exclusive, true, onExclusive)
+            Text(uiStr(R.string.game_controller), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
+            AdvancedToggle(uiStr(R.string.enable_xinput_for_wine_game), xinput, exclusive, onXInput)
+            AdvancedToggle(uiStr(R.string.enable_dinput_for_wine_game), dinput, exclusive, onDInput)
+            AdvancedToggle(uiStr(R.string.ui_exclusive_input), exclusive, true, onExclusive)
             if (!exclusive) {
                 Text(
-                    "With Exclusive Input disabled, XInput and DInput stay enabled together, matching the classic editor.",
+                    uiStr(R.string.ui_with_exclusive_input_disabled_xinput_and_dinput_stay_enabled_toge),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
@@ -411,13 +421,13 @@ private fun AdvancedStartupInputPage(
 @Composable
 private fun AdvancedCpuPage(sync: Boolean, onSync: (Boolean) -> Unit, cpu64: MutableList<Boolean>, cpu32: MutableList<Boolean>) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { AdvancedToggle("Sync with Wine", sync, true, onSync) }
+        item { AdvancedToggle(uiStr(R.string.sync_cpu_topology), sync, true, onSync) }
         item {
-            Text("Processor Affinity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiStr(R.string.processor_affinity), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             CpuSelector(cpu64)
         }
         item {
-            Text("Processor Affinity (32-bit apps)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiStr(R.string.processor_affinity_32_bit_apps), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             CpuSelector(cpu32)
         }
     }
@@ -435,7 +445,7 @@ private fun CpuSelector(values: MutableList<Boolean>) {
             ) {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Checkbox(checked = values[index], onCheckedChange = { values[index] = it })
-                    Text("CPU$index", style = MaterialTheme.typography.labelMedium)
+                    Text(uiStr(R.string.ui_cpu_1_s, index), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -464,7 +474,7 @@ private fun AdvancedChoice(label: String, selected: String, entries: List<String
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(selected, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(uiOptionLabel(selected), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Icon(Icons.Outlined.KeyboardArrowDown, null)
             }
@@ -472,7 +482,7 @@ private fun AdvancedChoice(label: String, selected: String, entries: List<String
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             entries.forEach { value ->
                 DropdownMenuItem(
-                    text = { Text(value) },
+                    text = { Text(uiOptionLabel(value)) },
                     trailingIcon = { if (value == selected) Icon(Icons.Outlined.Check, null) },
                     onClick = { expanded = false; onSelected(value) }
                 )
@@ -502,8 +512,8 @@ private fun AdvancedMultiChoice(selected: String, entries: List<String>, onSelec
         }
         AlertDialog(
             onDismissRequest = { open = false },
-            confirmButton = { TextButton(onClick = { onSelected(draft.joinToString(",")); open = false }) { Text("Done") } },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { onSelected(draft.joinToString(",")); open = false }) { Text(uiStr(R.string.ui_done)) } },
+            dismissButton = { TextButton(onClick = { open = false }) { Text(uiStr(R.string.cancel)) } },
             text = {
                 LazyColumn(Modifier.heightIn(max = 430.dp)) {
                     items(entries) { option ->
@@ -515,7 +525,7 @@ private fun AdvancedMultiChoice(selected: String, entries: List<String>, onSelec
                                 checked = option in draft,
                                 onCheckedChange = { enabled -> if (enabled) { if (option !in draft) draft.add(option) } else draft.remove(option) }
                             )
-                            Text(option, modifier = Modifier.weight(1f))
+                            Text(uiOptionLabel(option), modifier = Modifier.weight(1f))
                         }
                     }
                 }

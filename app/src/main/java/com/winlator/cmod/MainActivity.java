@@ -53,6 +53,7 @@ import com.winlator.cmod.core.ImageUtils;
 import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.container.Shortcut;
+import com.winlator.cmod.ui.container.ContainerCreateComposeFragment;
 import com.winlator.cmod.core.WineThemeManager;
 import com.winlator.cmod.xenvironment.ImageFsInstaller;
 import com.winlator.cmod.services.NotificationService;
@@ -87,10 +88,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private boolean syncingBottomNavigation;
     private boolean orientationLocked;
     private String orientationMode = ORIENTATION_MODE_AUTO;
+    private static final String PREF_ORIENTATION_LOCKED = "library_orientation_locked";
+    private static final String PREF_ORIENTATION_MODE = "library_orientation_mode";
 
     private void createNotificationChannel() {
         String name = "Winlator";
-        String description = "Winlator XServer Messages";
+        String description = com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_winlator_xserver_messages);
         int importance = NotificationManager.IMPORTANCE_LOW;
         NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
         channel.setDescription(description);
@@ -119,6 +122,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
 
         super.onCreate(savedInstanceState);
+        com.winlator.cmod.ui.UiStrings.install(this);
+        com.winlator.cmod.ui.toast.ForegroundActivityTracker.install(getApplication());
+        orientationLocked = sharedPreferences.getBoolean(PREF_ORIENTATION_LOCKED, false);
+        orientationMode = sharedPreferences.getString(PREF_ORIENTATION_MODE, ORIENTATION_MODE_AUTO);
+        if (!ORIENTATION_MODE_VERTICAL.equals(orientationMode) && !ORIENTATION_MODE_HORIZONTAL.equals(orientationMode)) {
+            orientationMode = ORIENTATION_MODE_AUTO;
+        }
+        if (orientationLocked || !ORIENTATION_MODE_AUTO.equals(orientationMode)) applyOrientationMode();
         applyImmersiveMode();
 
         if (!sharedPreferences.getBoolean(OnboardingActivity.PREF_ONBOARDING_COMPLETE, false)) {
@@ -232,14 +243,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     private void showAllFilesAccessDialog() {
         new AlertDialog.Builder(this)
-                .setTitle("All Files Access Required")
-                .setMessage("In order to grant access to additional storage devices such as USB storage device, the All Files Access permission must be granted. Press Okay to grant All Files Access in your Android Settings.")
-                .setPositiveButton("Okay", (dialog, which) -> {
+                .setTitle(com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_all_files_access_required))
+                .setMessage(com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_in_order_to_grant_access_to_additional_storage_devices_such_as_us))
+                .setPositiveButton(com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_okay), (dialog, which) -> {
                     Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
                     intent.setData(Uri.parse("package:" + getPackageName()));
                     startActivity(intent);
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.cancel), null)
                 .show();
     }
 
@@ -309,20 +320,33 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     public boolean toggleOrientationLock() {
         orientationLocked = !orientationLocked;
+        if (orientationLocked) orientationMode = ORIENTATION_MODE_AUTO;
+        persistOrientationPreferences();
         applyOrientationMode();
         return orientationLocked;
     }
 
     public boolean toggleVerticalMode() {
         orientationMode = isVerticalModeEnabled() ? ORIENTATION_MODE_AUTO : ORIENTATION_MODE_VERTICAL;
+        orientationLocked = false;
+        persistOrientationPreferences();
         applyOrientationMode();
         return isVerticalModeEnabled();
     }
 
     public boolean toggleHorizontalMode() {
         orientationMode = isHorizontalModeEnabled() ? ORIENTATION_MODE_AUTO : ORIENTATION_MODE_HORIZONTAL;
+        orientationLocked = false;
+        persistOrientationPreferences();
         applyOrientationMode();
         return isHorizontalModeEnabled();
+    }
+
+    private void persistOrientationPreferences() {
+        sharedPreferences.edit()
+                .putBoolean(PREF_ORIENTATION_LOCKED, orientationLocked)
+                .putString(PREF_ORIENTATION_MODE, orientationMode)
+                .apply();
     }
 
     private void applyOrientationMode() {
@@ -346,10 +370,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         if (menuItem.getItemId() == android.R.id.home) {
             Fragment current = getSupportFragmentManager().findFragmentById(R.id.FLFragmentContainer);
-            if (current instanceof GameDetailFragment
+            if (current instanceof com.winlator.cmod.steam.SteamGameDetailFragment
+                    || current instanceof GameDetailFragment
                     || current instanceof ContainerOverviewFragment
                     || current instanceof ContainerDetailFragment
-                    || current instanceof ContainerSectionFragment) {
+                    || current instanceof ContainerSectionFragment
+                    || current instanceof ContainerCreateComposeFragment) {
                 onBackPressed();
                 return true;
             }
@@ -377,6 +403,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
 
         switch (item.getItemId()) {
+            case R.id.main_menu_steam:
+                com.winlator.cmod.steam.SteamLibrary.showMenu(this);
+                break;
             case R.id.main_menu_shortcuts:
                 show(new ShortcutsFragment(), false);
                 break;
@@ -464,12 +493,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private void show(Fragment fragment, boolean reverse) {
         FragmentManager fragmentManager = getSupportFragmentManager();
         if (reverse) {
-            fragmentManager.beginTransaction()
+            fragmentManager.beginTransaction().setReorderingAllowed(true)
                     .setCustomAnimations(R.anim.slide_in_down, R.anim.slide_out_up)
                     .replace(R.id.FLFragmentContainer, fragment)
                     .commit();
         } else {
-            fragmentManager.beginTransaction()
+            fragmentManager.beginTransaction().setReorderingAllowed(true)
                     .setCustomAnimations(R.anim.slide_in_up, R.anim.slide_out_down)
                     .replace(R.id.FLFragmentContainer, fragment)
                     .commit();
@@ -499,7 +528,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
             String creditsAndThirdPartyAppsHTML = String.join("<br />",
                     "Winlator Ludashi by StevenMX, pipetto-crypto (<a href=\"https://github.com/StevenMXZ/Winlator-Ludashi\">Fork</a>, <a href=\"https://github.com/Pipetto-crypto/winlator\">Fork</a>)",
-                    "Big Picture Mode Music by",
+                    com.winlator.cmod.ui.UiStrings.get(com.winlator.cmod.R.string.ui_big_picture_mode_music_by),
                     "Dale Melvin Blevens III (Fumer)",
                     "---",
                     "Termux Package(<a href=\"https://github.com/termux/termux-packages\">github.com/termux/termux-package</a>)",

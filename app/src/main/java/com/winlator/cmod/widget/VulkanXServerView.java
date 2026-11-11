@@ -13,7 +13,9 @@ import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 
 import com.winlator.cmod.R;
+import com.winlator.cmod.lsfg.LosslessScaling;
 import com.winlator.cmod.renderer.GPUImage;
+import com.winlator.cmod.renderer.MagnifierPan;
 import com.winlator.cmod.xserver.Bitmask;
 import com.winlator.cmod.xserver.Cursor;
 import com.winlator.cmod.xserver.Drawable;
@@ -32,12 +34,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import dalvik.annotation.optimization.FastNative;
 
 @SuppressLint("ViewConstructor")
 public class VulkanXServerView extends XServerRendererView implements SurfaceHolder.Callback,
-        WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener {
+        WindowManager.OnWindowModificationListener, Pointer.OnPointerMotionListener, VulkanRendererControls {
 
     private long nativeHandle = 0;
     private final Object lock = new Object();
@@ -46,6 +49,7 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
 
     private boolean fullscreen = false;
     private float magnifierZoom = 1.0f;
+    private final MagnifierPan magnifierPan = new MagnifierPan();
     private boolean screenOffsetYRelativeToCursor = false;
     public int surfaceWidth;
     public int surfaceHeight;
@@ -68,6 +72,16 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
     private int     pendingPostFXMode     = 0;
     private float   pendingSharpness      = 0.5f;
     private boolean pendingSwapRB         = false;
+    private volatile boolean pendingFrameGenEnabled = false;
+    private volatile boolean effectiveFrameGenEnabled = false;
+    private volatile Runnable frameGenerationStateListener = null;
+    private String pendingFrameGenEngine = "lsfg";
+    private String  pendingFrameGenCache = null;
+    private int     pendingFrameGenMultiplier = 2;
+    private int     pendingFrameGenTargetRate = -1;
+    private int     pendingFrameGenFlowScale = 70;
+    private float   pendingFrameGenRefreshRate = 0.0f;
+    private final AtomicLong sourceFrames = new AtomicLong();
 
     private WinlatorHUD hudRef = null;
     private FrameRating classicHudRef = null;
@@ -137,6 +151,13 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
     private native void nativeSetSwapRB(long handle, boolean enabled);
     private native void nativeSetPresentMode(long handle, int mode);
     private native int[] nativeGetSupportedPresentModes(long handle);
+    private native void nativeSetFrameGenerationEngine(long handle, int engine);
+    private native boolean nativeConfigureFrameGeneration(long handle, boolean enabled,
+        String cachePath, int multiplier, int targetRate, int flowScalePercent,
+        float refreshRate);
+    @FastNative private native void nativeSetFrameGenerationSourceCount(long handle, long count);
+    private native boolean nativeIsFrameGenerationSupported(long handle);
+    private native long nativeGetGeneratedFrameCount(long handle);
 
     private native void nativeInitRootWindow(long handle, long rootId, long contentId, int width, int height);
     private native void nativeCreateWindow(long handle, long id, long parentId, long contentId,
@@ -195,6 +216,7 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
                         nativeSetStretchMode(nativeHandle, pendingStretchMode);
                         nativeSetPostFXMode(nativeHandle, pendingPostFXMode);
                         nativeSetSharpness(nativeHandle, pendingSharpness);
+                        applyPendingFrameGeneration();
                         updateTransform();
                         nativeSetCursorVisible(nativeHandle, cursorVisible);
                         initComplete = true;
@@ -213,6 +235,7 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
                     nativeSetSwapRB(nativeHandle, pendingSwapRB);
                     nativeSetPostFXMode(nativeHandle, pendingPostFXMode);
                     nativeSetSharpness(nativeHandle, pendingSharpness);
+                    applyPendingFrameGeneration();
                     updateTransform();
                     nativeSetCursorVisible(nativeHandle, cursorVisible);
 
@@ -262,6 +285,8 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
 
     public void forceCleanup() {
         initComplete = false;
+        frameGenerationStateListener = null;
+        effectiveFrameGenEnabled = false;
         if (initExecutor != null) {
             initExecutor.shutdownNow();
             try { initExecutor.awaitTermination(3, TimeUnit.SECONDS); }
@@ -285,39 +310,28 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
 
     private void updateTransform() {
         if (nativeHandle == 0) return;
+        // Zoom is a render-only scene transform. Do not resize the Surface,
+        // call RandR, or change the resolution seen by the game.
         final float zoom = magnifierZoom;
-        final float ptrX = xServer.pointer.getX();
-        final float ptrY = xServer.pointer.getY();
+        final float ptrX = xServer.pointer.getX(), ptrY = xServer.pointer.getY();
+        final int screenW = xServer.screenInfo.width, screenH = xServer.screenInfo.height;
+        magnifierPan.update(ptrX, ptrY, screenW, screenH, zoom);
 
-        final float ox, oy, sx, sy;
-        if (fullscreen) {
-            viewTransformation.update(surfaceWidth, surfaceHeight,
-                xServer.screenInfo.width, xServer.screenInfo.height);
-            if (zoom != 1.0f) {
-                ox = viewTransformation.sceneOffsetX + ptrX * viewTransformation.sceneScaleX * (1f - zoom);
-                oy = viewTransformation.sceneOffsetY + ptrY * viewTransformation.sceneScaleY * (1f - zoom);
-                sx = viewTransformation.sceneScaleX * zoom;
-                sy = viewTransformation.sceneScaleY * zoom;
-            } else {
-                ox = 0f; oy = 0f; sx = 1f; sy = 1f;
-            }
-        } else {
-            float py = 0;
-            if (screenOffsetYRelativeToCursor) {
-                short halfH = (short)(xServer.screenInfo.height / 2);
-                py = Math.max(0, Math.min(ptrY - halfH / 2.0f, halfH));
-            }
-            ox = viewTransformation.sceneOffsetX + ptrX * viewTransformation.sceneScaleX * (1f - zoom);
-            oy = viewTransformation.sceneOffsetY - py + ptrY * viewTransformation.sceneScaleY * (1f - zoom);
-            sx = viewTransformation.sceneScaleX * zoom;
-            sy = viewTransformation.sceneScaleY * zoom;
+        final float baseScaleX = fullscreen ? 1f : viewTransformation.sceneScaleX;
+        final float baseScaleY = fullscreen ? 1f : viewTransformation.sceneScaleY;
+        final float baseX = fullscreen ? 0f : viewTransformation.sceneOffsetX;
+        final float baseY = fullscreen ? 0f : viewTransformation.sceneOffsetY;
+        float offsetY = baseY - magnifierPan.panY() * baseScaleY;
+        if (screenOffsetYRelativeToCursor && zoom <= 1f && !fullscreen) {
+            final float halfH = screenH * .5f;
+            offsetY -= Math.max(0f, Math.min(ptrY - halfH * .5f, halfH));
         }
-
-        final boolean needScissor = !(fullscreen && zoom == 1.0f);
-        nativeSetTransformAndScissor(nativeHandle, ox, oy, sx, sy,
-            needScissor,
+        nativeSetTransformAndScissor(nativeHandle,
+            baseX - magnifierPan.panX() * baseScaleX, offsetY,
+            baseScaleX * zoom, baseScaleY * zoom,
+            !fullscreen,
             viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
-            viewTransformation.viewWidth,   viewTransformation.viewHeight);
+            viewTransformation.viewWidth, viewTransformation.viewHeight);
     }
 
     private void sendCursorToNative(Cursor cursor) {
@@ -481,6 +495,10 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
         }
         synchronized (lock) {
             if (nativeHandle == 0 || pixmap == null) return;
+            if (isFrameGenerationSource(window)) {
+                nativeSetFrameGenerationSourceCount(nativeHandle,
+                    sourceFrames.incrementAndGet());
+            }
             final int rx = window.getRootX() + xOff, ry = window.getRootY() + yOff;
             synchronized (pixmap.renderLock) {
                 if (pixmap.backingAHB != 0) {
@@ -575,6 +593,10 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
             if (nativeHandle == 0) return;
             Drawable drawable = window.getContent();
             if (drawable == null || !window.attributes.isMapped()) return;
+            if (isFrameGenerationSource(window)) {
+                nativeSetFrameGenerationSourceCount(nativeHandle,
+                    sourceFrames.incrementAndGet());
+            }
 
             final int rx = window.getRootX(), ry = window.getRootY();
             synchronized (drawable.renderLock) {
@@ -657,6 +679,135 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
         synchronized (lock) { if (nativeHandle != 0) nativeSetPresentMode(nativeHandle, mode); }
     }
 
+    private void applyPendingFrameGeneration() {
+        if (nativeHandle == 0) {
+            effectiveFrameGenEnabled = false;
+            return;
+        }
+        nativeSetFrameGenerationEngine(nativeHandle, "wfg".equals(pendingFrameGenEngine) ? 1 : 0);
+        final boolean wasRequested = pendingFrameGenEnabled;
+        final boolean supported = nativeIsFrameGenerationSupported(nativeHandle);
+        final boolean shouldEnable = wasRequested && supported;
+        if (wasRequested && !supported)
+            pendingFrameGenEnabled = false;
+        final int effectiveTargetRate = pendingFrameGenTargetRate == -1
+            ? (pendingFrameGenRefreshRate >= 1.0f
+                ? Math.round(pendingFrameGenRefreshRate) : 60)
+            : pendingFrameGenTargetRate;
+        final boolean nativeEnabled = nativeConfigureFrameGeneration(nativeHandle, shouldEnable,
+            pendingFrameGenCache, pendingFrameGenMultiplier, effectiveTargetRate,
+            pendingFrameGenFlowScale, pendingFrameGenRefreshRate);
+        nativeSetFrameGenerationSourceCount(nativeHandle, sourceFrames.get());
+        boolean previous = effectiveFrameGenEnabled;
+        effectiveFrameGenEnabled = shouldEnable && nativeEnabled;
+        if (shouldEnable && !nativeEnabled)
+            pendingFrameGenEnabled = false;
+        if (previous != effectiveFrameGenEnabled || wasRequested != pendingFrameGenEnabled)
+            notifyFrameGenerationStateChanged();
+    }
+
+    private void notifyFrameGenerationStateChanged() {
+        Runnable listener = frameGenerationStateListener;
+        if (listener != null) post(listener);
+    }
+
+    public void setOnFrameGenerationStateChangedListener(Runnable listener) {
+        frameGenerationStateListener = listener;
+        if (listener != null) post(listener);
+    }
+
+    @Override public void setFrameGenerationEngine(String engine) {
+        synchronized (lock) {
+            if (!pendingFrameGenEnabled && !effectiveFrameGenEnabled)
+                pendingFrameGenEngine = "wfg".equals(engine) ? "wfg" : "lsfg";
+        }
+    }
+    @Override public String getFrameGenerationEngine() { return pendingFrameGenEngine; }
+
+    public void setFrameGenerationConfig(boolean enabled, String cachePath,
+                                         int multiplier, int targetRate,
+                                         int flowScalePercent, float refreshRate) {
+        synchronized (lock) {
+            pendingFrameGenEnabled = enabled && ("wfg".equals(pendingFrameGenEngine) ||
+                (cachePath != null && !cachePath.isEmpty()));
+            if (nativeHandle == 0) effectiveFrameGenEnabled = false;
+            pendingFrameGenCache = cachePath;
+            pendingFrameGenMultiplier = Math.max(2, Math.min(4, multiplier));
+            pendingFrameGenTargetRate = Math.max(-1, targetRate);
+            pendingFrameGenFlowScale = Math.max(25, Math.min(100, flowScalePercent));
+            pendingFrameGenRefreshRate = Math.max(0.0f, refreshRate);
+            applyPendingFrameGeneration();
+        }
+    }
+
+    public boolean setFrameGenerationEnabled(boolean enabled) {
+        synchronized (lock) {
+            if (enabled && !"wfg".equals(pendingFrameGenEngine) && (pendingFrameGenCache == null || pendingFrameGenCache.isEmpty() ||
+                    !new java.io.File(pendingFrameGenCache).isFile())) {
+                // A disabled launch intentionally skips cache lookup. Resolve
+                // it here so the sidebar can enable LSFG later in the session.
+                java.io.File cache = LosslessScaling.resolveCacheFile(getContext(), true);
+                if (cache == null) return false;
+                pendingFrameGenCache = cache.getAbsolutePath();
+            }
+            if (enabled && nativeHandle != 0 && !nativeIsFrameGenerationSupported(nativeHandle)) {
+                pendingFrameGenEnabled = false;
+                effectiveFrameGenEnabled = false;
+                notifyFrameGenerationStateChanged();
+                return false;
+            }
+            pendingFrameGenEnabled = enabled;
+            applyPendingFrameGeneration();
+            return !enabled || effectiveFrameGenEnabled || nativeHandle == 0;
+        }
+    }
+
+    public void setFrameGenerationSettings(int multiplier, int targetRate,
+                                           int flowScalePercent) {
+        synchronized (lock) {
+            pendingFrameGenMultiplier = Math.max(2, Math.min(4, multiplier));
+            pendingFrameGenTargetRate = Math.max(-1, targetRate);
+            pendingFrameGenFlowScale = Math.max(25, Math.min(100, flowScalePercent));
+            applyPendingFrameGeneration();
+        }
+    }
+
+    public int getFrameGenerationMultiplier() {
+        synchronized (lock) { return pendingFrameGenMultiplier; }
+    }
+
+    public int getFrameGenerationTargetRate() {
+        synchronized (lock) { return pendingFrameGenTargetRate; }
+    }
+
+    public int getFrameGenerationFlowScale() {
+        synchronized (lock) { return pendingFrameGenFlowScale; }
+    }
+
+    public boolean isFrameGenerationSupported() {
+        synchronized (lock) {
+            return nativeHandle != 0 && nativeIsFrameGenerationSupported(nativeHandle);
+        }
+    }
+
+    public boolean isFrameGenerationEnabled() {
+        return effectiveFrameGenEnabled;
+    }
+    public boolean isFrameGenerationRequested() {
+        synchronized (lock) { return pendingFrameGenEnabled; }
+    }
+
+    private boolean isFrameGenerationSource(Window window) {
+        if (!effectiveFrameGenEnabled) return false;
+        return fpsWindowId >= 0 ? window.id == fpsWindowId : window.isApplicationWindow();
+    }
+
+    public long getGeneratedFrameCount() {
+        synchronized (lock) {
+            return nativeHandle != 0 ? nativeGetGeneratedFrameCount(nativeHandle) : 0L;
+        }
+    }
+
     public int[] getSupportedPresentModes() {
         synchronized (lock) {
             if (nativeHandle != 0) return nativeGetSupportedPresentModes(nativeHandle);
@@ -679,8 +830,12 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
     public boolean isScreenOffsetYRelativeToCursor() { return screenOffsetYRelativeToCursor; }
     @Override
     public void setMagnifierZoom(float zoom) {
-        magnifierZoom = zoom;
-        synchronized (lock) { updateTransform(); }
+        synchronized (lock) {
+            final float bounded = Math.max(1f, Math.min(3f, zoom));
+            if (magnifierZoom != bounded) magnifierPan.reset();
+            magnifierZoom = bounded;
+            updateTransform();
+        }
     }
     @Override
     public float getMagnifierZoom() { return magnifierZoom; }
@@ -689,10 +844,17 @@ public class VulkanXServerView extends XServerRendererView implements SurfaceHol
 
     public void setFpsWindowId(int id) { fpsWindowId = id; }
     public void setFrameRating(Object fr) {
-        if (fr instanceof WinlatorHUD) hudRef = (WinlatorHUD) fr;
-        else if (fr instanceof FrameRating) classicHudRef = (FrameRating) fr;
+        if (fr instanceof WinlatorHUD) {
+            hudRef = (WinlatorHUD) fr;
+            hudRef.setFrameGenerationSource(this);
+        } else if (fr instanceof FrameRating) {
+            classicHudRef = (FrameRating) fr;
+            classicHudRef.setFrameGenerationSource(this);
+        }
     }
     public int getFpsLimit() {
+        // This value feeds PresentExtension's X11/game pacer. Frame generation
+        // must not disable it; the Vulkan renderer itself has no FPS cap here.
         return fpsLimit;
     }
     public void setFpsLimit(int limit) { this.fpsLimit = Math.max(0, Math.min(1000, limit)); }

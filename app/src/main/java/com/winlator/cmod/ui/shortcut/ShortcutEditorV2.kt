@@ -116,6 +116,7 @@ import com.winlator.cmod.ui.settings.envValue
 import com.winlator.cmod.ui.settings.filterDxvkForVkd3d
 import com.winlator.cmod.ui.settings.installAdrenoDriver
 import com.winlator.cmod.ui.settings.installRuntimeComponent
+import com.winlator.cmod.ui.settings.installedBox64EcVersions
 import com.winlator.cmod.ui.settings.isDxvkCompatibleWithVkd3d
 import com.winlator.cmod.ui.settings.isTurnipDriver
 import com.winlator.cmod.ui.settings.isVkd3dEnabled
@@ -234,6 +235,8 @@ private class ShortcutEditorStateV2(val shortcut: Shortcut) {
     var emulator by mutableStateOf(if (!arm64) "Box64" else if (emulatorRaw.equals("FEXCore", true)) "FEXCore" else "WOWBox64")
     var fexVersion by mutableStateOf(shortcut.getExtra("fexcoreVersion", container.getFEXCoreVersion().orEmpty()))
     var boxVersion by mutableStateOf(shortcut.getExtra("box64Version", container.getBox64Version().orEmpty()))
+    var emulator64 by mutableStateOf(shortcut.getExtra("emulator64", container.getExtra("emulator64", "FEXCore")))
+    var box64ecVersion by mutableStateOf(shortcut.getExtra("box64ecVersion", container.getExtra("box64ecVersion", "")))
     var fexPreset by mutableStateOf(shortcut.getExtra("fexcorePreset", container.getFEXCorePreset()))
     var boxPreset by mutableStateOf(shortcut.getExtra("box64Preset", container.getBox64Preset()))
 
@@ -1171,6 +1174,19 @@ private fun ShortcutCategoryV2(
                     }
                     SettingsDivider()
                     SettingMappedChoice("FEXCore Preset", s.fexPreset, fexPresets) { s.fexPreset = it; s.extra("fexcorePreset", it) }
+                    SettingsDivider()
+                    SettingChoice("64-bit Emulator", s.emulator64, listOf("FEXCore", "Box64EC")) {
+                        s.emulator64 = it; s.extra("emulator64", it)
+                    }
+                    if (s.emulator64 == "Box64EC") {
+                        val box64ecVersions = remember { installedBox64EcVersions(context) }
+                        SettingsDivider()
+                        SettingChoice(
+                            "Box64EC Version",
+                            s.box64ecVersion.takeIf { it in box64ecVersions } ?: box64ecVersions.firstOrNull() ?: "Not installed",
+                            box64ecVersions.ifEmpty { listOf("Not installed") }
+                        ) { if (it in box64ecVersions) { s.box64ecVersion = it; s.extra("box64ecVersion", it) } }
+                    }
                 }
                 if (!s.arm64 || s.emulator == "WOWBox64") {
                     catalog?.let { c ->

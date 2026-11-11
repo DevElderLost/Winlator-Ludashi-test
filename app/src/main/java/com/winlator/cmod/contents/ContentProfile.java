@@ -25,6 +25,7 @@ public class ContentProfile {
         CONTENT_TYPE_VKD3D("VKD3D"),
         CONTENT_TYPE_BOX64("Box64"),
         CONTENT_TYPE_WOWBOX64("WOWBox64"),
+        CONTENT_TYPE_BOX64EC("Box64EC"),
         CONTENT_TYPE_FEXCORE("FEXCore");
 
         final String typeName;

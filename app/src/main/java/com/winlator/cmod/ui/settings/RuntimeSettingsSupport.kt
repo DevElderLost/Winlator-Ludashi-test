@@ -286,6 +286,12 @@ internal suspend fun loadSettingsCatalog(
     )
 }
 
+internal fun installedBox64EcVersions(context: Context): List<String> =
+    ContentsManager(context).apply { syncContents() }
+        .getInstalledProfiles(ContentProfile.ContentType.CONTENT_TYPE_BOX64EC)
+        .map { it.verName }
+        .distinct()
+
 internal suspend fun installRuntimeComponent(
     context: Context,
     typeName: String,

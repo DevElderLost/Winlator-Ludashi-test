@@ -100,6 +100,7 @@ import com.winlator.cmod.ui.settings.filterDxvkForVkd3d
 import com.winlator.cmod.ui.settings.installAdrenoDriver
 import com.winlator.cmod.ui.settings.installRuntimeComponent
 import com.winlator.cmod.ui.settings.installWineRuntimeComponent
+import com.winlator.cmod.ui.settings.installedBox64EcVersions
 import com.winlator.cmod.ui.settings.isDxvkCompatibleWithVkd3d
 import com.winlator.cmod.ui.settings.isTurnipDriver
 import com.winlator.cmod.ui.settings.isVkd3dEnabled
@@ -222,6 +223,8 @@ private class ContainerEditorStateV2(
     var emulator by mutableStateOf(editing?.emulator ?: "FEXCore")
     var fexVersion by mutableStateOf(editing?.fexCoreVersion ?: DefaultVersion.FEXCORE)
     var boxVersion by mutableStateOf(editing?.box64Version ?: DefaultVersion.BOX64)
+    var emulator64 by mutableStateOf(editing?.getExtra("emulator64", "FEXCore") ?: "FEXCore")
+    var box64ecVersion by mutableStateOf(editing?.getExtra("box64ecVersion", "") ?: "")
     var fexPreset by mutableStateOf(editing?.fexCorePreset ?: FEXCorePreset.INTERMEDIATE)
     var boxPreset by mutableStateOf(editing?.box64Preset ?: Box64Preset.COMPATIBILITY)
 
@@ -321,7 +324,7 @@ private class ContainerEditorStateV2(
         renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXBackPressure,
         displayXPrecisePresentation, graphicsDriver, graphicsConfig,
-        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
+        wrapper, wrapperConfig, emulator, emulator64, box64ecVersion, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
         syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
@@ -477,6 +480,8 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.putExtra("oboeAdaptive", if (state.oboeAdaptive) "1" else "0")
         container.putExtra("oboeExclusive", if (state.oboeExclusive) "1" else "0")
         container.setEmulator(if (arm64) if (state.emulator == "FEXCore") "FEXCore" else "Box64" else "Box64")
+        container.putExtra("emulator64", state.emulator64)
+        container.putExtra("box64ecVersion", state.box64ecVersion)
         container.setWinComponents(serializeContainerComponentsV2(state.components))
         container.setShowFPS(state.hudMode != 0)
         container.setFullscreenStretched(state.fullscreen)
@@ -574,7 +579,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
                     .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
                     .put("droiddeckDeck", state.ddDeck)  // DroidDeck-deck
-                    .put("droiddeckDeckEvdev", state.ddDeckEvdev))
+                    .put("droiddeckDeckEvdev", state.ddDeckEvdev)
+                    .put("emulator64", state.emulator64)
+                    .put("box64ecVersion", state.box64ecVersion))
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
@@ -1038,6 +1045,17 @@ private fun ContainerCategoryV2(
                     }
                     SettingsDivider()
                     SettingMappedChoice("FEXCore Preset", s.fexPreset, fexPresets) { s.fexPreset = it }
+                    SettingsDivider()
+                    SettingChoice("64-bit Emulator", s.emulator64, listOf("FEXCore", "Box64EC")) { s.emulator64 = it }
+                    if (s.emulator64 == "Box64EC") {
+                        val box64ecVersions = remember { installedBox64EcVersions(context) }
+                        SettingsDivider()
+                        SettingChoice(
+                            "Box64EC Version",
+                            s.box64ecVersion.takeIf { it in box64ecVersions } ?: box64ecVersions.firstOrNull() ?: "Not installed",
+                            box64ecVersions.ifEmpty { listOf("Not installed") }
+                        ) { if (it in box64ecVersions) s.box64ecVersion = it }
+                    }
                 }
                 if (!arm64 || s.emulator == "WOWBox64") {
                     catalog?.let { c ->

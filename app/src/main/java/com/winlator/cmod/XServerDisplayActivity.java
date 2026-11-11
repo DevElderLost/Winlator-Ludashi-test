@@ -1559,7 +1559,8 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 // (contains("") cocok ke semua window), sehingga border/title bar window besar dihilangkan.
                 String wmClass = shortcut != null && shortcut.wmClass != null ? shortcut.wmClass : "";
                 oldView.getRenderer().setForceFullscreenWMClass(wmClass);
-            } else if (isNativeX11Enabled()) {
+            }
+        } else if (isNativeX11Enabled()) {
             EnvVars nativeStartupVars = new EnvVars();
             if (container != null) nativeStartupVars.putAll(container.getEnvVars());
             if (shortcut != null) nativeStartupVars.putAll(shortcut.getExtra("envVars"));

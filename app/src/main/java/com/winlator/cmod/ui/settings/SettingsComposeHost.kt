@@ -96,6 +96,7 @@ data class SettingsModel(
     val soundFonts: List<SettingChoice>,
     val winlatorPath: String,
     val shortcutPath: String,
+    val bigPicture: Boolean,
     val cursorSpeedPercent: Int,
     val cursorLock: Boolean,
     val xInput: Boolean,

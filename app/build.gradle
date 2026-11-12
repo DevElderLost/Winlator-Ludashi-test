@@ -45,12 +45,12 @@ tasks.register("downloadImageFS") {
 
 tasks.register("downloadProton") {
     def assetDir = new File(project.rootDir, ["app","src","main","assets"].join(File.separator))
-    File protonARM64EC = new File(assetDir, "proton-11.0-7-arm64ec.tar.zst")
-    File staleProtonARM64EC = new File(assetDir, "proton-9.0-arm64ec.tar.zst")
-    // The .wcp release is a Zstandard tar archive. Keep the bundled name aligned with wine_entries.
-    String protonURL = "https://github.com/Other-backup/winlator-imagefs-v2/releases/download/pnew2/proton-wine-11.0-7-arm64ec.wcp"
-    String protonSHA256 = "1ef0bb9efceb2278933b3fa2bfd374999b0d9a7c74045b67b9af8a9b5260f734"
-    long protonSize = 112607135L
+    File protonARM64EC = new File(assetDir, "proton-9.0-arm64ec.tar.zst")
+    File staleProtonARM64EC = new File(assetDir, "proton-11.0-7-arm64ec.tar.zst")
+    // Bundled default runtime is Proton 9 (same archive as 4.1). Keep the bundled name aligned with wine_entries.
+    String protonURL = "https://github.com/Other-backup/winlator-imagefs-v2/releases/download/c/proton-9.0-arm64ec.tar.zst"
+    String protonSHA256 = "5f9375640479a5b2c4c3998fda689bb5085febc8fcdb7b6998c79d925392991a"
+    long protonSize = 73570637L
 
     def fileSHA256 = { File file ->
         MessageDigest digest = MessageDigest.getInstance("SHA-256")
@@ -72,12 +72,11 @@ tasks.register("downloadProton") {
                 && fileSHA256(protonARM64EC).equalsIgnoreCase(protonSHA256)
         if (!valid) {
             if (protonARM64EC.exists()) protonARM64EC.delete()
-            println("Proton 11 ARM64EC was not present or failed validation, downloading...\n")
-            String protonApiURL = "https://api.github.com/repos/Other-backup/winlator-imagefs-v2/releases/assets/695820250"
+            println("Proton 9 ARM64EC was not present or failed validation, downloading...\n")
             File partial = new File(assetDir, protonARM64EC.name + ".part")
             Exception lastFailure = null
             for (int attempt = 1; attempt <= 4 && !valid; attempt++) {
-                for (String candidate : [protonApiURL, protonURL]) {
+                for (String candidate : [protonURL]) {
                     try {
                         partial.delete()
                         def connection = new URL(candidate).openConnection()
@@ -85,28 +84,25 @@ tasks.register("downloadProton") {
                         connection.setReadTimeout(120000)
                         connection.setRequestProperty("Accept", "application/octet-stream")
                         connection.setRequestProperty("User-Agent", "Winlator-Ludashi-build")
-                        if (candidate == protonApiURL && System.getenv("GITHUB_TOKEN")) {
-                            connection.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
-                        }
                         connection.getInputStream().withCloseable { input ->
                             partial.withOutputStream { output -> output << input }
                         }
                         if (!partial.isFile() || partial.length() != protonSize || !fileSHA256(partial).equalsIgnoreCase(protonSHA256)) {
-                            throw new GradleException("Proton 11 ARM64EC size/SHA-256 verification failed")
+                            throw new GradleException("Proton 9 ARM64EC size/SHA-256 verification failed")
                         }
                         java.nio.file.Files.move(partial.toPath(), protonARM64EC.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                         valid = true
                         break
                     } catch (Exception error) {
                         lastFailure = error
-                        println("Proton 11 download attempt ${attempt} failed; trying another endpoint.")
+                        println("Proton 9 download attempt ${attempt} failed; retrying.")
                     } finally {
                         partial.delete()
                     }
                 }
                 if (!valid && attempt < 4) Thread.sleep(4000L * attempt)
             }
-            if (!valid) throw new GradleException("Could not download the verified Proton 11 ARM64EC archive after retries", lastFailure)
+            if (!valid) throw new GradleException("Could not download the verified Proton 9 ARM64EC archive after retries", lastFailure)
         }
     }
 }

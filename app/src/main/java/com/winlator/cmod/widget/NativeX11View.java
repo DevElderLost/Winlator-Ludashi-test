@@ -341,6 +341,7 @@ public final class NativeX11View extends XServerRendererView implements SurfaceH
     @Override public synchronized void onKeyPress(byte code, int keysym) { if (handle != 0) nativeInput(handle, 2, code & 255, 1); }
     @Override public synchronized void onKeyRelease(byte code) { if (handle != 0) nativeInput(handle, 2, code & 255, 0); }
     @Override public void toggleFullscreen() { fullscreen = !fullscreen; updateOptions(); }
+    public void setFullscreen(boolean value) { if (fullscreen != value) { fullscreen = value; updateOptions(); } }
     @Override public boolean isFullscreen() { return fullscreen; }
     @Override public void setCursorVisible(boolean value) { cursorVisible = value; updateOptions(); }
     @Override public void setFpsLimit(int value) { fpsLimit = Math.max(0, value); updateOptions(); }

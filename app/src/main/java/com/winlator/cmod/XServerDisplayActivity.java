@@ -1542,10 +1542,11 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
         boolean useDisplayX = isDisplayXEnabled();
 
-        boolean useEGL = !useDisplayX && (shortcut != null ? shortcut.getRendererNative()
-                : (container != null && container.getRendererNative()));
+        boolean useEGL = !useDisplayX && ((isOldDisplayEnabled() && isNativeX11Enabled())  // Old Display di X++ = backend EGL native
+                || (shortcut != null ? shortcut.getRendererNative()
+                : (container != null && container.getRendererNative())));
 
-        if (isOldDisplayEnabled()) {
+        if (isOldDisplayEnabled() && !isNativeX11Enabled()) {
             // Renderer "Old Display": logika render display experimental-v2.
             OldXServerView oldView = new OldXServerView(this, xServer);
             xServerView = oldView;
@@ -1597,6 +1598,14 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                             useDisplayX ? 2 : useEGL ? 1 : 0, displayXFlags);
             nativeView.setFilterMode(shortcut != null ? shortcut.getRendererFilterMode()
                     : (container != null ? container.getRendererFilterMode() : 0));
+            if (isOldDisplayEnabled()) {
+                // Old Display di X++: compositor GLES (EGL) milik server native. Force Fullscreen dipetakan ke
+                // stretch layar penuh; Direct Rendering hanya ada di renderer Java (X11) sehingga diabaikan.
+                boolean oldForceFullscreen = shortcut != null ? shortcut.getOldDisplayForceFullscreen()
+                        : container != null && container.getOldDisplayForceFullscreen();
+                nativeView.setFullscreen(oldForceFullscreen);
+                Log.d("XServerDisplayActivity", "Old Display on X++: native EGL backend, fullscreen=" + oldForceFullscreen);
+            }
             nativeView.setReadyCallback(() -> {
                 preloaderDialog.closeOnUiThread();
                 if (!simulateTouchScreen) nativeView.setCursorVisible(true);

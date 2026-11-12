@@ -1606,10 +1606,28 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 nativeView.setFullscreen(oldForceFullscreen);
                 Log.d("XServerDisplayActivity", "Old Display on X++: native EGL backend, fullscreen=" + oldForceFullscreen);
             }
-            nativeView.setReadyCallback(() -> {
+            // X++: desktop Wine disembunyikan untuk Shortcut (filter explorer.exe) dan sinyal "siap" bawaan baru
+            // menyala saat game menggambar frame pertamanya, jadi loading menutupi proses booting game. Seperti
+            // X11 (dialog tertutup sebelum game boot), tutup juga begitu winhandler.exe terhubung (Wine sudah
+            // boot dan program dijalankan), sehingga prosesnya terlihat di Task Manager. Mana yang lebih dulu.
+            final java.util.concurrent.atomic.AtomicBoolean nativeLoadingClosed = new java.util.concurrent.atomic.AtomicBoolean(false);
+            final Runnable closeNativeLoading = () -> {
+                if (!nativeLoadingClosed.compareAndSet(false, true)) return;
                 preloaderDialog.closeOnUiThread();
                 if (!simulateTouchScreen) nativeView.setCursorVisible(true);
-            });
+            };
+            nativeView.setReadyCallback(closeNativeLoading);
+            final Runnable[] winHandlerReadyCheck = new Runnable[1];
+            winHandlerReadyCheck[0] = () -> {
+                if (nativeLoadingClosed.get() || isFinishing() || isDestroyed()) return;
+                if (winHandler != null && winHandler.isSessionReady()) {
+                    Log.d("XServerDisplayActivity", "X++: winhandler connected, closing loading early");
+                    closeNativeLoading.run();
+                    return;
+                }
+                nativeView.postDelayed(winHandlerReadyCheck[0], 100L);
+            };
+            nativeView.post(winHandlerReadyCheck[0]);
             xServerView = nativeView;
         } else if (useDisplayX || useEGL) {
             xServerView = new XServerView(this, xServer);

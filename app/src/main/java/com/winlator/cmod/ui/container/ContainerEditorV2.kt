@@ -105,7 +105,6 @@ import com.winlator.cmod.ui.settings.filterDxvkForVkd3d
 import com.winlator.cmod.ui.settings.installAdrenoDriver
 import com.winlator.cmod.ui.settings.installRuntimeComponent
 import com.winlator.cmod.ui.settings.installWineRuntimeComponent
-import com.winlator.cmod.ui.settings.installedBox64EcVersions
 import com.winlator.cmod.ui.settings.isDxvkCompatibleWithVkd3d
 import com.winlator.cmod.ui.settings.isTurnipDriver
 import com.winlator.cmod.ui.settings.isVkd3dEnabled
@@ -243,8 +242,6 @@ private class ContainerEditorStateV2(
     var emulator by mutableStateOf(editing?.emulator ?: "FEXCore")
     var fexVersion by mutableStateOf(editing?.fexCoreVersion ?: DefaultVersion.FEXCORE)
     var boxVersion by mutableStateOf(editing?.box64Version ?: DefaultVersion.BOX64)
-    var emulator64 by mutableStateOf(editing?.getExtra("emulator64", "FEXCore") ?: "FEXCore")
-    var box64ecVersion by mutableStateOf(editing?.getExtra("box64ecVersion", "") ?: "")
     var fexPreset by mutableStateOf(editing?.fexCorePreset ?: FEXCorePreset.INTERMEDIATE)
     var boxPreset by mutableStateOf(editing?.box64Preset ?: Box64Preset.COMPATIBILITY)
 
@@ -510,8 +507,6 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setSoftwareDecoding(state.softwareDecoding)
         container.setAudioDriver(state.audio)
         container.setEmulator(if (arm64) if (state.emulator == "FEXCore") "FEXCore" else "Box64" else "Box64")
-        container.putExtra("emulator64", state.emulator64)
-        container.putExtra("box64ecVersion", state.box64ecVersion)
         container.setWinComponents(serializeContainerComponentsV2(state.components))
         container.setShowFPS(state.hudMode != 0)
         container.setFullscreenStretched(state.fullscreen)
@@ -616,9 +611,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
                     .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
                     .put("droiddeckDeck", state.ddDeck)  // DroidDeck-deck
-                    .put("droiddeckDeckEvdev", state.ddDeckEvdev)
-                    .put("emulator64", state.emulator64)
-                    .put("box64ecVersion", state.box64ecVersion))
+                    .put("droiddeckDeckEvdev", state.ddDeckEvdev))
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false

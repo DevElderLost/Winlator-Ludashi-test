@@ -124,7 +124,6 @@ import com.winlator.cmod.ui.settings.envValue
 import com.winlator.cmod.ui.settings.filterDxvkForVkd3d
 import com.winlator.cmod.ui.settings.installAdrenoDriver
 import com.winlator.cmod.ui.settings.installRuntimeComponent
-import com.winlator.cmod.ui.settings.installedBox64EcVersions
 import com.winlator.cmod.ui.settings.isDxvkCompatibleWithVkd3d
 import com.winlator.cmod.ui.settings.isTurnipDriver
 import com.winlator.cmod.ui.settings.isVkd3dEnabled
@@ -266,8 +265,6 @@ var oldDisplayForceFullscreen by mutableStateOf(shortcut.getOldDisplayForceFulls
     var emulator by mutableStateOf(if (!arm64) "Box64" else if (emulatorRaw.equals("FEXCore", true)) "FEXCore" else "WOWBox64")
     var fexVersion by mutableStateOf(shortcut.getExtra("fexcoreVersion", container.getFEXCoreVersion().orEmpty()))
     var boxVersion by mutableStateOf(shortcut.getExtra("box64Version", container.getBox64Version().orEmpty()))
-    var emulator64 by mutableStateOf(shortcut.getExtra("emulator64", container.getExtra("emulator64", "FEXCore")))
-    var box64ecVersion by mutableStateOf(shortcut.getExtra("box64ecVersion", container.getExtra("box64ecVersion", "")))
     var fexPreset by mutableStateOf(shortcut.getExtra("fexcorePreset", container.getFEXCorePreset()))
     var boxPreset by mutableStateOf(shortcut.getExtra("box64Preset", container.getBox64Preset()))
 

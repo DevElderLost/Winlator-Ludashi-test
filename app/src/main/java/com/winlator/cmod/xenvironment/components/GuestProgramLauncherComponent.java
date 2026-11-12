@@ -85,50 +85,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         return bestMatch;
     }
 
-    public static final String EMULATOR64_FEXCORE = "FEXCore";
-    public static final String EMULATOR64_BOX64EC = "Box64EC";
-
-    private String getEmulator64() {
-        String value = container.getExtra("emulator64", EMULATOR64_FEXCORE);
-        if (shortcut != null) value = shortcut.getExtra("emulator64", value);
-        return EMULATOR64_BOX64EC.equalsIgnoreCase(value) ? EMULATOR64_BOX64EC : EMULATOR64_FEXCORE;
-    }
-
-    private String getBox64ECVersion() {
-        String value = container.getExtra("box64ecVersion", "");
-        if (shortcut != null) value = shortcut.getExtra("box64ecVersion", value);
-        return value;
-    }
-
-    private File getBox64ECDll() {
-        return new File(environment.getImageFs().getRootDir(), "/home/xuser/.wine/drive_c/windows/system32/box64ec.dll");
-    }
-
-    /** Box64EC (64-bit x86_64 emulator for ARM64EC Wine) is installed via .wcp only; there is no bundled asset. */
-    private boolean prepareBox64EC() {
-        if (!EMULATOR64_BOX64EC.equals(getEmulator64())) return false;
-
-        String version = getBox64ECVersion();
-        ContentProfile profile = null;
-        if (version.isEmpty()) {
-            for (ContentProfile installed : contentsManager.getInstalledProfiles(ContentProfile.ContentType.CONTENT_TYPE_BOX64EC)) {
-                if (profile == null || installed.verCode > profile.verCode) profile = installed;
-            }
-        } else {
-            profile = resolveInstalledRuntimeProfile(ContentProfile.ContentType.CONTENT_TYPE_BOX64EC, version);
-        }
-        if (profile == null) {
-            Log.w("GuestProgramLauncherComponent", "Box64EC '" + version + "' is not installed; falling back to FEXCore (64-bit)");
-            return false;
-        }
-
-        if (!contentsManager.isContentApplied(profile) && !contentsManager.applyContent(profile)) {
-            Log.e("GuestProgramLauncherComponent", "Unable to apply Box64EC version " + version);
-            return false;
-        }
-        return getBox64ECDll().isFile();
-    }
-
     private boolean applyRuntimeContent(
             ContentProfile.ContentType type,
             String version,
@@ -255,7 +211,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 Log.e("GuestProgramLauncherComponent", "Unable to apply FEXCore version " + fexcoreVersion);
             }
         }
-        prepareBox64EC();
         if (containerDataChanged) container.saveData();
     }
 
@@ -587,11 +542,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     execEnvVars.put("HODLL", "libwow64fex.dll");
                 else
                     execEnvVars.put("HODLL", "wowbox64.dll");
-                // 64-bit x86_64 emulator: HODLL64 (libarm64ecfex.dll is Wine's default when unset)
-                if (EMULATOR64_BOX64EC.equals(getEmulator64()) && getBox64ECDll().isFile())
-                    execEnvVars.put("HODLL64", "box64ec.dll");
-                else
-                    execEnvVars.remove("HODLL64");
+                // 64-bit x86_64 emulator is always FEX: leave HODLL64 unset (Wine default libarm64ecfex.dll)
+                execEnvVars.remove("HODLL64");
             } else
                 command = imageFs.getBinDir() + "/box64 " + guestExecutable;
         }

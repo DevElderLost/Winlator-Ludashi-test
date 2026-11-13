@@ -1607,12 +1607,10 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             nativeView.setFilterMode(shortcut != null ? shortcut.getRendererFilterMode()
                     : (container != null ? container.getRendererFilterMode() : 0));
             if (isOldDisplayEnabled()) {
-                // Old Display di X++: compositor GLES (EGL) milik server native. Force Fullscreen dipetakan ke
-                // stretch layar penuh; Direct Rendering hanya ada di renderer Java (X11) sehingga diabaikan.
-                boolean oldForceFullscreen = shortcut != null ? shortcut.getOldDisplayForceFullscreen()
-                        : container != null && container.getOldDisplayForceFullscreen();
-                nativeView.setFullscreen(oldForceFullscreen);
-                Log.d("XServerDisplayActivity", "Old Display on X++: native EGL backend, fullscreen=" + oldForceFullscreen);
+                // Old Display di X++: compositor GLES (EGL) milik server native. Mode tampilan default Fit
+                // (sama seperti Vulkan); Fit/Stretch/Soft diatur dari sidebar atau setelan container/shortcut.
+                // Force Fullscreen (per jendela, rasio dijaga) dan Direct Rendering hanya ada di renderer Java (X11).
+                Log.d("XServerDisplayActivity", "Old Display on X++: native EGL backend, default Fit");
             }
             // X++: desktop Wine disembunyikan untuk Shortcut (filter explorer.exe) dan sinyal "siap" bawaan baru
             // menyala saat game menggambar frame pertamanya, jadi loading menutupi proses booting game. Seperti
@@ -2104,8 +2102,9 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     }
 
     public boolean isSidebarSoftStretchSupported() {
-        // The 4.2 Native X11 renderer gained the same controls as Java Vulkan.
-        return supportsVulkanRendererEffects();
+        // The 4.2 Native X11 renderer gained the same controls as Java Vulkan; Old Display (GLES) punya
+        // implementasi Soft Stretch sendiri di OldGLRenderer.
+        return supportsVulkanRendererEffects() || xServerView instanceof OldXServerView;
     }
 
     public int getSidebarDisplayMode() {
@@ -2122,6 +2121,8 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         boolean newSoft = mode == 2;
         if (xServerView instanceof VulkanRendererControls)
             ((VulkanRendererControls) xServerView).setStretchMode(newSoft ? 1 : 0);
+        else if (xServerView instanceof OldXServerView)
+            ((OldXServerView) xServerView).getRenderer().setSoftStretch(newSoft);
         softStretchEnabled = newSoft;
         boolean fullscreen = mode != 0;
         if (xServerView.isFullscreen() != fullscreen) {

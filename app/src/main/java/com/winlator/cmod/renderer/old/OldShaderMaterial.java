@@ -121,6 +121,52 @@ public class OldShaderMaterial {
         }
     }
 
+    /** Pass akhir Soft Stretch: kurva horizontal yang sama dengan cpp/winlator/renderer/vulkan/window_stretch.frag. */
+    public static class SoftStretchMaterial extends OldShaderMaterial {
+        public SoftStretchMaterial() {
+            setUniformNames("rect", "texture", "strength", "profile");
+        }
+
+        @Override
+        protected String getVertexShader() {
+            return
+                "uniform vec4 rect;\n" +
+                "attribute vec2 position;\n" +
+                "varying vec2 vUV;\n" +
+
+                "void main() {\n" +
+                    // position (0,0) = kiri-atas; tekstur FBO menyimpan baris atas di v = 1
+                    "vUV = vec2(position.x, 1.0 - position.y);\n" +
+                    "gl_Position = vec4(mix(rect.x, rect.z, position.x), mix(rect.y, rect.w, position.y), 0.0, 1.0);\n" +
+                "}";
+        }
+
+        @Override
+        protected String getFragmentShader() {
+            return
+                "#ifdef GL_FRAGMENT_PRECISION_HIGH\n" +
+                "precision highp float;\n" +
+                "#else\n" +
+                "precision mediump float;\n" +
+                "#endif\n" +
+                "uniform sampler2D texture;\n" +
+                "uniform float strength;\n" +
+                "uniform float profile;\n" +
+                "varying vec2 vUV;\n" +
+
+                "void main() {\n" +
+                    "float x = vUV.x * 2.0 - 1.0;\n" +
+                    "float sinShape = sin(1.57079632679 * x);\n" +
+                    "float x2 = x * x;\n" +
+                    "float x5 = x2 * x2 * x;\n" +
+                    "float quintic = 0.5 * x5 - 1.5 * x2 * x + 2.0 * x;\n" +
+                    "float warped = mix(x, mix(sinShape, quintic, profile), strength);\n" +
+                    "float u = clamp(0.5 * warped + 0.5, 0.0, 1.0);\n" +
+                    "gl_FragColor = vec4(texture2D(texture, vec2(u, vUV.y)).rgb, 1.0);\n" +
+                "}";
+        }
+    }
+
     public static class CursorMaterial extends OldShaderMaterial {
         public CursorMaterial() {
             setUniformNames("xform", "viewSize", "texture");

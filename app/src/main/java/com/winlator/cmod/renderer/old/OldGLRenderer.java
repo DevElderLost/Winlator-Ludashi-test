@@ -98,7 +98,18 @@ public class OldGLRenderer implements OldGLThread.Client,
 
     private volatile String forceFullscreenWMClass = null;
     private volatile boolean fullscreen = false;
-    private volatile boolean toggleFullscreen = false;
+    // Target mode (Fit/Stretch) yang diminta UI. Diterapkan di GL thread; isFullscreen() membaca target ini
+    // supaya klik berturut-turut di sidebar tidak membalik state dua kali sebelum frame berikutnya.
+    private volatile boolean fullscreenTarget = false;
+    // Soft Stretch (mode Stretch + pelebaran horizontal non-linear, sama seperti renderer Vulkan).
+    private volatile boolean softStretch = false;
+    private static final float SOFT_STRETCH_STRENGTH = 0.40f;
+    private static final float SOFT_STRETCH_PROFILE = 0.60f;
+    private final OldShaderMaterial.SoftStretchMaterial softStretchMaterial = new OldShaderMaterial.SoftStretchMaterial();
+    private int softFbo;
+    private int softTex;
+    private int softW;
+    private int softH;
     private volatile boolean viewportNeedsUpdate = true;
     private volatile boolean cursorVisible = true;
     private volatile boolean screenOffsetYRelativeToCursor = false;
@@ -201,9 +212,8 @@ public class OldGLRenderer implements OldGLThread.Client,
 
     @Override
     public void onGLDrawFrame() {
-        if (toggleFullscreen) {
-            fullscreen = !fullscreen;
-            toggleFullscreen = false;
+        if (fullscreen != fullscreenTarget) {
+            fullscreen = fullscreenTarget;
             viewportNeedsUpdate = true;
         }
         drawFrame();
@@ -217,6 +227,8 @@ public class OldGLRenderer implements OldGLThread.Client,
         directTextures.clear();
         cursorMaterial.destroy();
         windowMaterial.destroy();
+        softStretchMaterial.destroy();
+        releaseSoftTarget();
         quadVertices.destroy();
     }
 
@@ -237,6 +249,14 @@ public class OldGLRenderer implements OldGLThread.Client,
             viewportNeedsUpdate = false;
         }
 
+        // Soft Stretch: scene digambar apa adanya (mode Stretch) ke FBO seukuran layar X, lalu dilebarkan
+        // ke seluruh surface dengan kurva horizontal yang sama seperti shader Vulkan (window_stretch.frag).
+        boolean soft = fullscreen && softStretch && ensureSoftTarget();
+        if (soft) {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, softFbo);
+            GLES20.glViewport(0, 0, softW, softH);
+        }
+
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         applySceneTransform();
 
@@ -244,9 +264,78 @@ public class OldGLRenderer implements OldGLThread.Client,
 
         if (cursorVisible) renderCursor();
 
+        if (soft) {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
+            drawSoftStretchPass();
+        }
+
         if (!magnifierEnabled && !fullscreen) {
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
         }
+    }
+
+    /** Buat/siapkan FBO seukuran layar X. False jika FBO tidak tersedia (mode Soft jatuh ke Stretch biasa). */
+    private boolean ensureSoftTarget() {
+        int w = xServer.screenInfo.width;
+        int h = xServer.screenInfo.height;
+        if (w <= 0 || h <= 0) return false;
+        if (softFbo != 0 && softW == w && softH == h) return true;
+        releaseSoftTarget();
+
+        int[] id = new int[1];
+        GLES20.glGenTextures(1, id, 0);
+        softTex = id[0];
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, softTex);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0,
+                GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+        GLES20.glGenFramebuffers(1, id, 0);
+        softFbo = id[0];
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, softFbo);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, softTex, 0);
+        int status = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        if (status != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+            Log.e(TAG, "Soft Stretch FBO incomplete: 0x" + Integer.toHexString(status));
+            releaseSoftTarget();
+            softStretch = false;
+            return false;
+        }
+        softW = w;
+        softH = h;
+        return true;
+    }
+
+    private void releaseSoftTarget() {
+        if (softFbo != 0) GLES20.glDeleteFramebuffers(1, new int[]{softFbo}, 0);
+        if (softTex != 0) GLES20.glDeleteTextures(1, new int[]{softTex}, 0);
+        softFbo = 0;
+        softTex = 0;
+        softW = 0;
+        softH = 0;
+    }
+
+    private void drawSoftStretchPass() {
+        GLES20.glDisable(GLES20.GL_BLEND);
+        softStretchMaterial.use();
+        GLES20.glUniform4f(softStretchMaterial.getUniformLocation("rect"), -1.0f, 1.0f, 1.0f, -1.0f);
+        GLES20.glUniform1f(softStretchMaterial.getUniformLocation("strength"), SOFT_STRETCH_STRENGTH);
+        GLES20.glUniform1f(softStretchMaterial.getUniformLocation("profile"), SOFT_STRETCH_PROFILE);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, softTex);
+        GLES20.glUniform1i(softStretchMaterial.getUniformLocation("texture"), 0);
+        quadVertices.bind(softStretchMaterial.programId);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, quadVertices.count());
+        quadVertices.disable();
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        GLES20.glEnable(GLES20.GL_BLEND);
     }
 
     private void applySceneTransform() {
@@ -713,12 +802,28 @@ public class OldGLRenderer implements OldGLThread.Client,
     // ---------------------------------------------------------------- public api
 
     public void toggleFullscreen() {
-        toggleFullscreen = true;
+        fullscreenTarget = !fullscreenTarget;
+        requestRender();
+    }
+
+    /** Set mode Fit (false) / Stretch (true) secara eksplisit. */
+    public void setFullscreen(boolean enabled) {
+        fullscreenTarget = enabled;
         requestRender();
     }
 
     public boolean isFullscreen() {
-        return fullscreen;
+        return fullscreenTarget;
+    }
+
+    /** Soft Stretch hanya berlaku saat mode Stretch (fullscreen) aktif. */
+    public void setSoftStretch(boolean enabled) {
+        softStretch = enabled;
+        requestRender();
+    }
+
+    public boolean isSoftStretch() {
+        return softStretch;
     }
 
     public void setCursorVisible(boolean cursorVisible) {

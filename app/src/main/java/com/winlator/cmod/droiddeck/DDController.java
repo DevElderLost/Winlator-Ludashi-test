@@ -269,6 +269,11 @@ public final class DDController {
 
     public static void openMenu() {  // DD-COMPOSE-SETTINGS
         if (activity == null) return;
+        // DD-MODERN-SIDEBAR: sidebar baru (Compose) punya panel DroidDeck sendiri
+        try {
+            if (activity instanceof com.winlator.cmod.XServerDisplayActivity
+                    && ((com.winlator.cmod.XServerDisplayActivity) activity).openDroidDeckSidebar()) return;
+        } catch (Throwable ignored) { }
         try { if (DDSidebarPanel.select(activity)) return; } catch (Throwable ignored) { }  // DD-SIDEBAR-PANEL
         try {
             DDSettingsComposeDialog.show(activity);

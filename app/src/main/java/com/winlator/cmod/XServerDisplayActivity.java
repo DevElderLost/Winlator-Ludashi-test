@@ -1143,6 +1143,14 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         }
     }
 
+    /** Dipanggil DroidDeck (DDController.openMenu): buka sidebar baru langsung di panel DroidDeck. */
+    public boolean openDroidDeckSidebar() {
+        if (modernSidebar == null || drawerLayout == null) return false;
+        modernSidebar.showDroidDeck();
+        if (!drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.openDrawer(GravityCompat.START);
+        return true;
+    }
+
     private boolean ownsPrefixLease;
     private boolean exclusiveInputBusy;
 

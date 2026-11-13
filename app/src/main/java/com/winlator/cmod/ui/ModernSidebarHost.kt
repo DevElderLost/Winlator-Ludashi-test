@@ -46,6 +46,9 @@ import com.winlator.cmod.XServerDisplayActivity
 import com.winlator.cmod.ui.theme.*
 import com.winlator.cmod.widget.SeekBar as LegacySlider
 
+// DD-MODERN-SIDEBAR: id panel DroidDeck (tidak punya panel legacy; isinya Compose murni)
+internal const val DROIDDECK_PANEL = -311
+
 // WinLite's unified rail/panel presentation, adapted to Ludashi's existing rendering,
 // HUD and input bindings. The native binding tree stays attached but hidden, so backend
 // listeners and their autosave/renderer-specific visibility remain authoritative.
@@ -68,8 +71,11 @@ class ModernSidebarController internal constructor(internal val activity: XServe
             revision++
         }
     }
+    /** Dipanggil DDController.openMenu(): tampilkan panel DroidDeck saat sidebar dibuka. */
+    fun showDroidDeck() { selected = DROIDDECK_PANEL; refresh() }
     internal fun select(panel: Int) {
         selected = panel
+        if (panel == DROIDDECK_PANEL) { activity.cancelSidebarRuntimeStatus(); refresh(); return }
         val button = when (panel) {
             R.id.LLSubGraphics -> R.id.BTItemGraphics
             R.id.LLSubScreen -> R.id.BTItemScreen
@@ -130,6 +136,9 @@ private fun Sidebar(state: ModernSidebarController) {
                         Icon(painterResource(section.icon), stringResource(section.label), Modifier.size(23.dp))
                     }
                 }
+                RailButton(state.selected == DROIDDECK_PANEL, { state.select(DROIDDECK_PANEL) }, cellSize) {
+                    Icon(Icons.Outlined.SportsEsports, "DroidDeck", Modifier.size(23.dp))
+                }
                 if (com.winlator.cmod.steam.SteamSocial.enabled(state.activity)) RailButton(state.selected == -310, { state.selected = -310 }, cellSize) {
                     Icon(Icons.Outlined.People, stringResource(R.string.steam_friends))
                 }
@@ -156,7 +165,9 @@ private fun Sidebar(state: ModernSidebarController) {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     val revision = state.revision
-                    if (panel == -310) { if (state.opened) com.winlator.cmod.steam.SteamFriendsScreen() } else if (panel == R.id.LLSubTaskManager && source != null) {
+                    if (panel == -310) { if (state.opened) com.winlator.cmod.steam.SteamFriendsScreen() } else if (panel == DROIDDECK_PANEL) {
+                        com.winlator.cmod.droiddeck.DDModernPanel(state.activity, revision, state::refresh)
+                    } else if (panel == R.id.LLSubTaskManager && source != null) {
                         TaskManagerPanel(source, true)
                     } else {
                         Text(stringResource(section.label),

@@ -2104,7 +2104,9 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     public boolean isSidebarSoftStretchSupported() {
         // The 4.2 Native X11 renderer gained the same controls as Java Vulkan; Old Display (GLES) punya
         // implementasi Soft Stretch sendiri di OldGLRenderer.
-        return supportsVulkanRendererEffects() || xServerView instanceof OldXServerView;
+        return supportsVulkanRendererEffects() || xServerView instanceof OldXServerView
+                || (xServerView instanceof com.winlator.cmod.widget.NativeX11View
+                && ((com.winlator.cmod.widget.NativeX11View) xServerView).supportsSoftStretch());
     }
 
     public int getSidebarDisplayMode() {

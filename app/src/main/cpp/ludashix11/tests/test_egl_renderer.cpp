@@ -141,6 +141,44 @@ int main() {
         assert((Pixel(170, 10) == std::array<u8, 4>{0x33, 0x22, 0x11, 255}));
         renderer->Drain();
     }
+    {
+        // Soft Stretch (mode Stretch + pelebaran horizontal non-linear): tepi ditarik, tengah dijaga.
+        config.swapRB = false;
+        auto renderer = CreateNativeEGLRenderer(1280, 720, config);
+        renderer->Surface(new ANativeWindow);
+        renderer->Options(true, true, 0, 60, 1);
+        auto image = std::make_shared<NativeDrawable>(1280, 720, 24);
+        image->FillRect(0, 0, 1280, 720, 0xff00ff00);
+        image->FillRect(0, 0, 281, 720, 0xffff0000);
+        image->FillRect(999, 0, 281, 720, 0xff0000ff);
+        NativeFrame frame;
+        frame.entries.push_back({image, nullptr, image->Pixels(), image->Revision(), 0, 0, true});
+        NativeVisualOptions options;
+        options.stretch = 0;
+        renderer->VisualOptions(options);
+        assert(renderer->Draw(frame));
+        glFinish();
+        // Stretch biasa: surface dan layar X sama besar, jadi tidak ada pergeseran.
+        assert((Pixel(320, 360) == std::array<u8, 4>{0, 0xff, 0, 0xff}));
+        assert((Pixel(960, 360) == std::array<u8, 4>{0, 0xff, 0, 0xff}));
+        options.stretch = 1;
+        renderer->VisualOptions(options);
+        assert(renderer->Draw(frame));
+        glFinish();
+        // Soft Stretch: seperempat lebar mengambil sampel ~19% (merah), tiga perempat ~81% (biru).
+        assert((Pixel(320, 360) == std::array<u8, 4>{0xff, 0, 0, 0xff}));
+        assert((Pixel(960, 360) == std::array<u8, 4>{0, 0, 0xff, 0xff}));
+        // Tengah dan tepi tidak bergeser.
+        assert((Pixel(640, 360) == std::array<u8, 4>{0, 0xff, 0, 0xff}));
+        assert((Pixel(2, 360) == std::array<u8, 4>{0xff, 0, 0, 0xff}));
+        assert((Pixel(1277, 360) == std::array<u8, 4>{0, 0, 0xff, 0xff}));
+        // Mode Fit (bukan fullscreen) mengabaikan Soft Stretch.
+        renderer->Options(false, true, 0, 60, 1);
+        assert(renderer->Draw(frame));
+        glFinish();
+        assert((Pixel(320, 360) == std::array<u8, 4>{0, 0xff, 0, 0xff}));
+        renderer->Drain();
+    }
     std::cout << "PASS: real GLES shader pixels, BGRA/RGBA, alpha cursor, CPU updates, cached AHB imports, "
-                 "fences and surface recreation\n";
+                 "fences, surface recreation and soft stretch\n";
 }

@@ -197,6 +197,8 @@ public final class NativeX11View extends XServerRendererView implements SurfaceH
     }
 
     public boolean isVulkanBackend() { return backend == 0; }
+    /** Soft Stretch ada di backend Vulkan dan EGL (shader yang sama); DisplayX tidak mendukungnya. */
+    public boolean supportsSoftStretch() { return backend == 0 || backend == 1; }
     public String getBackendName() { return backend == 2 ? "DisplayX" : backend == 1 ? "EGL" : "Vulkan"; }
     public synchronized void setReadyCallback(Runnable callback) { readyCallback = callback; if (ready) callback.run(); }
     public synchronized void setDiagnosticsEnabled(boolean enabled) {

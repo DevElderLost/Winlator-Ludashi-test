@@ -35,7 +35,7 @@ class EGLNativeRenderer final : public NativeRenderer {
         int width{}, height{};
         std::weak_ptr<NativeDrawable> owner;
     };
-    int width, height, outerW{}, outerH{}, filter{};
+    int width, height, outerW{}, outerH{}, filter{}, stretch{};
     NativeRendererConfig config;
     ANativeWindow *window{};
     EGLDisplay display{EGL_NO_DISPLAY};
@@ -44,6 +44,12 @@ class EGLNativeRenderer final : public NativeRenderer {
     EGLSurface surface{EGL_NO_SURFACE};
     GLuint program{}, quadBuffer{};
     GLint rect{}, view{}, swap{}, alpha{}, uvMax{};
+    // Soft Stretch: scene digambar ke FBO seukuran surface (mode Stretch), lalu dilebarkan horizontal dengan
+    // kurva yang sama seperti window_stretch.frag milik backend Vulkan (strength .40, profile .60).
+    GLuint softProgram{}, softFbo{}, softTexture{};
+    GLint softStrength{}, softProfile{}, softImage{};
+    int softW{}, softH{};
+    bool softFailed{};
     bool fullscreen{}, cursorVisible{true};
     float zoom{1.f};
     u64 serial{};
@@ -149,6 +155,108 @@ class EGLNativeRenderer final : public NativeRenderer {
         glBindBuffer(GL_ARRAY_BUFFER, quadBuffer);
         glBufferData(GL_ARRAY_BUFFER, sizeof(corners), corners, GL_STATIC_DRAW);
     }
+    void ReleaseSoft(bool current = true) {
+        if (current) {
+            if (softFbo)
+                glDeleteFramebuffers(1, &softFbo);
+            if (softTexture)
+                glDeleteTextures(1, &softTexture);
+        }
+        softFbo = softTexture = 0;
+        softW = softH = 0;
+    }
+    bool EnsureSoft(int w, int h) {
+        if (softFailed)
+            return false;
+        try {
+            if (!softProgram) {
+                constexpr const char *vertex = R"(#version 100
+                    precision highp float;
+                    attribute vec2 corner;
+                    varying vec2 uv;
+                    void main() {
+                        gl_Position = vec4(corner * 2. - 1., 0., 1.);
+                        uv = corner;
+                    })";
+                constexpr const char *fragment = R"(#version 100
+                    #ifdef GL_FRAGMENT_PRECISION_HIGH
+                    precision highp float;
+                    #else
+                    precision mediump float;
+                    #endif
+                    uniform sampler2D image; uniform float strength; uniform float profile;
+                    varying vec2 uv;
+                    void main() {
+                        float x = uv.x * 2. - 1.;
+                        float x2 = x * x;
+                        float quintic = .5 * x2 * x2 * x - 1.5 * x2 * x + 2. * x;
+                        float warped = mix(x, mix(sin(1.57079632679 * x), quintic, profile), strength);
+                        float u = clamp(.5 * warped + .5, 0., 1.);
+                        gl_FragColor = vec4(texture2D(image, vec2(u, uv.y)).rgb, 1.);
+                    })";
+                GLuint vs = Shader(GL_VERTEX_SHADER, vertex), fs{};
+                try {
+                    fs = Shader(GL_FRAGMENT_SHADER, fragment);
+                } catch (...) {
+                    glDeleteShader(vs);
+                    throw;
+                }
+                softProgram = glCreateProgram();
+                glAttachShader(softProgram, vs);
+                glAttachShader(softProgram, fs);
+                glBindAttribLocation(softProgram, 0, "corner");
+                glLinkProgram(softProgram);
+                glDeleteShader(vs);
+                glDeleteShader(fs);
+                GLint linked{};
+                glGetProgramiv(softProgram, GL_LINK_STATUS, &linked);
+                if (!linked) {
+                    glDeleteProgram(softProgram);
+                    softProgram = 0;
+                    throw std::runtime_error("Cannot link X++ EGL soft stretch");
+                }
+                softStrength = glGetUniformLocation(softProgram, "strength");
+                softProfile = glGetUniformLocation(softProgram, "profile");
+                softImage = glGetUniformLocation(softProgram, "image");
+            }
+            if (softFbo && softW == w && softH == h)
+                return true;
+            ReleaseSoft();
+            glGenTextures(1, &softTexture);
+            glBindTexture(GL_TEXTURE_2D, softTexture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glGenFramebuffers(1, &softFbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, softFbo);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, softTexture, 0);
+            const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            Require(complete && glGetError() == GL_NO_ERROR, "Cannot allocate X++ EGL soft stretch target");
+            softW = w;
+            softH = h;
+            return true;
+        } catch (...) {
+            // Soft Stretch is cosmetic: fall back to plain Stretch instead of failing the whole compositor.
+            ReleaseSoft();
+            softFailed = true;
+            return false;
+        }
+    }
+    void DrawSoft() {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
+        glUseProgram(softProgram);
+        glUniform1f(softStrength, .40f);
+        glUniform1f(softProfile, .60f);
+        glUniform1i(softImage, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, softTexture);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
     Texture &Upload(const sp<NativeDrawable> &d, const sp<const std::vector<u8>> &pixels, u64 revision) {
         auto *buffer = d->HardwareBuffer();
         Texture &texture = buffer ? imports[buffer] : cpuTextures[d->ID()];
@@ -246,6 +354,9 @@ class EGLNativeRenderer final : public NativeRenderer {
             if (current) {
                 if (program)
                     glDeleteProgram(program);
+                if (softProgram)
+                    glDeleteProgram(softProgram);
+                ReleaseSoft();
                 if (quadBuffer)
                     glDeleteBuffers(1, &quadBuffer);
             }
@@ -302,6 +413,8 @@ class EGLNativeRenderer final : public NativeRenderer {
         if (outerW <= 0 || outerH <= 0)
             return false;
         geometry.Update(outerW, outerH, width, height, fullscreen, zoom, frame.cursorX, frame.cursorY, pan);
+        const bool soft = fullscreen && stretch == 1 && EnsureSoft(outerW, outerH);
+        glBindFramebuffer(GL_FRAMEBUFFER, soft ? softFbo : 0);
         glViewport(0, 0, outerW, outerH);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0, 0, 0, 1);
@@ -325,6 +438,8 @@ class EGLNativeRenderer final : public NativeRenderer {
             Quad(frame.cursor, frame.cursorPixels, frame.cursor->Revision(), frame.cursorX, frame.cursorY,
                  true);
         }
+        if (soft)
+            DrawSoft();
         auto fence = eglCreateSyncKHR(display, EGL_SYNC_FENCE_KHR, nullptr);
         Require(fence != EGL_NO_SYNC_KHR, "Cannot create X++ EGL retirement fence");
         glFlush();
@@ -392,6 +507,7 @@ class EGLNativeRenderer final : public NativeRenderer {
     }
     void VisualOptions(const NativeVisualOptions &options) override {
         filter = options.filter == 1 ? 1 : 0;
+        stretch = options.stretch == 1 ? 1 : 0;
     }
     NativeVisualState VisualState() const override {
         return {surface != EGL_NO_SURFACE, false, false, 0};

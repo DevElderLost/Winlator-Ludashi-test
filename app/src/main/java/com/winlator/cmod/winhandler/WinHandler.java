@@ -80,6 +80,10 @@ public class WinHandler {
 
     private boolean xinputDisabled;
     private boolean xinputDisabledInitialized = false;
+    // Mode Aggressive mematikan services.exe. Wine memuat driver HID (winehid) untuk setiap pad BARU lewat Service
+    // Control Manager (ntoskrnl ZwLoadDriver -> OpenSCManager), jadi pad yang muncul setelah services.exe mati tidak
+    // akan pernah menjadi XInput. Dalam mode ini pad virtual dibuat sejak sebelum Wine boot dan tidak dilepas.
+    private volatile boolean persistentPads = false;
 
     private int fallbackSlot = -1;
 
@@ -614,7 +618,7 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
         if (!gamepadsReady || reconnectingGamepads) return;
         final ControlsProfile profile = activity.getInputControlsView().getProfile();
         if (profile == null) {
-            releaseSlot(OSC_DEVICE_ID);
+            if (!persistentPads) releaseSlot(OSC_DEVICE_ID);
             return;
         }
 
@@ -627,6 +631,10 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
             if (slot >= 0 && writers[slot] != null) {
                 writers[slot].writeGamepadState(gamepadState);
             }
+        } else if (persistentPads) {
+            // pad tetap terpasang agar tidak perlu dimuat ulang driver-nya; kontrol disembunyikan = state netral
+            Integer oscSlot = deviceToSlot.get(OSC_DEVICE_ID);
+            if (oscSlot != null && writers[oscSlot] != null) writers[oscSlot].reset();
         } else {
             releaseSlot(OSC_DEVICE_ID);
         }
@@ -668,7 +676,23 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
     }
 
     public void releaseDroidDeckGamepad() {
+        if (persistentPads) {
+            Integer ddSlot = deviceToSlot.get(DD_DEVICE_ID);
+            if (ddSlot != null && writers[ddSlot] != null) writers[ddSlot].reset();
+            return;
+        }
         releaseSlot(DD_DEVICE_ID);
+    }
+
+    /** Aktifkan pad virtual persisten (dipakai mode Aggressive; panggil sebelum prepareGamepadsForWine). */
+    public void setPersistentPads(boolean enabled) {
+        persistentPads = enabled;
+    }
+
+    /** Kill proses Wine setelah winhandler.exe siap + jeda (beri waktu driver HID termuat lebih dulu). */
+    public void killProcessDelayed(final String processName, final long delayMs) {
+        addAction(() -> new Handler(android.os.Looper.getMainLooper())
+                .postDelayed(() -> killProcess(processName), delayMs));
     }
     // ---- end DroidDeck-port ----
 
@@ -683,6 +707,14 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
         }
         ControlsProfile profile = activity.getInputControlsView().getProfile();
         if (profile != null) profile.prepareGamepad();
+        if (persistentPads) {
+            // Hanya pad yang aktif saat boot: DroidDeck menyembunyikan kontrol Winlator, jadi jangan buat keduanya
+            // (game akan melihat dua gamepad dan bisa membaca pad yang salah).
+            boolean droidDeck = false;
+            try { droidDeck = com.winlator.cmod.droiddeck.DDController.panelControlsEnabled(); } catch (Throwable ignored) { }
+            if (droidDeck) assignSlot(DD_DEVICE_ID);
+            else if (profile != null && profile.isVirtualGamepad()) assignSlot(OSC_DEVICE_ID);
+        }
         gamepadsReady = true;
         sendGamepadState();
         for (ExternalController controller : new ArrayList<>(controllers.values())) sendGamepadState(controller);

@@ -1151,6 +1151,9 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         return true;
     }
 
+    /** false = Aggressive tidak mematikan services.exe (input pad selalu aman; hanya service lain yang dimatikan). */
+    private static final boolean AGGRESSIVE_KILL_SERVICES_EXE = true;
+    private static final long AGGRESSIVE_KILL_SERVICES_DELAY_MS = 8000L;
     private boolean ownsPrefixLease;
     private boolean exclusiveInputBusy;
 
@@ -1400,10 +1403,12 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 shortcut);
 
         if (container != null) {
-            if (Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE) {
-                // Seperti experimental-v2: matikan services.exe begitu winhandler.exe siap (antrean WinHandler baru
-                // dijalankan setelah INIT). Service-nya sudah di-disable di registry oleh WineUtils.
-                winHandler.killProcess("services.exe");
+            if (Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE && AGGRESSIVE_KILL_SERVICES_EXE) {
+                // Seperti experimental-v2: matikan services.exe setelah winhandler.exe siap. Beda dengan v2, input
+                // gamepad di sini lewat evdev -> winebus -> HID Wine yang butuh services.exe untuk memuat driver pad
+                // baru, jadi pad virtual dibuat sejak boot (persisten) dan kill ditunda sampai driver sempat termuat.
+                winHandler.setPersistentPads(true);
+                winHandler.killProcessDelayed("services.exe", AGGRESSIVE_KILL_SERVICES_DELAY_MS);
             }
             guestProgramLauncherComponent.setContainer(this.container);
             guestProgramLauncherComponent.setWineInfo(this.wineInfo);

@@ -1401,7 +1401,9 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
         if (container != null) {
             if (Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE) {
-
+                // Seperti experimental-v2: matikan services.exe begitu winhandler.exe siap (antrean WinHandler baru
+                // dijalankan setelah INIT). Service-nya sudah di-disable di registry oleh WineUtils.
+                winHandler.killProcess("services.exe");
             }
             guestProgramLauncherComponent.setContainer(this.container);
             guestProgramLauncherComponent.setWineInfo(this.wineInfo);

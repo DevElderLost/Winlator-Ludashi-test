@@ -219,6 +219,15 @@ public abstract class WineUtils {
         }
     }
 
+    /**
+     * Mode Aggressive mengikuti experimental-v2: semua service dimatikan (Start=4) dan services.exe di-kill
+     * saat winhandler.exe siap (XServerDisplayActivity). Konsekuensinya winebus/winehid/PlugPlay ikut mati,
+     * jadi jalur gamepad lewat winebus (Exclusive XInput evdev, pad Deck hidraw) tidak aktif di mode ini.
+     * Ubah ke true untuk mempertahankan service input tersebut. MountMgr (pemetaan drive/volume) tetap hidup.
+     */
+    private static final boolean AGGRESSIVE_KEEP_INPUT_SERVICES = false;
+    private static final boolean AGGRESSIVE_KEEP_MOUNTMGR = true;
+
     /** Reconcile the prefix on every launch; saved selection is not proof of registry state. */
     public static boolean applyStartupSelection(Container container, String selection) {
         changeServicesStatus(container, selection);
@@ -241,7 +250,7 @@ public static void changeServicesStatus(Container container, String startupSelec
         "NDIS:2", "nsiproxy:3", "PlugPlay:2", "RpcSs:3",
         "scardsvr:3", "Schedule:3", "SharedGpuResources:2",
         "Spooler:3", "StiSvc:3", "TermService:3",
-        "TrkWks:3", "W32Time:3", "Winmgmt:3", "wuauserv:3"
+        "TrkWks:3", "W32Time:3", "winebus:2", "winehid:2", "Winmgmt:3", "wuauserv:3"
     };
 
     File systemRegFile = new File(container.getRootDir(), ".wine/system.reg");
@@ -262,8 +271,10 @@ public static void changeServicesStatus(Container container, String startupSelec
 
             if (selection == Container.STARTUP_SELECTION_AGGRESSIVE) {
                 value = 4;
-                if (name.equalsIgnoreCase("winebus") || name.equalsIgnoreCase("winehid") ||
-                    name.equalsIgnoreCase("MountMgr") || name.equalsIgnoreCase("PlugPlay")) {
+                boolean input = name.equalsIgnoreCase("winebus") || name.equalsIgnoreCase("winehid")
+                        || name.equalsIgnoreCase("PlugPlay");
+                if ((AGGRESSIVE_KEEP_INPUT_SERVICES && input)
+                        || (AGGRESSIVE_KEEP_MOUNTMGR && name.equalsIgnoreCase("MountMgr"))) {
                     value = 2;
                 }
             }

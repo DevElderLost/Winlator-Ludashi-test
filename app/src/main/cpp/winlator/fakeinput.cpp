@@ -1321,11 +1321,11 @@ EXPORT int ioctl(int fd, int op, ...) {
 if (DeckFd *deck_fd = deck_find(fd))
     return ioctl_deck(*deck_fd, (unsigned)op, argp);
 
-auto controller = controller_event(fd);
-if (controller == nullptr) {
-    return syscall(SYS_ioctl, fd, op, argp);
-}
-                   
+	auto controller = controller_event(fd);
+	if (controller == nullptr) {
+		return syscall(SYS_ioctl, fd, op, argp);
+	}
+
 	int type = (op >> 8 & 0xFF);
 	int number = (op >> 0 & 0xFF);
 	const char *event = controller->c_str();

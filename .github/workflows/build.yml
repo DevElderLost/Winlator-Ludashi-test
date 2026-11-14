@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - "5.0"
+
       - 4.1-experimental-fix
 permissions:
   contents: read
@@ -126,6 +128,7 @@ jobs:
             echo '::warning::Release secrets not set, using the persistent TEST signing identity.'
             bash app/src/main/scripts/prepare-test-signing.sh
           fi
+          bash app/src/main/scripts/prepare-upstream-signing.sh
 
       - name: Cache native shader tools
         uses: actions/cache@v4

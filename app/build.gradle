@@ -84,6 +84,9 @@ tasks.register("downloadProton") {
                         connection.setReadTimeout(120000)
                         connection.setRequestProperty("Accept", "application/octet-stream")
                         connection.setRequestProperty("User-Agent", "Winlator-Ludashi-build")
+                        if (candidate == protonApiURL && System.getenv("GITHUB_TOKEN")) {
+                            connection.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
+                        }
                         connection.getInputStream().withCloseable { input ->
                             partial.withOutputStream { output -> output << input }
                         }
@@ -162,7 +165,7 @@ android {
         // We’re preserving Winlator’s request to keep targetSdkVersion at 28
         targetSdkVersion 28
 
-        versionCode 30
+        versionCode 65
         versionName "5.0"
 
         // External native build from Winlator
@@ -260,6 +263,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.4.0'
     implementation 'com.github.luben:zstd-jni:1.5.2-3@aar'
     implementation 'org.tukaani:xz:1.7'
+    implementation 'org.jsoup:jsoup:1.18.3'
     implementation 'org.apache.commons:commons-compress:1.20'
     implementation 'androidx.activity:activity-ktx:1.4.0'
     implementation 'androidx.fragment:fragment-ktx:1.4.0'

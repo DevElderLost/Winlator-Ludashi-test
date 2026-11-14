@@ -157,6 +157,8 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private static final boolean DISABLE_TOUCHSCREEN_AUTO_HIDE = true;
     private static final HashMap<String, Boolean> WINE_XRANDR_SUPPORT_CACHE = new HashMap<>();
     private final AtomicBoolean exiting = new AtomicBoolean(false);
+    private final Object startupLock = new Object();
+    private boolean launchCancelled;
 
     public static String NOTIFICATION_CHANNEL_ID = "Winlator";
     public static int NOTIFICATION_ID = -1;
@@ -215,7 +217,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     private int activeRendererWindowId = -1;
     private String lastRendererName = null;
-//    private boolean cursorLock;
+    private boolean cursorLock;
     private final float[] xform = XForm.getInstance();
     private ContentsManager contentsManager;
     private boolean navigationFocused = false;
@@ -233,6 +235,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private boolean isVolumeUpPressed = false;
     private boolean isVolumeDownPressed = false;
     private boolean isMouseDisabled = false;
+    private boolean isCursorHidden = false;
     private boolean simulateTouchScreen = false;
 
     private SensorManager sensorManager;
@@ -395,7 +398,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             refreshRate = display.getRefreshRate();
         }
 
-//        cursorLock = preferences.getBoolean("cursor_lock", true);
+        cursorLock = preferences.getBoolean("cursor_lock", true);
 
         isDarkMode = preferences.getBoolean("dark_mode", false);
 
@@ -527,6 +530,7 @@ public void onDrawerOpened(View drawerView) {
             finish(); return;
         }
         ownsPrefixLease = true;
+        com.winlator.cmod.stores.StoreSessions.pauseForGame();
         containerManager.activateContainer(container);
 
         if (shortcutPath != null && !shortcutPath.isEmpty()) {
@@ -630,6 +634,7 @@ public void onDrawerOpened(View drawerView) {
             Log.d("XServerDisplayActivity", "XInput Disabled from Shortcut: " + xinputDisabledFromShortcut);
 
             simulateTouchScreen = shortcut.getExtra("simTouchScreen").equals("1");
+            isCursorHidden = shortcut.getExtra("hideCursor").equals("1");
             isRelativeMouseMovement = shortcut.getExtra("enableRelativeMouse").equals("1");
             isMouseDisabled = shortcut.getExtra("disableMouse").equals("1");
         }
@@ -648,6 +653,12 @@ public void onDrawerOpened(View drawerView) {
 
         boolean removeLoadingBarWhenBootingGames = PreferenceManager.getDefaultSharedPreferences(this)
                 .getBoolean("remove_loading_bar_when_booting_games", false);
+        preloaderDialog.setLaunchCancel(() -> {
+            if (exiting.get()) return;
+            launchCancelled = true;
+            preloaderDialog.close();
+            exit();
+        });
         if (!removeLoadingBarWhenBootingGames) preloaderDialog.show(R.string.starting_up);
 
         inputControlsManager = new InputControlsManager(this);
@@ -686,9 +697,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             @Override
             public void onUpdateWindowContent(Window window) {
                 if (!winStarted[0] && window.isApplicationWindow()) {
-                    if (!simulateTouchScreen) {
-                        xServerView.setCursorVisible(true);
-                    }
+                    applyCursorVisibility();
                     preloaderDialog.closeOnUiThread();
                     winStarted[0] = true;
                 }
@@ -780,6 +789,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());
 
         Runnable runnable = () -> {
+            if (exiting.get()) return;
             setupUI();
             setupSidebarInputControls();
             if (controlsProfile.isEmpty()) {
@@ -787,29 +797,32 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 simulateConfirmInputControlsDialog();
             }
             Executors.newSingleThreadExecutor().execute(() -> {
-                setupWineSystemFiles();
-                try {
-                    extractGraphicsDriverFiles();
-                } catch (IllegalStateException error) {
-                    Log.e("OpenGLDriver", "Driver startup failed", error);
-                    runOnUiThread(() -> {
-                        android.widget.Toast.makeText(this, error.getMessage(), android.widget.Toast.LENGTH_LONG).show();
-                        exit();
-                    });
-                    return;
-                }
-                changeWineAudioDriver();
-                applyGameRefreshRateUnlock();
-                try {
-                    setupXEnvironment();
-                } catch (PackageManager.NameNotFoundException e) {
-                    throw new RuntimeException(e);
-                } catch (IllegalStateException e) {
-                    Log.e("LudashiX11", "Display startup failed", e);
-                    runOnUiThread(() -> {
-                        android.widget.Toast.makeText(this, e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
-                        exit();
-                    });
+                synchronized (startupLock) {
+                    if (exiting.get()) return;
+                    setupWineSystemFiles();
+                    try {
+                        extractGraphicsDriverFiles();
+                    } catch (IllegalStateException error) {
+                        Log.e("OpenGLDriver", "Driver startup failed", error);
+                        runOnUiThread(() -> {
+                            android.widget.Toast.makeText(this, error.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                            exit();
+                        });
+                        return;
+                    }
+                    changeWineAudioDriver();
+                    applyGameRefreshRateUnlock();
+                    try {
+                        setupXEnvironment();
+                    } catch (PackageManager.NameNotFoundException e) {
+                        throw new RuntimeException(e);
+                    } catch (IllegalStateException e) {
+                        Log.e("LudashiX11", "Display startup failed", e);
+                        runOnUiThread(() -> {
+                            android.widget.Toast.makeText(this, e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                            exit();
+                        });
+                    }
                 }
             });
         };
@@ -1041,7 +1054,12 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         savePlaytimeData();
         handler.removeCallbacks(savePlaytimeRunnable);
 
-        if (shortcut != null && "RealSteam".equals(shortcut.getExtra("steamLaunchMode")) && !shortcut.getExtra("steamAppId").isEmpty()) {
+        if (launchCancelled) {
+            new Thread(() -> {
+                synchronized (startupLock) { }
+                runOnUiThread(this::finishExitAfterSteam);
+            }, "CancelGameLaunch").start();
+        } else if (shortcut != null && "RealSteam".equals(shortcut.getExtra("steamLaunchMode")) && !shortcut.getExtra("steamAppId").isEmpty()) {
             new Thread(() -> {
                 com.winlator.cmod.steam.SteamCloud.awaitShutdown(this, shortcut);
                 runOnUiThread(this::finishExitAfterSteam);
@@ -1492,6 +1510,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                             UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH)));
         }
 
+        if (exiting.get()) return;
         com.winlator.cmod.steam.SteamLaunch.apply(this, shortcut, envVars);
         guestProgramLauncherComponent.setEnvVars(envVars);
         guestProgramLauncherComponent.setTerminationCallback((status) -> runOnUiThread(this::exit));
@@ -1503,6 +1522,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
         }
 
+        if (exiting.get()) return;
         java.util.concurrent.CountDownLatch gamepadsPrepared = new java.util.concurrent.CountDownLatch(1);
         runOnUiThread(() -> {
             try { winHandler.prepareGamepadsForWine(); }
@@ -1627,7 +1647,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             final Runnable closeNativeLoading = () -> {
                 if (!nativeLoadingClosed.compareAndSet(false, true)) return;
                 preloaderDialog.closeOnUiThread();
-                if (!simulateTouchScreen) nativeView.setCursorVisible(true);
+                applyCursorVisibility();
             };
             nativeView.setReadyCallback(closeNativeLoading);
             final Runnable[] winHandlerReadyCheck = new Runnable[1];
@@ -1748,6 +1768,14 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             if (!drawerLayout.isDrawerOpen(GravityCompat.START))
                 drawerLayout.openDrawer(GravityCompat.START);
         });
+        View.OnCapturedPointerListener capturedPointerListener = new View.OnCapturedPointerListener() {
+            @Override
+            public boolean onCapturedPointer(View view, MotionEvent event) {
+                handleCapturedPointer(event);
+                return true;
+            }
+        };
+        touchpadView.setOnCapturedPointerListener(cursorLock ? capturedPointerListener : null);
         touchpadView.setFocusable(true);
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);
@@ -1930,6 +1958,19 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 isRelativeMouseMovement = checked;
                 if (xServer != null)
                     xServer.setRelativeMouseMovement(isRelativeMouseMovement);
+            });
+        }
+
+        Switch swHideCursor = findViewById(R.id.SWHideCursor);
+        if (swHideCursor != null) {
+            swHideCursor.setChecked(isCursorHidden);
+            swHideCursor.setOnCheckedChangeListener((btn, checked) -> {
+                isCursorHidden = checked;
+                applyCursorVisibility();
+                if (shortcut != null) {
+                    shortcut.putExtra("hideCursor", checked ? "1" : null);
+                    shortcut.saveData();
+                }
             });
         }
 
@@ -3283,7 +3324,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         // Refresh existing containers that may have received the CI-repacked
         // Gamescope wrapper instead of the repository's common wrapper asset.
         File graphicsRuntimeMarker = new File(rootDir,
-                "usr/lib/.winlator-graphics-runtime-c7474f7e-25b50a11-v3-stock-wrapper");
+                "usr/lib/.winlator-graphics-runtime-c7474f7e-25b50a11-v6-displayx-09585d59");
         if (firstTimeBoot || !graphicsRuntimeMarker.isFile()) {
             Log.d("XServerDisplayActivity", "Installing paired Pipetto wrapper and common graphics runtime");
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper" + ".tzst",
@@ -3292,7 +3333,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/extra_libs" + ".tzst",
                     rootDir);
             FileUtils.writeString(graphicsRuntimeMarker,
-                    "wrapper=c7474f7e;extra_libs=25b50a11;layers=9d57736d;opengl=split-v1");
+                    "wrapper=c7474f7e;extra_libs=25b50a11;layers=9d57736d;opengl=split-v1;displayx=09585d59a463d2cea86837a95551fd02ee3c6e3ed3c64d9f7cae1d7bee57c75a");
         }
 
         extractOpenGLDriver(rootDir);
@@ -3901,18 +3942,24 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         if (modernHud != null) modernHud.onFrame();
     }
 
+    private void applyCursorVisibility() {
+        if (xServerView != null) xServerView.setCursorVisible(!isCursorHidden && !simulateTouchScreen);
+    }
+
     private void assignTaskAffinity(Window window) {
+        assignNativeTaskAffinity(window.getProcessId(), window.getClassName(), window.isWoW64());
+    }
+
+    public void assignNativeTaskAffinity(int processId, String className, boolean wow64) {
         if (taskAffinityMask == 0 || taskAffinityMaskWoW64 == 0)
             return;
-        int processId = window.getProcessId();
-        String className = window.getClassName();
         if ("steam.exe".equals(className)) return;  // DroidDeck-steam: jangan batasi CPU klien Steam
-        int processAffinity = window.isWoW64() ? taskAffinityMaskWoW64 : taskAffinityMask;
+        int processAffinity = wow64 ? taskAffinityMaskWoW64 : taskAffinityMask;
 
         if (processId > 0) {
             winHandler.setProcessAffinity(processId, processAffinity);
         } else if (!className.isEmpty()) {
-            winHandler.setProcessAffinity(window.getClassName(), processAffinity);
+            winHandler.setProcessAffinity(className, processAffinity);
         }
     }
 

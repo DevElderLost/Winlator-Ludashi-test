@@ -84,9 +84,6 @@ tasks.register("downloadProton") {
                         connection.setReadTimeout(120000)
                         connection.setRequestProperty("Accept", "application/octet-stream")
                         connection.setRequestProperty("User-Agent", "Winlator-Ludashi-build")
-                        if (candidate == protonApiURL && System.getenv("GITHUB_TOKEN")) {
-                            connection.setRequestProperty("Authorization", "Bearer " + System.getenv("GITHUB_TOKEN"))
-                        }
                         connection.getInputStream().withCloseable { input ->
                             partial.withOutputStream { output -> output << input }
                         }

@@ -131,3 +131,62 @@ Java_com_winlator_cmod_renderer_GPUImage_nativeHardwareBufferFromSocket(JNIEnv *
     
     return (jlong)ahb;
 }
+
+// ---------------------------------------------------------------------------
+// Old Display renderer: impor AHardwareBuffer sebagai tekstur GL (EGLImage).
+// Dipanggil dari OldTexture di GL thread yang sedang memegang EGL context.
+// ---------------------------------------------------------------------------
+static EGLImageKHR oldDisplayCreateImage(AHardwareBuffer* hardwareBuffer, int textureId) {
+    if (!hardwareBuffer) {
+        printf("oldDisplayCreateImage: Invalid AHardwareBuffer pointer");
+        return NULL;
+    }
+
+    const EGLint attribList[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
+
+    EGLClientBuffer clientBuffer = eglGetNativeClientBufferANDROID(hardwareBuffer);
+    if (!clientBuffer) {
+        printf("oldDisplayCreateImage: Failed to get native client buffer");
+        return NULL;
+    }
+
+    EGLDisplay eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (eglDisplay == EGL_NO_DISPLAY) {
+        printf("oldDisplayCreateImage: Invalid EGLDisplay");
+        return NULL;
+    }
+
+    EGLImageKHR imageKHR = eglCreateImageKHR(eglDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, clientBuffer, attribList);
+    if (!imageKHR) {
+        printf("oldDisplayCreateImage: Failed to create EGLImageKHR");
+        return NULL;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, (GLeglImageOES)imageKHR);
+    GLenum error = glGetError();
+    glBindTexture(GL_TEXTURE_2D, 0);
+    if (error != GL_NO_ERROR) {
+        printf("oldDisplayCreateImage: Failed to bind EGLImage to texture (0x%x)", error);
+        eglDestroyImageKHR(eglDisplay, imageKHR);
+        return NULL;
+    }
+
+    return imageKHR;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_winlator_cmod_renderer_old_OldTexture_nativeCreateImage(JNIEnv *env, jclass obj, jlong hardwareBufferPtr, jint textureId) {
+    AHardwareBuffer* hardwareBuffer = (AHardwareBuffer*)hardwareBufferPtr;
+    if (!hardwareBuffer) return 0;
+    return (jlong)oldDisplayCreateImage(hardwareBuffer, textureId);
+}
+
+JNIEXPORT void JNICALL
+Java_com_winlator_cmod_renderer_old_OldTexture_nativeDestroyImage(JNIEnv *env, jclass obj, jlong imageKHRPtr) {
+    EGLImageKHR imageKHR = (EGLImageKHR)imageKHRPtr;
+    if (imageKHR) {
+        EGLDisplay eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        eglDestroyImageKHR(eglDisplay, imageKHR);
+    }
+}

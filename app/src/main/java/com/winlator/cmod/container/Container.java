@@ -160,6 +160,28 @@ public class Container {
         putExtra("useDisplayX", v ? "1" : "0");
     }
 
+    // Renderer "Old Display" (logika render display experimental-v2).
+    public boolean getUseOldDisplay() {
+        return "1".equals(getExtra("useOldDisplay", "0"));
+    }
+    public void setUseOldDisplay(boolean v) {
+        putExtra("useOldDisplay", v ? "1" : "0");
+    }
+
+    public boolean getOldDisplayDirectRendering() {
+        return "1".equals(getExtra("oldDisplayDirectRendering", "0"));
+    }
+    public void setOldDisplayDirectRendering(boolean v) {
+        putExtra("oldDisplayDirectRendering", v ? "1" : "0");
+    }
+
+    public boolean getOldDisplayForceFullscreen() {
+        return "1".equals(getExtra("oldDisplayForceFullscreen", "0"));
+    }
+    public void setOldDisplayForceFullscreen(boolean v) {
+        putExtra("oldDisplayForceFullscreen", v ? "1" : "0");
+    }
+
     public boolean getTrueDisplayX() {
         String value = getExtra("trueDisplayX", null);
         if (value != null) return "1".equals(value);

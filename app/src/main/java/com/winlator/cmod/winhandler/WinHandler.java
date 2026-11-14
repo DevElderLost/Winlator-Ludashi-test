@@ -357,7 +357,37 @@ public class WinHandler {
         });
     }
 
+    // DroidDeck-rumble: slot khusus dari fakeinput untuk rumble pad Deck virtual (hidraw); harus sama dengan DECK_RUMBLE_SLOT di fakeinput.cpp
+    private static final int DECK_RUMBLE_SLOT = 0xFFFF;
+
+    private void triggerDeckVibration(int strong, int weak, int durationMs) {
+        boolean cancel = (durationMs == 0 && strong == 0 && weak == 0);
+        if (!cancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity))
+            return;
+
+        Vibrator vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null || !vibrator.hasVibrator())
+            return;
+
+        if (cancel) {
+            vibrator.cancel();
+            return;
+        }
+
+        int amplitude = clampAmplitude(Math.max(strong, weak));
+        int duration = Math.max(1, durationMs);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
+        } else {
+            vibrator.vibrate(duration);
+        }
+    }
+
     private void triggerVibration(int strong, int weak, int durationMs, int slot) {
+    if (slot == DECK_RUMBLE_SLOT) {
+        triggerDeckVibration(strong, weak, durationMs);
+        return;
+    }
     if (!isValidSlot(slot) || !vibrationEnabledSlots[slot])
         return;
 
@@ -375,7 +405,13 @@ public class WinHandler {
         }
     }
 
-    if (deviceId != null && deviceId.equals(OSC_DEVICE_ID)) {
+    // DroidDeck-rumble: pad DroidDeck (DD_DEVICE_ID) bukan InputDevice Android, jadi getarnya lewat motor HP
+    // seperti OSC, dan dikendalikan saklar Rumble di panel DroidDeck.
+    boolean isDroidDeckPad = deviceId != null && deviceId.equals(DD_DEVICE_ID);
+    if (deviceId != null && (deviceId.equals(OSC_DEVICE_ID) || isDroidDeckPad)) {
+        if (!shouldCancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity)
+                && (isDroidDeckPad || com.winlator.cmod.droiddeck.DDPrefs.isEnabled(activity)))
+            return;
         vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
     } else if (deviceId != null) {
         android.view.InputDevice device = android.view.InputDevice.getDevice(deviceId);
@@ -619,6 +655,22 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
             writers[slot].writeGamepadState(controller.state);
         }
     }
+
+    // ---- DroidDeck-port: slot pad terpisah untuk kontrol layar DroidDeck (tidak menyentuh slot OSC bawaan) ----
+    private static final int DD_DEVICE_ID = -7001;
+
+    public void sendDroidDeckGamepadState(GamepadState state) {
+        if (state == null) return;
+        int slot = assignSlot(DD_DEVICE_ID);
+        if (slot >= 0 && writers[slot] != null) {
+            writers[slot].writeGamepadState(state);
+        }
+    }
+
+    public void releaseDroidDeckGamepad() {
+        releaseSlot(DD_DEVICE_ID);
+    }
+    // ---- end DroidDeck-port ----
 
     /** UI thread: create the connected pads before Wine enumerates /dev/input. */
     public void prepareGamepadsForWine() {

@@ -96,6 +96,7 @@ data class SettingsModel(
     val soundFonts: List<SettingChoice>,
     val winlatorPath: String,
     val shortcutPath: String,
+    val bigPicture: Boolean,
     val cursorSpeedPercent: Int,
     val cursorLock: Boolean,
     val xInput: Boolean,
@@ -109,6 +110,8 @@ data class SettingsModel(
     val pauseWine: Boolean,
     val removeLoadingBar: Boolean,
     val gameSavesAllShortcuts: Boolean,
+    val steamClientTweaks: Boolean,
+    val saveMemOnRunFromSteam: Boolean,
     val autoDownloadGameArtwork: Boolean,
     val wineDebug: Boolean,
     val wineDebugChannels: String,
@@ -243,6 +246,30 @@ private fun SettingsScreen(model: SettingsModel, callbacks: SettingsCallbacks) {
                         model.gameSavesAllShortcuts,
                         null
                     ) { callbacks.onBooleanChanged("game_saves_all_shortcuts", it) }
+                }
+            }
+
+            item("steam-client-title") { SectionTitle("STEAM CLIENT") }
+            item("steam-client") {
+                GroupCard {
+                    ToggleRow(
+                        "Steam client tweaks",
+                        model.steamClientTweaks,
+                        "Lean launch flags, overlay DLLs off and a lighter steamwebhelper (for Steam under emulation)"
+                    ) { callbacks.onBooleanChanged("steam_client_tweaks", it) }
+                    GroupDivider()
+                    ToggleRow(
+                        "Save memory when running from Steam",
+                        model.saveMemOnRunFromSteam,
+                        "Close steamwebhelper.exe while a heavy game started from Steam is running"
+                    ) { callbacks.onBooleanChanged("save_mem_on_run_from_steam", it) }
+                }
+            }
+
+            item("big-picture-title") { SectionTitle("BIG PICTURE MODE") }
+            item("big-picture") {
+                GroupCard {
+                    ToggleRow("Enable Big Picture Mode on App Launch", model.bigPicture) { callbacks.onBooleanChanged("enable_big_picture_mode", it) }
                     GroupDivider()
                     ToggleRow(uiStr(R.string.ui_animated_artwork), com.winlator.cmod.ui.library.rememberArtworkMotionEnabled()) {
                         callbacks.onBooleanChanged("animated_artwork", it)

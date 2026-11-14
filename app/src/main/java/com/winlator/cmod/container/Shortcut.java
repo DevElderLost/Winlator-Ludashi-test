@@ -329,6 +329,26 @@ public class Shortcut {
     }
     public void setUseDisplayX(boolean v) { putExtra("useDisplayX", v ? "1" : "0"); }
 
+    public boolean getUseOldDisplay() {
+        String v = getExtra("useOldDisplay", null);
+        return v != null ? v.equals("1") : container.getUseOldDisplay();
+    }
+    public void setUseOldDisplay(boolean v) { putExtra("useOldDisplay", v ? "1" : "0"); }
+
+    /** Direct Rendering(+) — extra "nativeRendering" sama seperti experimental-v2. */
+    public boolean getOldDisplayDirectRendering() {
+        String v = getExtra("nativeRendering", null);
+        return v != null ? v.equals("1") : container.getOldDisplayDirectRendering();
+    }
+    public void setOldDisplayDirectRendering(boolean v) { putExtra("nativeRendering", v ? "1" : "0"); }
+
+    /** Force Fullscreen — extra "forceFullscreen" sama seperti experimental-v2 (memakai StartupWMClass). */
+    public boolean getOldDisplayForceFullscreen() {
+        String v = getExtra("forceFullscreen", null);
+        return v != null ? v.equals("1") : container.getOldDisplayForceFullscreen();
+    }
+    public void setOldDisplayForceFullscreen(boolean v) { putExtra("forceFullscreen", v ? "1" : "0"); }
+
     public boolean getTrueDisplayX() {
         String v = getExtra("trueDisplayX", null);
         if (v != null) return v.equals("1");

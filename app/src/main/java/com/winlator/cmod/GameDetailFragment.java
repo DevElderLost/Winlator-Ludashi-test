@@ -136,7 +136,7 @@ public class GameDetailFragment extends Fragment {
             if (version.endsWith(".0")) version = version.substring(0, version.length() - 2);
             runtime = ("proton".equalsIgnoreCase(info.type) ? "Proton " : "Wine ") + version + " " + info.getArch();
         } catch (Exception ignored) {}
-        String renderer = shortcut.getUseDisplayX() ? "DisplayX" : shortcut.getRendererNative() ? "EGL" : "Vulkan";
+        String renderer = shortcut.getUseOldDisplay() ? "Old Display" : shortcut.getUseDisplayX() ? "DisplayX" : shortcut.getRendererNative() ? "EGL" : "Vulkan";
         return runtime + "  •  " + renderer;
     }
 

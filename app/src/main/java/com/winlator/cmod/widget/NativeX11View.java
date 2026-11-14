@@ -197,6 +197,8 @@ public final class NativeX11View extends XServerRendererView implements SurfaceH
     }
 
     public boolean isVulkanBackend() { return backend == 0; }
+    /** Soft Stretch ada di backend Vulkan dan EGL (shader yang sama); DisplayX tidak mendukungnya. */
+    public boolean supportsSoftStretch() { return backend == 0 || backend == 1; }
     public String getBackendName() { return backend == 2 ? "DisplayX" : backend == 1 ? "EGL" : "Vulkan"; }
     public synchronized void setReadyCallback(Runnable callback) { readyCallback = callback; if (ready) callback.run(); }
     public synchronized void setDiagnosticsEnabled(boolean enabled) {
@@ -341,6 +343,7 @@ public final class NativeX11View extends XServerRendererView implements SurfaceH
     @Override public synchronized void onKeyPress(byte code, int keysym) { if (handle != 0) nativeInput(handle, 2, code & 255, 1); }
     @Override public synchronized void onKeyRelease(byte code) { if (handle != 0) nativeInput(handle, 2, code & 255, 0); }
     @Override public void toggleFullscreen() { fullscreen = !fullscreen; updateOptions(); }
+    public void setFullscreen(boolean value) { if (fullscreen != value) { fullscreen = value; updateOptions(); } }
     @Override public boolean isFullscreen() { return fullscreen; }
     @Override public void setCursorVisible(boolean value) { cursorVisible = value; updateOptions(); }
     @Override public void setFpsLimit(int value) { fpsLimit = Math.max(0, value); updateOptions(); }

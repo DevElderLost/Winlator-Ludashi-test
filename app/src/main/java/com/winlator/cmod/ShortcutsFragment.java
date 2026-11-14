@@ -565,7 +565,7 @@ public class ShortcutsFragment extends Fragment {
                         cover.exists() ? cover.getPath() : null, banner.exists() ? banner.getPath() : null,
                         iconPath, shortcut.icon, "1".equals(shortcut.getExtra("favorite", "0")), parseLastRunAt(shortcut),
                         shortcut.container != null ? shortcut.container.getWineVersion() : null,
-                        shortcut.getUseDisplayX() ? "DisplayX" : shortcut.getRendererNative() ? "EGL" : "Vulkan",
+                        shortcut.getUseOldDisplay() ? "Old Display" : shortcut.getUseDisplayX() ? "DisplayX" : shortcut.getRendererNative() ? "EGL" : "Vulkan",
                         com.winlator.cmod.steam.SteamLibrary.shortcutAppId(shortcut)));
             }
             libraryHandler.post(() -> {

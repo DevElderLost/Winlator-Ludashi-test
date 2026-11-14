@@ -31,6 +31,16 @@ public abstract class WineUtils {
         FileUtils.symlink("../drive_c", dosdevicesPath+"/c:");
         FileUtils.symlink(container.getRootDir().getPath() + "/../..", dosdevicesPath+"/z:");
 
+        File driveX = new File(container.getRootDir(), ".wine/drive_x");
+        if (!driveX.isDirectory()) {
+            driveX.mkdir();
+            FileUtils.chmod(driveX, 0771);
+        }
+
+        String serial = String.format(Locale.ENGLISH, "%-8x", (int)'X').replace(' ', '0');
+        FileUtils.writeString(new File(driveX, ".windows-serial"), serial+"\n");
+        FileUtils.symlink("../drive_x", dosdevicesPath+"/x:");
+
         for (String[] drive : container.drivesIterator()) {
             File linkTarget = new File(drive[1]);
             String path = linkTarget.getAbsolutePath();
@@ -209,6 +219,15 @@ public abstract class WineUtils {
         }
     }
 
+    /**
+     * Mode Aggressive mengikuti experimental-v2: semua service dimatikan (Start=4) dan services.exe di-kill
+     * saat winhandler.exe siap (XServerDisplayActivity). Service input (winebus/winehid/PlugPlay) dan
+     * MountMgr tetap hidup (Start=2) supaya jalur gamepad lewat winebus (Exclusive XInput evdev, pad Deck
+     * hidraw) dan pemetaan drive/volume tetap berfungsi. Ubah ke false untuk mematikan service input juga.
+     */
+    private static final boolean AGGRESSIVE_KEEP_INPUT_SERVICES = true;
+    private static final boolean AGGRESSIVE_KEEP_MOUNTMGR = true;
+
     /** Reconcile the prefix on every launch; saved selection is not proof of registry state. */
     public static boolean applyStartupSelection(Container container, String selection) {
         changeServicesStatus(container, selection);
@@ -231,7 +250,7 @@ public static void changeServicesStatus(Container container, String startupSelec
         "NDIS:2", "nsiproxy:3", "PlugPlay:2", "RpcSs:3",
         "scardsvr:3", "Schedule:3", "SharedGpuResources:2",
         "Spooler:3", "StiSvc:3", "TermService:3",
-        "TrkWks:3", "W32Time:3", "Winmgmt:3", "wuauserv:3"
+        "TrkWks:3", "W32Time:3", "winebus:2", "winehid:2", "Winmgmt:3", "wuauserv:3"
     };
 
     File systemRegFile = new File(container.getRootDir(), ".wine/system.reg");
@@ -252,8 +271,10 @@ public static void changeServicesStatus(Container container, String startupSelec
 
             if (selection == Container.STARTUP_SELECTION_AGGRESSIVE) {
                 value = 4;
-                if (name.equalsIgnoreCase("winebus") || name.equalsIgnoreCase("winehid") ||
-                    name.equalsIgnoreCase("MountMgr") || name.equalsIgnoreCase("PlugPlay")) {
+                boolean input = name.equalsIgnoreCase("winebus") || name.equalsIgnoreCase("winehid")
+                        || name.equalsIgnoreCase("PlugPlay");
+                if ((AGGRESSIVE_KEEP_INPUT_SERVICES && input)
+                        || (AGGRESSIVE_KEEP_MOUNTMGR && name.equalsIgnoreCase("MountMgr"))) {
                     value = 2;
                 }
             }

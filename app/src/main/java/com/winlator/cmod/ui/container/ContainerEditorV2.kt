@@ -174,11 +174,14 @@ private class ContainerEditorStateV2(
     )
     var renderer by mutableStateOf(
         when {
+            editing?.getUseOldDisplay() == true -> "Old Display"
             editing?.getUseDisplayX() == true -> "DisplayX"
             editing?.isRendererNative == true -> "EGL"
             else -> "Vulkan"
         }
     )
+    var oldDisplayDirectRendering by mutableStateOf(editing?.getOldDisplayDirectRendering() ?: false)
+    var oldDisplayForceFullscreen by mutableStateOf(editing?.getOldDisplayForceFullscreen() ?: false)
     var rendererPresentMode by mutableStateOf(editing?.rendererPresentMode ?: "fifo")
     var rendererDriver by mutableStateOf(editing?.rendererDriverId ?: "system")
     var filterMode by mutableIntStateOf(editing?.rendererFilterMode ?: 0)
@@ -242,6 +245,9 @@ private class ContainerEditorStateV2(
     var fexPreset by mutableStateOf(editing?.fexCorePreset ?: FEXCorePreset.INTERMEDIATE)
     var boxPreset by mutableStateOf(editing?.box64Preset ?: Box64Preset.COMPATIBILITY)
 
+    var ddUi by mutableStateOf(editing?.getExtra("droiddeckUi", "") ?: "")  // DD-UI-SELECT
+    var ddDeck by mutableStateOf(editing?.getExtra("droiddeckDeck", "") ?: "")  // DroidDeck-deck
+    var ddDeckEvdev by mutableStateOf(editing?.getExtra("droiddeckDeckEvdev", "") ?: "")  // DroidDeck-deck
     var exclusive by mutableStateOf(editing?.isExclusiveXInput ?: true)
     var forceSsbs by mutableStateOf(editing?.isForceSsbs ?: true)
     var xinput by mutableStateOf(editing?.let { (it.inputType and WinHandler.FLAG_INPUT_TYPE_XINPUT.toInt()) != 0 } ?: true)
@@ -339,7 +345,7 @@ private class ContainerEditorStateV2(
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXPresentMode, displayXDynamicRange,
         displayXPrecisePresentation, frameGenEngine, frameGenEnabled, frameGenMultiplier,
         frameGenTargetRate, frameGenFlowScale, graphicsDriver, freedrenoVersion, graphicsConfig,
-        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput,
+        wrapper, wrapperConfig, emulator, fexVersion, boxVersion, fexPreset, boxPreset, exclusive, xinput, dinput, ddUi, ddDeck, ddDeckEvdev,
         forceSsbs, syncCpu, startup, openGlDefaultInitialized, autoMesaGlVersionOverride, envVars,
         cpu64.joinToString(), cpu32.joinToString(), components.entries.sortedBy { it.key }.joinToString()
     ).joinToString("|")
@@ -480,6 +486,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setRendererDriverId(state.rendererDriver)
         container.setRendererFilterMode(state.filterMode)
         container.setUseDisplayX(state.renderer == "DisplayX")
+        container.setUseOldDisplay(state.renderer == "Old Display")
+        container.setOldDisplayDirectRendering(state.oldDisplayDirectRendering)
+        container.setOldDisplayForceFullscreen(state.oldDisplayForceFullscreen)
         container.setSurfaceFormat(state.surfaceFormat)
         container.setTrueDisplayX(state.trueDisplayX)
         container.setDisplayXPerformanceMode(state.displayXPerformanceMode)
@@ -519,6 +528,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.putExtra("mouseWarpOverride", state.mouseWarp)
         container.putExtra("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
         container.putExtra("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
+        container.putExtra("droiddeckUi", state.ddUi.ifBlank { null })  // DD-UI-SELECT
+        container.putExtra("droiddeckDeck", state.ddDeck.ifBlank { null })  // DroidDeck-deck
+        container.putExtra("droiddeckDeckEvdev", state.ddDeckEvdev.ifBlank { null })  // DroidDeck-deck
         container.saveData()
         applyMouseWarp(container)
     }
@@ -580,6 +592,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("mouseWarpOverride", state.mouseWarp)
                     .put("displayServer", if (state.displayServer == "X++") "native" else "java")
                     .put("useDisplayX", if (state.renderer == "DisplayX") "1" else "0")
+                    .put("useOldDisplay", if (state.renderer == "Old Display") "1" else "0")
+                    .put("oldDisplayDirectRendering", if (state.oldDisplayDirectRendering) "1" else "0")
+                    .put("oldDisplayForceFullscreen", if (state.oldDisplayForceFullscreen) "1" else "0")
                     .put("surfaceFormat", state.surfaceFormat)
                     .put("trueDisplayX", if (state.trueDisplayX) "1" else "0")
                     .put("displayXPerformanceMode", if (state.displayXPerformanceMode) "1" else "0")
@@ -593,7 +608,10 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                     .put("frameGenTargetRate", state.frameGenTargetRate.toString())
                     .put("frameGenFlowScale", state.frameGenFlowScale.toString())
                     .put("openGlDefaultInitialized", if (state.openGlDefaultInitialized) "1" else "0")
-                    .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0"))
+                    .put("autoMesaGlVersionOverride", if (state.autoMesaGlVersionOverride) "1" else "0")
+                    .put("droiddeckUi", state.ddUi)  // DD-UI-SELECT
+                    .put("droiddeckDeck", state.ddDeck)  // DroidDeck-deck
+                    .put("droiddeckDeckEvdev", state.ddDeckEvdev))
             }
             manager.createContainerAsync(data, contents) { created ->
                 creating = false
@@ -851,7 +869,7 @@ private fun ContainerCategoryV2(
                 SettingChoice(uiStr(R.string.ui_display_server), s.displayServer,
                     listOf("X11", "X++")) { s.displayServer = it }
                 SettingsDivider()
-                SettingChoice(uiStr(R.string.ui_renderer), s.renderer, listOf("Vulkan", "EGL", "DisplayX")) {
+                SettingChoice(uiStr(R.string.ui_renderer), s.renderer, listOf("Vulkan", "EGL", "DisplayX",  "Old Display")) {
                     s.renderer = it
                     s.surfaceFormat = if (it == "DisplayX") "rgba8" else "bgra8"
                     if (it == "EGL" && s.filterMode > 1) s.filterMode = 0
@@ -862,6 +880,12 @@ private fun ContainerCategoryV2(
                     if (s.surfaceFormat == "bgra8") "BGRA" else "RGBA",
                     listOf("RGBA", "BGRA")
                 ) { s.surfaceFormat = if (it == "BGRA") "bgra8" else "rgba8" }
+                if (s.renderer == "Old Display") {
+                    SettingsDivider()
+                    SettingToggle("Direct Rendering", s.oldDisplayDirectRendering) { s.oldDisplayDirectRendering = it }
+                    SettingsDivider()
+                    SettingToggle("Force Fullscreen", s.oldDisplayForceFullscreen) { s.oldDisplayForceFullscreen = it }
+                }
                 if (s.renderer == "DisplayX") {
                     SettingsDivider()
                     SettingChoice(uiStr(R.string.ui_displayx_backend), if (s.trueDisplayX) "DisplayX+" else "X11", listOf("X11", "DisplayX+")) {
@@ -886,7 +910,7 @@ private fun ContainerCategoryV2(
                         }
                     }
                 } else {
-                    if (s.renderer != "EGL") {
+                    if (s.renderer != "EGL" && s.renderer != "Old Display") {
                         SettingsDivider()
                         SettingChoice(uiStr(R.string.ui_present_mode), s.rendererPresentMode, listOf("fifo", "mailbox")) {
                             s.rendererPresentMode = it
@@ -1087,6 +1111,18 @@ private fun ContainerCategoryV2(
                     s.dinput = it; if (s.exclusive && it && s.xinput) s.xinput = false
                 }
             }
+            SettingsCard {  // DD-UI-SELECT
+                SettingMappedChoice("Virtual Control UI", s.ddUi, DD_UI_CHOICES_CONTAINER) { s.ddUi = it }
+                SettingsDivider()  // DroidDeck-deck
+                SettingToggle("Steam Deck Pad (hidraw)", s.ddDeck == "1") { s.ddDeck = if (it) "1" else "0" }
+                SettingsDivider()
+                SettingToggle("Deck Pad: also normal controller (evdev)", s.ddDeckEvdev != "0") { s.ddDeckEvdev = if (it) "1" else "0" }
+                SettingsDivider()  // DroidDeck-bp
+                TextButton(
+                    onClick = { context.startActivity(android.content.Intent(context, com.winlator.cmod.droiddeck.DDControllerTestActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Controller Test (Big Picture style)") }
+            }
         }
 
         "Storage" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1228,3 +1264,15 @@ private fun containerDesktopThemeValueV2(theme: String, background: String, wall
     else
         "$themeId,$backgroundId,#0277bd"
 }
+
+
+// ---- DD-UI-SELECT ----
+private val DD_UI_CHOICES_CONTAINER: Map<String, String> = linkedMapOf(
+    "" to "Default (DroidDeck toggle in sidebar)",
+    "0" to "Winlator",
+    "1" to "DroidDeck"
+)
+// ---- end DD-UI-SELECT ----
+
+// ---- DroidDeck-deck ----
+// ---- end DroidDeck-deck ----

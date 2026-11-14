@@ -467,6 +467,28 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         execEnvVars.put("FAKE_EVDEV_DIR", devInputDir.getAbsolutePath());
         execEnvVars.put("FAKE_EVDEV_VIBRATION", "1");
+        // DroidDeck-deck: pad Steam Deck (hidraw) bila diminta di Setting Container/Shortcut
+        com.winlator.cmod.droiddeck.DDDeck.configureLaunch(container, shortcut, wineInfo != null ? wineInfo.path : null);  // DroidDeck-fix
+        // evdev Off + Deck Pad On: /dev/input di Wine = folder ini, jadi tanpa event0 Wine tidak membuat pad evdev sama sekali (hidraw saja)
+        if (com.winlator.cmod.droiddeck.DDDeck.isWanted() && !com.winlator.cmod.droiddeck.DDDeck.isAlsoEvdev()) {
+            if (event0.exists() && !event0.delete()) Log.w("GuestLauncher", "event0 tidak bisa dihapus; pad evdev tetap terlihat oleh Wine");
+        }
+        if (com.winlator.cmod.droiddeck.DDDeck.isWanted()) {
+            for (java.util.Map.Entry<String, String> deckEnv : com.winlator.cmod.droiddeck.DDDeck.prepare(environment.getContext()).entrySet()) {
+                String key = deckEnv.getKey(), value = deckEnv.getValue();
+                if (key.startsWith("SDL_")) {  // hint SDL yang sudah diatur pengguna tidak ditimpa
+                    String current = execEnvVars.get(key);
+                    if (current != null && !current.isEmpty()) continue;
+                }
+                if ("PROTON_ENABLE_HIDRAW".equals(key)) {
+                    String existing = execEnvVars.get(key);  // daftar vid/pid dari pengguna tidak ditimpa
+                    if (existing != null && !existing.isEmpty() && !existing.toLowerCase().contains(value)) value = existing + "," + value;
+                    else if (existing != null && existing.toLowerCase().contains(value)) value = existing;
+                }
+                execEnvVars.put(key, value);
+            }
+            com.winlator.cmod.droiddeck.DDDeck.resetStatus();  // ST_OPEN dihitung dari nol untuk peluncuran ini
+        }
 
         Log.d("GuestLauncher", "Final LD_PRELOAD: " + ld_preload);
         execEnvVars.put("LD_PRELOAD", ld_preload);
@@ -482,6 +504,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         if (this.envVars != null) {
             execEnvVars.putAll(this.envVars);
         }
+        com.winlator.cmod.droiddeck.DDDeck.applyLaunchEnv(execEnvVars);
 
         // Evaluate on every launch, even when the component DLL cache is unchanged.
         if (container != null) {
@@ -519,6 +542,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     execEnvVars.put("HODLL", "libwow64fex.dll");
                 else
                     execEnvVars.put("HODLL", "wowbox64.dll");
+                // 64-bit x86_64 emulator is always FEX: leave HODLL64 unset (Wine default libarm64ecfex.dll)
+                execEnvVars.remove("HODLL64");
             } else
                 command = imageFs.getBinDir() + "/box64 " + guestExecutable;
         }

@@ -221,11 +221,11 @@ public abstract class WineUtils {
 
     /**
      * Mode Aggressive mengikuti experimental-v2: semua service dimatikan (Start=4) dan services.exe di-kill
-     * saat winhandler.exe siap (XServerDisplayActivity). Konsekuensinya winebus/winehid/PlugPlay ikut mati,
-     * jadi jalur gamepad lewat winebus (Exclusive XInput evdev, pad Deck hidraw) tidak aktif di mode ini.
-     * Ubah ke true untuk mempertahankan service input tersebut. MountMgr (pemetaan drive/volume) tetap hidup.
+     * saat winhandler.exe siap (XServerDisplayActivity). Service input (winebus/winehid/PlugPlay) dan
+     * MountMgr tetap hidup (Start=2) supaya jalur gamepad lewat winebus (Exclusive XInput evdev, pad Deck
+     * hidraw) dan pemetaan drive/volume tetap berfungsi. Ubah ke false untuk mematikan service input juga.
      */
-    private static final boolean AGGRESSIVE_KEEP_INPUT_SERVICES = false;
+    private static final boolean AGGRESSIVE_KEEP_INPUT_SERVICES = true;
     private static final boolean AGGRESSIVE_KEEP_MOUNTMGR = true;
 
     /** Reconcile the prefix on every launch; saved selection is not proof of registry state. */

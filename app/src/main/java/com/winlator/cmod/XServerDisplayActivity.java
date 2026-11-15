@@ -83,6 +83,7 @@ import com.winlator.cmod.core.OnExtractFileListener;
 import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.core.ProcessHelper;
 import com.winlator.cmod.core.StringUtils;
+import com.winlator.cmod.core.LegacyInputDlls;
 import com.winlator.cmod.core.TarCompressorUtils;
 import com.winlator.cmod.core.WineInfo;
 import com.winlator.cmod.core.WineRegistryEditor;
@@ -1172,6 +1173,8 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     /** false = Aggressive tidak mematikan services.exe (input pad selalu aman; hanya service lain yang dimatikan). */
     private static final boolean AGGRESSIVE_KILL_SERVICES_EXE = true;
     private static final long AGGRESSIVE_KILL_SERVICES_DELAY_MS = 8000L;
+    /** true = pad virtual Winlator memakai DLL XInput lama (UDP) saat services.exe dimatikan. */
+    private static final boolean AGGRESSIVE_LEGACY_XINPUT = true;
     private boolean ownsPrefixLease;
     private boolean exclusiveInputBusy;
 
@@ -1311,6 +1314,23 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         }
     }
 
+    /**
+     * Pasang (enable) atau pulihkan (disable) DLL XInput/DInput lama Winlator di lib/wine milik Wine terpilih.
+     * Mengembalikan true hanya jika DLL lama aktif; jika pemasangan gagal file asli dipulihkan dan hasilnya false.
+     */
+    private boolean syncLegacyInputDlls(boolean enable) {
+        try {
+            File wineLib = new File(imageFs.getWinePath(), "lib/wine");
+            boolean ok = LegacyInputDlls.apply(wineLib, enable, dir ->
+                    TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "input_dlls.tzst", dir));
+            Log.d("XServerDisplayActivity", "Legacy XInput DLLs enable=" + enable + " ok=" + ok);
+            return enable && ok;
+        } catch (Throwable t) {
+            Log.w("XServerDisplayActivity", "syncLegacyInputDlls gagal", t);
+            return false;
+        }
+    }
+
     private void setupWineSystemFiles() {
         String imgVersion = String.valueOf(imageFs.getVersion());
         boolean containerDataChanged = false;
@@ -1421,10 +1441,16 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 shortcut);
 
         if (container != null) {
-            if (Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE && AGGRESSIVE_KILL_SERVICES_EXE) {
-                // Seperti experimental-v2: matikan services.exe setelah winhandler.exe siap. Beda dengan v2, input
-                // gamepad di sini lewat evdev -> winebus -> HID Wine yang butuh services.exe untuk memuat driver pad
-                // baru, jadi pad virtual dibuat sejak boot (persisten) dan kill ditunda sampai driver sempat termuat.
+            final boolean killServices = Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE
+                    && AGGRESSIVE_KILL_SERVICES_EXE;
+            // Pad virtual Winlator lewat XInput lama (UDP, seperti experimental-v2) hanya saat services.exe dimatikan;
+            // mode lain memulihkan DLL bawaan Wine dan memakai evdev -> winebus. DLL ini milik Wine bersama.
+            final boolean legacyXInput = syncLegacyInputDlls(killServices && AGGRESSIVE_LEGACY_XINPUT);
+            winHandler.setLegacyXInput(legacyXInput);
+            if (killServices) {
+                // Seperti experimental-v2: matikan services.exe setelah winhandler.exe siap. DroidDeck tetap lewat evdev
+                // -> winebus -> HID Wine yang butuh services.exe untuk memuat driver pad baru, jadi pad dibuat sejak
+                // boot (persisten) dan kill ditunda sampai driver sempat termuat.
                 winHandler.setPersistentPads(true);
                 winHandler.killProcessDelayed("services.exe", AGGRESSIVE_KILL_SERVICES_DELAY_MS);
             }

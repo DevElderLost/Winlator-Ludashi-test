@@ -84,6 +84,10 @@ public class WinHandler {
     // Control Manager (ntoskrnl ZwLoadDriver -> OpenSCManager), jadi pad yang muncul setelah services.exe mati tidak
     // akan pernah menjadi XInput. Dalam mode ini pad virtual dibuat sejak sebelum Wine boot dan tidak dilepas.
     private volatile boolean persistentPads = false;
+    // Jalur XInput lama (experimental-v2): DLL xinput/dinput Winlator membaca pad virtual lewat UDP ke WinHandler,
+    // tanpa winebus/HID Wine, jadi tetap jalan walau services.exe dimatikan (mode Aggressive). Hanya pad virtual
+    // asli Winlator; DroidDeck dan controller fisik tetap lewat evdev.
+    private volatile boolean legacyXInput = false;
 
     private int fallbackSlot = -1;
 
@@ -556,15 +560,58 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
                 break;
             }
             case RequestCodes.GET_GAMEPAD: {
+                if (!legacyXInput || xinputDisabled) break;
+                receiveData.get(); // isXInput (tidak dipakai; dibaca agar urutan paket tetap)
+                final boolean notify = receiveData.get() == 1;
+                final ControlsProfile profile = activity.getInputControlsView().getProfile();
+                final boolean enabled = profile != null && profile.isVirtualGamepad();
+
+                if (enabled && notify) {
+                    if (!gamepadClients.contains(port)) gamepadClients.add(port);
+                } else {
+                    gamepadClients.remove(Integer.valueOf(port));
+                }
+
+                addAction(() -> {
+                    sendData.rewind();
+                    sendData.put(RequestCodes.GET_GAMEPAD);
+                    if (enabled) {
+                        sendData.putInt(profile.id);
+                        sendData.put(inputType);
+                        byte[] bytes = profile.getName().getBytes();
+                        if (bytes.length > 48) bytes = java.util.Arrays.copyOf(bytes, 48); // buffer kirim 64 byte
+                        sendData.putInt(bytes.length);
+                        sendData.put(bytes);
+                    } else {
+                        sendData.putInt(0);
+                    }
+                    sendPacket(port);
+                });
                 break;
             }
             case RequestCodes.GET_GAMEPAD_STATE: {
+                if (!legacyXInput || xinputDisabled) break;
+                final int gamepadId = receiveData.getInt();
+                final ControlsProfile profile = activity.getInputControlsView().getProfile();
+                final boolean enabled = profile != null && profile.isVirtualGamepad();
+
+                addAction(() -> {
+                    sendData.rewind();
+                    sendData.put(RequestCodes.GET_GAMEPAD_STATE);
+                    sendData.put((byte) (enabled ? 1 : 0));
+                    if (enabled) {
+                        sendData.putInt(gamepadId);
+                        profile.getGamepadState().writeTo(sendData);
+                    }
+                    sendPacket(port);
+                });
                 break;
             }
             case RequestCodes.RELEASE_GAMEPAD: {
-                // currentController = null; // No longer needed
-                // Maybe clear all controllers or reset mapping?
-                // For now, doing nothing is safest as mapping is sticky.
+                // Jalur evdev: pemetaan slot bersifat sticky, tidak ada yang dilepas. Jalur XInput lama: berhenti
+                // mendorong state ke klien. (Sebelumnya case ini jatuh ke CURSOR_POS_FEEDBACK karena tanpa break.)
+                gamepadClients.clear();
+                break;
             }
             case RequestCodes.CURSOR_POS_FEEDBACK: {
                 short x = receiveData.getShort();
@@ -615,6 +662,10 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
     }
 
     public void sendGamepadState() {
+        if (legacyXInput) {
+            sendLegacyGamepadState();
+            return;
+        }
         if (!gamepadsReady || reconnectingGamepads) return;
         final ControlsProfile profile = activity.getInputControlsView().getProfile();
         if (profile == null) {
@@ -684,6 +735,31 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
         releaseSlot(DD_DEVICE_ID);
     }
 
+    /** Aktifkan jalur XInput lama (UDP) untuk pad virtual Winlator. Panggil sebelum Wine dijalankan. */
+    public void setLegacyXInput(boolean enabled) {
+        legacyXInput = enabled;
+    }
+
+    /** Dorong state pad virtual ke klien XInput lama yang sudah mendaftar (GET_GAMEPAD dengan notify). */
+    private void sendLegacyGamepadState() {
+        if (!initReceived || gamepadClients.isEmpty() || xinputDisabled) return;
+        final ControlsProfile profile = activity.getInputControlsView().getProfile();
+        final boolean enabled = profile != null && profile.isVirtualGamepad();
+
+        for (final int port : gamepadClients) {
+            addAction(() -> {
+                sendData.rewind();
+                sendData.put(RequestCodes.GET_GAMEPAD_STATE);
+                sendData.put((byte) (enabled ? 1 : 0));
+                if (enabled) {
+                    sendData.putInt(profile.id);
+                    profile.getGamepadState().writeTo(sendData);
+                }
+                sendPacket(port);
+            });
+        }
+    }
+
     /** Aktifkan pad virtual persisten (dipakai mode Aggressive; panggil sebelum prepareGamepadsForWine). */
     public void setPersistentPads(boolean enabled) {
         persistentPads = enabled;
@@ -713,7 +789,7 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
             boolean droidDeck = false;
             try { droidDeck = com.winlator.cmod.droiddeck.DDController.panelControlsEnabled(); } catch (Throwable ignored) { }
             if (droidDeck) assignSlot(DD_DEVICE_ID);
-            else if (profile != null && profile.isVirtualGamepad()) assignSlot(OSC_DEVICE_ID);
+            else if (!legacyXInput && profile != null && profile.isVirtualGamepad()) assignSlot(OSC_DEVICE_ID);
         }
         gamepadsReady = true;
         sendGamepadState();

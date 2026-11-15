@@ -1173,7 +1173,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     /** false = Aggressive tidak mematikan services.exe (input pad selalu aman; hanya service lain yang dimatikan). */
     private static final boolean AGGRESSIVE_KILL_SERVICES_EXE = true;
     private static final long AGGRESSIVE_KILL_SERVICES_DELAY_MS = 8000L;
-    /** true = pad virtual Winlator memakai DLL XInput lama (UDP) saat services.exe dimatikan. */
+    /** true = pad virtual Winlator, DroidDeck, dan controller fisik memakai DLL XInput lama (UDP) saat services.exe dimatikan. */
     private static final boolean AGGRESSIVE_LEGACY_XINPUT = true;
     private boolean ownsPrefixLease;
     private boolean exclusiveInputBusy;
@@ -1443,14 +1443,15 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         if (container != null) {
             final boolean killServices = Byte.parseByte(startupSelection) == Container.STARTUP_SELECTION_AGGRESSIVE
                     && AGGRESSIVE_KILL_SERVICES_EXE;
-            // Pad virtual Winlator lewat XInput lama (UDP, seperti experimental-v2) hanya saat services.exe dimatikan;
-            // mode lain memulihkan DLL bawaan Wine dan memakai evdev -> winebus. DLL ini milik Wine bersama.
+            // Semua sumber gamepad (pad virtual Winlator, DroidDeck, controller fisik) lewat XInput lama (UDP, seperti
+            // experimental-v2) hanya saat services.exe dimatikan; mode lain memulihkan DLL bawaan Wine dan memakai
+            // evdev -> winebus. DLL ini milik Wine bersama.
             final boolean legacyXInput = syncLegacyInputDlls(killServices && AGGRESSIVE_LEGACY_XINPUT);
             winHandler.setLegacyXInput(legacyXInput);
             if (killServices) {
-                // Seperti experimental-v2: matikan services.exe setelah winhandler.exe siap. DroidDeck tetap lewat evdev
-                // -> winebus -> HID Wine yang butuh services.exe untuk memuat driver pad baru, jadi pad dibuat sejak
-                // boot (persisten) dan kill ditunda sampai driver sempat termuat.
+                // Seperti experimental-v2: matikan services.exe setelah winhandler.exe siap. Jika jalur XInput lama gagal
+                // dipasang, input jatuh ke evdev -> winebus -> HID Wine yang butuh services.exe untuk memuat driver pad
+                // baru, jadi pad dibuat sejak boot (persisten) dan kill ditunda sampai driver sempat termuat.
                 winHandler.setPersistentPads(true);
                 winHandler.killProcessDelayed("services.exe", AGGRESSIVE_KILL_SERVICES_DELAY_MS);
             }

@@ -2530,9 +2530,15 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 ? String.valueOf(Math.max(0, upscaler.getSelectedItemPosition()) + 2) : "0"},
             {"graphicsPostFXMode", String.valueOf(Math.max(0, postFx.getSelectedItemPosition()))},
             {"graphicsSharpness", String.valueOf(sharpness.getValue())},
-            {"graphicsFpsPreset", String.valueOf(fps != null ? Math.max(0, fps.getSelectedItemPosition()) : 0)},
             {"graphicsColorMode", "0"}
         };
+        // The modern FPS control owns nativeFpsLimit. Its replacement spinner
+        // is absent, so do not create an "Off" override of the container preset.
+        if (fps != null) {
+            String preset = String.valueOf(Math.max(0, fps.getSelectedItemPosition()));
+            if (shortcut != null) shortcut.putExtra("graphicsFpsPreset", preset);
+            else container.putExtra("graphicsFpsPreset", preset);
+        }
         for (String[] value : values) {
             if (shortcut != null) shortcut.putExtra(value[0], value[1]);
             else container.putExtra(value[0], value[1]);
@@ -3817,6 +3823,10 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
     public Container getContainer() {
         return container;
+    }
+
+    public Shortcut getShortcut() {
+        return shortcut;
     }
 
     public void setDXWrapper(String dxwrapper) {

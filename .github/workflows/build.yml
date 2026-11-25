@@ -168,14 +168,14 @@ jobs:
 
       - name: Run Android tests
         run: >-
-          bash gradlew testDebugUnitTest --no-daemon --max-workers=2
+          bash .github/scripts/gradle-retry.sh testDebugUnitTest --no-daemon --max-workers=2
           -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
           -Pkotlin.compiler.execution.strategy=in-process
           --no-configuration-cache --stacktrace
 
       - name: Build signed release APK
         run: >-
-          bash gradlew assembleRelease --no-daemon --max-workers=2
+          bash .github/scripts/gradle-retry.sh assembleRelease --no-daemon --max-workers=2
           -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
           -Pkotlin.compiler.execution.strategy=in-process
           --no-configuration-cache --stacktrace

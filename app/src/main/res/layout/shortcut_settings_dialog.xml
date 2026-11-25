@@ -855,6 +855,35 @@
                             android:id="@+id/SBSharpnessDenoise"
                             android:max="100" />
 
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="@string/vkbasalt_fx_effect" />
+
+                        <Spinner
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:id="@+id/SReshadeFxEffect"
+                            style="@style/ComboBox"
+                            android:spinnerMode="dialog" />
+
+                        <Button
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:id="@+id/BTBrowseReshadeCatalog"
+                            style="@style/ButtonNeutral"
+                            android:text="@string/reshade_browse_catalog" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textSize="11sp"
+                            android:alpha="0.6"
+                            android:text="@string/vkbasalt_fx_effect_hint" />
+
                     </LinearLayout>
 
                 </LinearLayout>

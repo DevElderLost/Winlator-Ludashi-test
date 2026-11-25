@@ -72,12 +72,24 @@ public class WinHandler {
     private Map<Integer, Integer> deviceToSlot = new HashMap<>();
     private Set<Integer> usedSlots = new HashSet<>();
     private String fakeInputBasePath;
+    private boolean gamepadsReady;
+    private boolean reconnectingGamepads;
     private LocalServerSocket vibrationServer;
     private volatile boolean vibrationRunning = false;
     private boolean[] vibrationEnabledSlots = new boolean[MAX_CONTROLLERS];
 
     private boolean xinputDisabled;
     private boolean xinputDisabledInitialized = false;
+    // Mode Aggressive mematikan services.exe. Wine memuat driver HID (winehid) untuk setiap pad BARU lewat Service
+    // Control Manager (ntoskrnl ZwLoadDriver -> OpenSCManager), jadi pad yang muncul setelah services.exe mati tidak
+    // akan pernah menjadi XInput. Dalam mode ini pad virtual dibuat sejak sebelum Wine boot dan tidak dilepas.
+    private volatile boolean persistentPads = false;
+    // Jalur XInput lama (experimental-v2): DLL xinput/dinput Winlator membaca pad virtual lewat UDP ke WinHandler,
+    // tanpa winebus/HID Wine, jadi tetap jalan walau services.exe dimatikan (mode Aggressive). Hanya pad virtual
+    // asli Winlator; DroidDeck dan controller fisik tetap lewat evdev.
+    private volatile boolean legacyXInput = false;
+    // Memilih satu gamepad (DroidDeck / pad virtual Winlator / controller fisik) untuk DLL XInput lama.
+    private final LegacyXInputBridge legacyBridge = new LegacyXInputBridge();
 
     private int fallbackSlot = -1;
 
@@ -95,6 +107,12 @@ public class WinHandler {
             @Override
             public void onInputDeviceRemoved(int deviceId) {
                 releaseSlot(deviceId);
+                if (legacyXInput) {
+                    // jalur XInput lama tidak punya slot evdev: bersihkan controller yang dicabut di sini
+                    controllers.remove(deviceId);
+                    legacyBridge.physicalRemoved(deviceId);
+                    sendLegacyGamepadState();
+                }
             }
 
             @Override
@@ -355,7 +373,37 @@ public class WinHandler {
         });
     }
 
+    // DroidDeck-rumble: slot khusus dari fakeinput untuk rumble pad Deck virtual (hidraw); harus sama dengan DECK_RUMBLE_SLOT di fakeinput.cpp
+    private static final int DECK_RUMBLE_SLOT = 0xFFFF;
+
+    private void triggerDeckVibration(int strong, int weak, int durationMs) {
+        boolean cancel = (durationMs == 0 && strong == 0 && weak == 0);
+        if (!cancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity))
+            return;
+
+        Vibrator vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null || !vibrator.hasVibrator())
+            return;
+
+        if (cancel) {
+            vibrator.cancel();
+            return;
+        }
+
+        int amplitude = clampAmplitude(Math.max(strong, weak));
+        int duration = Math.max(1, durationMs);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
+        } else {
+            vibrator.vibrate(duration);
+        }
+    }
+
     private void triggerVibration(int strong, int weak, int durationMs, int slot) {
+    if (slot == DECK_RUMBLE_SLOT) {
+        triggerDeckVibration(strong, weak, durationMs);
+        return;
+    }
     if (!isValidSlot(slot) || !vibrationEnabledSlots[slot])
         return;
 
@@ -373,7 +421,13 @@ public class WinHandler {
         }
     }
 
-    if (deviceId != null && deviceId.equals(OSC_DEVICE_ID)) {
+    // DroidDeck-rumble: pad DroidDeck (DD_DEVICE_ID) bukan InputDevice Android, jadi getarnya lewat motor HP
+    // seperti OSC, dan dikendalikan saklar Rumble di panel DroidDeck.
+    boolean isDroidDeckPad = deviceId != null && deviceId.equals(DD_DEVICE_ID);
+    if (deviceId != null && (deviceId.equals(OSC_DEVICE_ID) || isDroidDeckPad)) {
+        if (!shouldCancel && !com.winlator.cmod.droiddeck.DDPrefs.isRumbleEnabled(activity)
+                && (isDroidDeckPad || com.winlator.cmod.droiddeck.DDPrefs.isEnabled(activity)))
+            return;
         vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
     } else if (deviceId != null) {
         android.view.InputDevice device = android.view.InputDevice.getDevice(deviceId);
@@ -514,15 +568,39 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
                 break;
             }
             case RequestCodes.GET_GAMEPAD: {
+                if (!legacyXInput || xinputDisabled) break;
+                receiveData.get(); // isXInput (tidak dipakai; dibaca agar urutan paket tetap)
+                final boolean notify = receiveData.get() == 1;
+                final LegacyXInputBridge.Pad pad = legacyBridge.pick(activity.getInputControlsView().getProfile());
+
+                if (pad != null && notify) {
+                    if (!gamepadClients.contains(port)) gamepadClients.add(port);
+                } else {
+                    gamepadClients.remove(Integer.valueOf(port));
+                }
+
+                addAction(() -> {
+                    LegacyXInputBridge.writeInfo(sendData, RequestCodes.GET_GAMEPAD, pad, inputType);
+                    sendPacket(port);
+                });
                 break;
             }
             case RequestCodes.GET_GAMEPAD_STATE: {
+                if (!legacyXInput || xinputDisabled) break;
+                final int gamepadId = receiveData.getInt();
+                final LegacyXInputBridge.Pad pad = legacyBridge.pick(activity.getInputControlsView().getProfile());
+
+                addAction(() -> {
+                    LegacyXInputBridge.writeState(sendData, RequestCodes.GET_GAMEPAD_STATE, pad, gamepadId);
+                    sendPacket(port);
+                });
                 break;
             }
             case RequestCodes.RELEASE_GAMEPAD: {
-                // currentController = null; // No longer needed
-                // Maybe clear all controllers or reset mapping?
-                // For now, doing nothing is safest as mapping is sticky.
+                // Jalur evdev: pemetaan slot bersifat sticky, tidak ada yang dilepas. Jalur XInput lama: berhenti
+                // mendorong state ke klien. (Sebelumnya case ini jatuh ke CURSOR_POS_FEEDBACK karena tanpa break.)
+                gamepadClients.clear();
+                break;
             }
             case RequestCodes.CURSOR_POS_FEEDBACK: {
                 short x = receiveData.getShort();
@@ -573,9 +651,15 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
     }
 
     public void sendGamepadState() {
+        if (legacyXInput) {
+            legacyBridge.virtualUpdate(activity.getInputControlsView().getProfile());
+            sendLegacyGamepadState();
+            return;
+        }
+        if (!gamepadsReady || reconnectingGamepads) return;
         final ControlsProfile profile = activity.getInputControlsView().getProfile();
         if (profile == null) {
-            releaseSlot(OSC_DEVICE_ID);
+            if (!persistentPads) releaseSlot(OSC_DEVICE_ID);
             return;
         }
 
@@ -588,6 +672,10 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
             if (slot >= 0 && writers[slot] != null) {
                 writers[slot].writeGamepadState(gamepadState);
             }
+        } else if (persistentPads) {
+            // pad tetap terpasang agar tidak perlu dimuat ulang driver-nya; kontrol disembunyikan = state netral
+            Integer oscSlot = deviceToSlot.get(OSC_DEVICE_ID);
+            if (oscSlot != null && writers[oscSlot] != null) writers[oscSlot].reset();
         } else {
             releaseSlot(OSC_DEVICE_ID);
         }
@@ -595,6 +683,13 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
     }
 
     public void sendGamepadState(ExternalController controller) {
+        if (legacyXInput) {
+            if (controller == null) return;
+            legacyBridge.physicalUpdate(controller, activity.getInputControlsView().getProfile());
+            sendLegacyGamepadState();
+            return;
+        }
+        if (!gamepadsReady || reconnectingGamepads) return;
         if (controller == null)
             return;
 
@@ -614,6 +709,119 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
         if (slot >= 0 && writers[slot] != null) {
             writers[slot].writeGamepadState(controller.state);
         }
+    }
+
+    // ---- DroidDeck-port: slot pad terpisah untuk kontrol layar DroidDeck (tidak menyentuh slot OSC bawaan) ----
+    private static final int DD_DEVICE_ID = -7001;
+
+    public void sendDroidDeckGamepadState(GamepadState state) {
+        if (state == null) return;
+        if (legacyXInput) {
+            legacyBridge.droidDeckUpdate(state);
+            sendLegacyGamepadState();
+            return;
+        }
+        int slot = assignSlot(DD_DEVICE_ID);
+        if (slot >= 0 && writers[slot] != null) {
+            writers[slot].writeGamepadState(state);
+        }
+    }
+
+    public void releaseDroidDeckGamepad() {
+        if (legacyXInput) {
+            legacyBridge.droidDeckRelease();
+            sendLegacyGamepadState();
+            return;
+        }
+        if (persistentPads) {
+            Integer ddSlot = deviceToSlot.get(DD_DEVICE_ID);
+            if (ddSlot != null && writers[ddSlot] != null) writers[ddSlot].reset();
+            return;
+        }
+        releaseSlot(DD_DEVICE_ID);
+    }
+
+    /**
+     * Aktifkan jalur XInput lama (UDP) untuk semua sumber: pad virtual Winlator, DroidDeck, dan controller fisik.
+     * Panggil sebelum Wine dijalankan. Pada jalur ini tidak ada pad evdev yang dibuat.
+     */
+    public void setLegacyXInput(boolean enabled) {
+        legacyBridge.reset();
+        legacyXInput = enabled;
+    }
+
+    /** Dorong state gamepad terpilih ke klien XInput lama yang sudah mendaftar (GET_GAMEPAD dengan notify). */
+    private void sendLegacyGamepadState() {
+        if (!initReceived || gamepadClients.isEmpty() || xinputDisabled) return;
+        final LegacyXInputBridge.Pad pad = legacyBridge.pick(activity.getInputControlsView().getProfile());
+
+        for (final int port : gamepadClients) {
+            addAction(() -> {
+                LegacyXInputBridge.writeState(sendData, RequestCodes.GET_GAMEPAD_STATE, pad, pad != null ? pad.id : 0);
+                sendPacket(port);
+            });
+        }
+    }
+
+    /** Aktifkan pad virtual persisten (dipakai mode Aggressive; panggil sebelum prepareGamepadsForWine). */
+    public void setPersistentPads(boolean enabled) {
+        persistentPads = enabled;
+    }
+
+    /** Kill proses Wine setelah winhandler.exe siap + jeda (beri waktu driver HID termuat lebih dulu). */
+    public void killProcessDelayed(final String processName, final long delayMs) {
+        addAction(() -> new Handler(android.os.Looper.getMainLooper())
+                .postDelayed(() -> killProcess(processName), delayMs));
+    }
+    // ---- end DroidDeck-port ----
+
+    /** UI thread: create the connected pads before Wine enumerates /dev/input. */
+    public void prepareGamepadsForWine() {
+        for (int id : android.view.InputDevice.getDeviceIds()) {
+            android.view.InputDevice device = android.view.InputDevice.getDevice(id);
+            if (device != null && ExternalController.isGameController(device)) {
+                ExternalController controller = getController(id);
+                if (controller != null && !legacyXInput) assignSlot(id);
+            }
+        }
+        ControlsProfile profile = activity.getInputControlsView().getProfile();
+        if (profile != null) profile.prepareGamepad();
+        if (persistentPads && !legacyXInput) {
+            // Hanya pad yang aktif saat boot: DroidDeck menyembunyikan kontrol Winlator, jadi jangan buat keduanya
+            // (game akan melihat dua gamepad dan bisa membaca pad yang salah).
+            boolean droidDeck = false;
+            try { droidDeck = com.winlator.cmod.droiddeck.DDController.panelControlsEnabled(); } catch (Throwable ignored) { }
+            if (droidDeck) assignSlot(DD_DEVICE_ID);
+            else if (profile != null && profile.isVirtualGamepad()) assignSlot(OSC_DEVICE_ID);
+        }
+        gamepadsReady = true;
+        sendGamepadState();
+        for (ExternalController controller : new ArrayList<>(controllers.values())) sendGamepadState(controller);
+    }
+
+    /** UI thread, only during a settings change; ordinary input needs no timer. */
+    public void holdGamepadsNeutral() {
+        reconnectingGamepads = true;
+        for (FakeInputWriter writer : writers) if (writer != null) writer.reset();
+    }
+
+    public void reconnectGamepads(Runnable finished) {
+        reconnectingGamepads = true;
+        for (int i = 0; i < MAX_CONTROLLERS; i++) {
+            if (writers[i] != null) writers[i].destroy();
+            writers[i] = null;
+        }
+        new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!running || activity.isFinishing() || activity.isDestroyed()) { finished.run(); return; }
+            for (int slot : new HashSet<>(deviceToSlot.values())) {
+                writers[slot] = new FakeInputWriter(fakeInputBasePath, slot);
+                writers[slot].open();
+            }
+            reconnectingGamepads = false;
+            sendGamepadState();
+            for (ExternalController controller : new ArrayList<>(controllers.values())) sendGamepadState(controller);
+            finished.run();
+        }, 400);
     }
 
     private int assignSlot(int deviceId) {
@@ -736,6 +944,8 @@ public void setVibrationEnabledForSlot(int slot, boolean enabled) {
     public byte getInputType() {
         return inputType;
     }
+
+    public boolean isSessionReady() { return running && initReceived; }
 
     public void setInputType(byte inputType) {
         this.inputType = inputType;

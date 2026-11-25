@@ -283,6 +283,7 @@ internal fun steamLibraryFilterAvailable(enabled: Boolean, signedIn: Boolean, sa
     enabled && (signedIn || savedAccount)
 
 internal fun filterLibraryItems(items: List<LibraryItem>, filter: LibraryFilter): List<LibraryItem> {
+    val local = items.filter { SteamLibrary.appId(it.shortcutPath) == null || it.containerName == "Steam · Installed" }
     return when (filter) {
         LibraryFilter.All -> items.sortedByDescending(::isInstalledLibraryItem)
         LibraryFilter.Favorites -> items.filter { it.favorite }

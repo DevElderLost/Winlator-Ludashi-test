@@ -1,10 +1,11 @@
 #pragma once
 #include "native_magnifier.h"
 
-namespace xorg {
+namespace ludashi::x11 {
 struct NativeBackendGeometry {
     float sx{}, sy{}, ox{}, oy{};
     int left{}, top{}, right{}, bottom{};
+    bool operator==(const NativeBackendGeometry&) const = default;
     void Update(int outerW, int outerH, int innerW, int innerH, bool stretch, float zoom, int cursorX,
                 int cursorY, NativeMagnifierPan &pan) {
         const float fit = std::min(float(outerW) / innerW, float(outerH) / innerH);
@@ -21,4 +22,4 @@ struct NativeBackendGeometry {
         oy = top - pan.y * baseY;
     }
 };
-} // namespace xorg
+} // namespace ludashi::x11

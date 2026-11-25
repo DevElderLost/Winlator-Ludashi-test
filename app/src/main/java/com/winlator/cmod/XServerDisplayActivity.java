@@ -16,6 +16,7 @@ import android.util.Rational;
 import android.util.TypedValue;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -73,6 +74,7 @@ import com.winlator.cmod.contents.ContentsManager;
 import com.winlator.cmod.contents.AdrenotoolsManager;
 import com.winlator.cmod.core.AppUtils;
 import com.winlator.cmod.core.DefaultVersion;
+import com.winlator.cmod.core.AudioOutputSettings;
 import com.winlator.cmod.core.EnvVars;
 import com.winlator.cmod.core.SteamSaveMemoryTask;
 import com.winlator.cmod.core.FileUtils;
@@ -950,13 +952,20 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         }
     }
 
+    static boolean shouldSuspendGuestOnPause(Shortcut shortcut) {
+        return shortcut == null || shortcut.getExtra("steamAppId").isEmpty()
+                || !"RealSteam".equals(shortcut.getExtra("steamLaunchMode", "RealSteam"));
+    }
+
     @Override
     public void onResume() {
         super.onResume();
 
         if (!isInPictureInPictureMode()) {
-            ProcessHelper.resumeAllWineProcesses();
-            if (environment != null) environment.onResume();
+            if (shouldSuspendGuestOnPause(shortcut)) {
+                ProcessHelper.resumeAllWineProcesses();
+                if (environment != null) environment.onResume();
+            }
             if (xServerView != null) xServerView.onResume();
         }
         startTime = System.currentTimeMillis();
@@ -972,12 +981,14 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         isVolumeDownPressed = false;
 
         if (!isInPictureInPictureMode()) {
+            boolean suspendGuest = shouldSuspendGuestOnPause(shortcut);
             if (environment != null) {
                 if (xServerView != null) xServerView.onPause();
-                environment.onPause();
+                // The Steam client needs to keep exchanging heartbeats while the app is backgrounded.
+                if (suspendGuest) environment.onPause();
             }
 
-            ProcessHelper.pauseAllWineProcesses();
+            if (suspendGuest) ProcessHelper.pauseAllWineProcesses();
         }
 
         savePlaytimeData();
@@ -1114,8 +1125,25 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             }
 
             preloaderDialog.closeOnUiThread();
-            runOnUiThread(() -> AppUtils.restartApplication(getApplicationContext()));
+            runOnUiThread(this::finishGameActivity);
         });
+    }
+
+    private void finishGameActivity() {
+        Uri referrer = getReferrer();
+        boolean externalLaunch = referrer != null
+                && "android-app".equals(referrer.getScheme())
+                && referrer.getHost() != null
+                && !getPackageName().equals(referrer.getHost());
+        if (isTaskRoot()) {
+            finishAndRemoveTask();
+        } else if (externalLaunch) {
+            // A singleTask launch can reuse a Ludashi task with MainActivity below it.
+            moveTaskToBack(true);
+            finish();
+        } else {
+            AppUtils.restartApplication(getApplicationContext());
+        }
     }
 
     @Override
@@ -1528,13 +1556,22 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                     UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH)));
         }
 
+        if (container != null) {
+            String api = container.getExtra(AudioOutputSettings.API, AudioOutputSettings.AUTO);
+            String buffer = container.getExtra(AudioOutputSettings.BUFFER, AudioOutputSettings.AUTO);
+            String latency = container.getExtra(AudioOutputSettings.LATENCY, AudioOutputSettings.AUTO);
+            AudioOutputSettings.apply(envVars, audioDriver,
+                    shortcut != null ? shortcut.getExtra(AudioOutputSettings.API, api) : api,
+                    shortcut != null ? shortcut.getExtra(AudioOutputSettings.BUFFER, buffer) : buffer,
+                    shortcut != null ? shortcut.getExtra(AudioOutputSettings.LATENCY, latency) : latency);
+        }
         if (audioDriver.equals("alsa-oboe")) {
             environment.addComponent(new ALSAComponent(this, imageFs));
         } else if (audioDriver.equals("pulse-audio-gn")) {
             envVars.put("PULSE_SERVER", rootPath + UnixSocketConfig.PULSE_SERVER_PATH);
             environment.addComponent(
                     new PulseAudioComponent(
-                            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH)));
+                            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.PULSE_SERVER_PATH), envVars));
         }
 
         if (exiting.get()) return;
@@ -1636,10 +1673,8 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             String driverPath = "", libraryName = "";
             if (!useEGL && !useDisplayX && driverId != null && !driverId.isEmpty() && !"system".equalsIgnoreCase(driverId)) {
                 AdrenotoolsManager manager = new AdrenotoolsManager(this);
-                driverPath = getFilesDir().getAbsolutePath() + "/contents/adrenotools/" + driverId + "/";
-                if (manager.isFromResources(driverId) && !new File(driverPath).isDirectory())
-                    manager.extractDriverFromResources(driverId);
-                libraryName = manager.getLibraryName(driverId);
+                driverPath = manager.getDriverPath(driverId);
+                libraryName = manager.ensureDriverLibrary(driverId);
                 if (libraryName.isEmpty()) {
                     Log.w("LudashiX11", "Selected renderer driver is unavailable: " + driverId);
                     driverPath = "";
@@ -1717,13 +1752,9 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             }
             if (rendererDriverId != null && !rendererDriverId.isEmpty() && !rendererDriverId.equalsIgnoreCase("system")) {
                 try {
-                    String driverPath = getFilesDir().getAbsolutePath() + "/contents/adrenotools/" + rendererDriverId + "/";
                     AdrenotoolsManager adrenotoolsManager = new AdrenotoolsManager(this);
-                    if (adrenotoolsManager.isFromResources(rendererDriverId) &&
-                            !new File(driverPath).isDirectory()) {
-                        adrenotoolsManager.extractDriverFromResources(rendererDriverId);
-                    }
-                    String libraryName = adrenotoolsManager.getLibraryName(rendererDriverId);
+                    String driverPath = adrenotoolsManager.getDriverPath(rendererDriverId);
+                    String libraryName = adrenotoolsManager.ensureDriverLibrary(rendererDriverId);
                     String nativeLibDir = AppUtils.getNativeLibDir(this);
                     if (!libraryName.isEmpty())
                         vkRenderer.setDriverInfo(driverPath, libraryName, nativeLibDir);
@@ -1795,17 +1826,18 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
             if (!drawerLayout.isDrawerOpen(GravityCompat.START))
                 drawerLayout.openDrawer(GravityCompat.START);
         });
-        View.OnCapturedPointerListener capturedPointerListener = new View.OnCapturedPointerListener() {
+
+        touchpadView.setOnCapturedPointerListener(cursorLock ? new View.OnCapturedPointerListener() {
             @Override
             public boolean onCapturedPointer(View view, MotionEvent event) {
                 handleCapturedPointer(event);
                 return true;
             }
-        };
-        touchpadView.setOnCapturedPointerListener(cursorLock ? capturedPointerListener : null);
+        } : null);
         touchpadView.setFocusable(true);
         touchpadView.setFocusableInTouchMode(true);
         rootView.addView(touchpadView);
+        touchpadView.requestFocus();
 
         inputControlsView = new InputControlsView(this, timeoutHandler, hideControlsRunnable);
         inputControlsView
@@ -2023,9 +2055,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         if (btItemToggleFullscreen != null) {
             btItemToggleFullscreen.setOnClickListener(v -> {
                 if (xServerView != null) {
-                    xServerView.toggleFullscreen();
-                    if (touchpadView != null)
-                        touchpadView.toggleFullscreen();
+                    setSidebarDisplayMode(getSidebarDisplayMode() == 0 ? 1 : 0);
                 }
                 drawerLayout.closeDrawers();
             });
@@ -2185,6 +2215,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     }
 
     public int getSidebarDisplayMode() {
+        if (xServerView != null && xServerView.isIntegerScaling()) return 3;
         return softStretchEnabled && isSidebarSoftStretchSupported() ? 2 : isSidebarFullscreenStretched() ? 1 : 0;
     }
 
@@ -2193,19 +2224,21 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
     }
 
     public void setSidebarDisplayMode(int mode) {
-        if (xServerView == null || mode < 0 || mode > 2
-                || (mode == 2 && !isSidebarSoftStretchSupported())) return;
+        if (xServerView == null || mode < 0 || mode > 3
+                || (mode >= 2 && !isSidebarSoftStretchSupported())) return;
         boolean newSoft = mode == 2;
+        boolean wasInteger = xServerView.isIntegerScaling();
+        boolean newInteger = mode == 3;
         if (xServerView instanceof VulkanRendererControls)
-            ((VulkanRendererControls) xServerView).setStretchMode(newSoft ? 1 : 0);
-        else if (xServerView instanceof OldXServerView)
-            ((OldXServerView) xServerView).getRenderer().setSoftStretch(newSoft);
+    ((VulkanRendererControls) xServerView).setStretchMode(newInteger ? 2 : newSoft ? 1 : 0);
+else if (xServerView instanceof OldXServerView)
+    ((OldXServerView) xServerView).getRenderer().setSoftStretch(newSoft); 
         softStretchEnabled = newSoft;
-        boolean fullscreen = mode != 0;
-        if (xServerView.isFullscreen() != fullscreen) {
-            xServerView.toggleFullscreen();
-            if (touchpadView != null) touchpadView.toggleFullscreen();
-        }
+        boolean fullscreen = mode == 1 || mode == 2;
+        boolean fullscreenChanged = xServerView.isFullscreen() != fullscreen;
+        if (fullscreenChanged) xServerView.toggleFullscreen();
+        if ((fullscreenChanged || wasInteger != newInteger) && touchpadView != null)
+            touchpadView.toggleFullscreen();
         View softButton = findViewById(R.id.BTItemSoftStretch);
         if (softButton != null) softButton.setSelected(newSoft);
     }
@@ -2517,6 +2550,32 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         return shortcut != null ? shortcut.getExtra(key, fallback) : fallback;
     }
 
+    private void saveSidebarFrameGeneration(boolean enabled) {
+        String value = enabled ? "1" : "0";
+        if (shortcut != null) {
+            shortcut.putExtra("frameGen", value);
+            shortcut.saveData();
+        } else if (container != null) {
+            container.putExtra("frameGen", value);
+            container.saveData();
+        }
+    }
+
+    private void saveSidebarFrameGenerationSettings(int multiplier, int targetRate, int flowScale) {
+        String[][] values = {
+            {"frameGenMultiplier", String.valueOf(multiplier)},
+            {"frameGenTargetRate", String.valueOf(targetRate)},
+            {"frameGenFlowScale", String.valueOf(flowScale)}
+        };
+        if (shortcut != null) {
+            for (String[] value : values) shortcut.putExtra(value[0], value[1]);
+            shortcut.saveData();
+        } else if (container != null) {
+            for (String[] value : values) container.putExtra(value[0], value[1]);
+            container.saveData();
+        }
+    }
+
     private void saveSidebarGraphicsState() {
         if (!graphicsControlsReady || container == null) return;
         Switch enabled = findViewById(R.id.SWEnableFSR);
@@ -2776,11 +2835,36 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 frameGenQualityValues[qualityPos]);
         };
 
+        // Opening the sidebar must not overwrite inherited or saved preferences.
+        final int[] previousFrameGenSelections = {
+            spFrameGenMode != null ? spFrameGenMode.getSelectedItemPosition() : -1,
+            spFrameGenMultiplier != null ? spFrameGenMultiplier.getSelectedItemPosition() : -1,
+            spFrameGenQuality != null ? spFrameGenQuality.getSelectedItemPosition() : -1
+        };
+        Runnable onFrameGenSelectionChanged = () -> {
+            int mode = spFrameGenMode != null ? spFrameGenMode.getSelectedItemPosition() : -1;
+            int multiplier = spFrameGenMultiplier != null ? spFrameGenMultiplier.getSelectedItemPosition() : -1;
+            int quality = spFrameGenQuality != null ? spFrameGenQuality.getSelectedItemPosition() : -1;
+            if (mode == previousFrameGenSelections[0] &&
+                multiplier == previousFrameGenSelections[1] &&
+                quality == previousFrameGenSelections[2]) return;
+            previousFrameGenSelections[0] = mode;
+            previousFrameGenSelections[1] = multiplier;
+            previousFrameGenSelections[2] = quality;
+            if (swEnableFrameGen != null && swEnableFrameGen.isChecked()) {
+                applyFrameGenSettings.run();
+                saveSidebarFrameGenerationSettings(
+                    vkRenderer.getFrameGenerationMultiplier(),
+                    vkRenderer.getFrameGenerationTargetRate(),
+                    vkRenderer.getFrameGenerationFlowScale());
+            }
+        };
+
         if (spFrameGenMode != null) {
             spFrameGenMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                     updateFrameGenVisibility.run();
-                    applyFrameGenSettings.run();
+                    onFrameGenSelectionChanged.run();
                 }
                 @Override public void onNothingSelected(AdapterView<?> p) {}
             });
@@ -2788,7 +2872,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         AdapterView.OnItemSelectedListener applyFrameGenSelection =
             new AdapterView.OnItemSelectedListener() {
                 @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                    applyFrameGenSettings.run();
+                    onFrameGenSelectionChanged.run();
                 }
                 @Override public void onNothingSelected(AdapterView<?> p) {}
             };
@@ -2824,6 +2908,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
                 }
                 updateFrameGenVisibility.run();
                 if (checked) applyFrameGenSettings.run();
+                saveSidebarFrameGeneration(checked);
                 Log.i("XServerDisplayActivity",
                     "LSFG runtime toggle: " + (checked ? "enabled" : "disabled"));
             });
@@ -3371,15 +3456,23 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
         extractOpenGLDriver(rootDir);
 
-        if (!"System".equals(adrenoToolsDriverId)) {
-            AdrenotoolsManager adrenotoolsManager = new AdrenotoolsManager(this);
-            adrenotoolsManager.setDriverById(envVars, imageFs, adrenoToolsDriverId);
+        AdrenotoolsManager drivers = new AdrenotoolsManager(this);
+        String actualVersion = "";
+        if (!drivers.ensureDriverLibrary(adrenoToolsDriverId).isEmpty()) {
+            actualVersion = GPUInformation.getVulkanVersion(adrenoToolsDriverId, this);
+            if (!actualVersion.isEmpty() && !"Unknown".equals(actualVersion)) {
+                drivers.setDriverById(envVars, imageFs, adrenoToolsDriverId);
+            }
         }
-
+        if (actualVersion.isEmpty() || "Unknown".equals(actualVersion)) {
+            if (!"System".equalsIgnoreCase(adrenoToolsDriverId)) {
+                Log.w("GraphicsDriverExtraction", "Using system Vulkan because driver is unavailable: " + adrenoToolsDriverId);
+            }
+            actualVersion = GPUInformation.getVulkanVersion("System", this);
+        }
         String vulkanVersion = graphicsDriverConfig.get("vulkanVersion");
-        String vulkanVersionPatch = GPUInformation.getVulkanVersion(adrenoToolsDriverId, this).split("\\.")[2];
-        vulkanVersion = vulkanVersion + "." + vulkanVersionPatch;
-        envVars.put("WRAPPER_VK_VERSION", vulkanVersion);
+        String[] versionParts = actualVersion.split("\\.", -1);
+        envVars.put("WRAPPER_VK_VERSION", vulkanVersion + "." + (versionParts.length == 3 ? versionParts[2] : "0"));
 
         String blacklistedExtensions = graphicsDriverConfig.get("blacklistedExtensions");
         envVars.put("WRAPPER_EXTENSION_BLACKLIST", blacklistedExtensions);
@@ -3486,11 +3579,10 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
 
     static boolean isSidebarKey(KeyEvent event) {
         int code = event.getKeyCode();
-        if (code == KeyEvent.KEYCODE_BUTTON_MODE || code == KeyEvent.KEYCODE_HOME) return true;
+        if (code == KeyEvent.KEYCODE_BUTTON_MODE) return true;
+        if (code == KeyEvent.KEYCODE_HOME) return ExternalController.isControllerKeyEvent(event);
         return code == KeyEvent.KEYCODE_BACK && (event.getFlags() & KeyEvent.FLAG_FALLBACK) == 0
-                && (event.isFromSource(InputDevice.SOURCE_GAMEPAD)
-                        || event.isFromSource(InputDevice.SOURCE_JOYSTICK)
-                        || ExternalController.isGameController(event.getDevice()));
+                && ExternalController.isControllerKeyEvent(event);
     }
 
     @Override
@@ -3504,7 +3596,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         if (inputControlsView != null && inputControlsView.onKeyEvent(event)) return true;
         if (winHandler != null && winHandler.onKeyEvent(event)) return true;
         if (xServer != null && xServer.keyboard.onKeyEvent(event)) return true;
-        return !ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event);
+        return !ExternalController.isControllerKeyEvent(event) && super.dispatchKeyEvent(event);
     }
 
     public InputControlsView getInputControlsView() {
@@ -3743,7 +3835,7 @@ if (isNativeX11Enabled() && displayXActive) xServer.setDisplayDriver("displayx")
         String args = "";
 
         if (shortcut != null) {
-            String execArgs = shortcut.getExtra("execArgs");
+            String execArgs = com.winlator.cmod.steam.SteamLaunch.launcherArguments(shortcut);
             execArgs = !execArgs.isEmpty() ? " " + execArgs : "";
 
             if (shortcut.path.endsWith(".lnk")) {

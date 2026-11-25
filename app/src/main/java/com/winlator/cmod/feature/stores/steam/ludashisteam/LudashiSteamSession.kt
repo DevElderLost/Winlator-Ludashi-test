@@ -107,7 +107,8 @@ class LudashiSteamSession : AutoCloseable {
         appId: Int,
         depotIds: IntArray,
         manifestIds: LongArray,
-        branch: String,
+        manifestAppIds: IntArray,
+        manifestBranches: Array<String>,
         installDir: String,
         fresh: Boolean,
         caBundlePath: String,
@@ -115,15 +116,16 @@ class LudashiSteamSession : AutoCloseable {
         listener: LudashiDownloadListener,
         decompressWorkers: Int = 2,
     ) {
-        require(depotIds.size == manifestIds.size) {
-            "ludashisteam: depotIds/manifestIds size mismatch"
+        require(depotIds.size == manifestIds.size && depotIds.size == manifestAppIds.size &&
+            depotIds.size == manifestBranches.size) {
+            "ludashisteam: mismatched depot metadata arrays"
         }
         val h = nativeHandle.get()
         if (h == 0L) {
             listener.onComplete(false, "session closed", 0L, 0, 0)
             return
         }
-        nativeDownloadApp(h, appId, depotIds, manifestIds, branch, installDir,
+        nativeDownloadApp(h, appId, depotIds, manifestIds, manifestAppIds, manifestBranches, installDir,
                           fresh, caBundlePath, maxWorkers, decompressWorkers, listener)
     }
 
@@ -467,6 +469,12 @@ class LudashiSteamSession : AutoCloseable {
         return nativeGetPicsAppInfo(h, appId, accessToken)
     }
 
+    fun requestFreeLicense(appId: Int): String? {
+        require(appId > 0)
+        val h = nativeHandle.get(); if (h == 0L) return null
+        return nativeRequestFreeLicense(h, intArrayOf(appId))
+    }
+
     // Blocking PICS access-token request.
     fun getPicsAccessTokens(appIds: List<Int>, packageIds: List<Int>): String? {
         val h = nativeHandle.get(); if (h == 0L) return null
@@ -733,7 +741,8 @@ class LudashiSteamSession : AutoCloseable {
             appId: Int,
             depotIds: IntArray,
             manifestIds: LongArray,
-            branch: String,
+            manifestAppIds: IntArray,
+            manifestBranches: Array<String>,
             installDir: String,
             fresh: Boolean,
             caBundlePath: String,
@@ -781,6 +790,7 @@ class LudashiSteamSession : AutoCloseable {
         @JvmStatic private external fun nativeCloudCompleteUploadBatch(handle: Long, appId: Int, batchId: Long, batchEresult: Int): Boolean
         @JvmStatic private external fun nativeGetPicsChangesSince(handle: Long, sinceChangeNumber: Long): String?
         @JvmStatic private external fun nativeGetPicsAppInfo(handle: Long, appId: Int, accessToken: Long): String?
+        @JvmStatic private external fun nativeRequestFreeLicense(handle: Long, appIds: IntArray): String?
         @JvmStatic private external fun nativeGetPicsAccessTokens(handle: Long, appIds: String, packageIds: String): String?
         @JvmStatic private external fun nativeGetPicsAppProductInfo(handle: Long, appIds: String, tokens: String): String?
         @JvmStatic private external fun nativeGetPicsPackageInfo(handle: Long, packageIds: String, tokens: String): String?

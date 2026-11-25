@@ -53,17 +53,17 @@ extern "C" EGLBoolean eglDestroySyncKHR(EGLDisplay d, EGLSyncKHR s) {
     return eglDestroySync(d, s);
 }
 
-namespace xorg {
+namespace ludashi::x11 {
 std::unique_ptr<NativeRenderer> CreateNativeEGLRenderer(u16, u16, const NativeRendererConfig &);
 }
-static std::array<u8, 4> Pixel(int x, int y) {
-    std::array<u8, 4> result{};
+static std::array<std::uint8_t, 4> Pixel(int x, int y) {
+    std::array<std::uint8_t, 4> result{};
     glReadPixels(x, 719 - y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, result.data());
     assert(glGetError() == GL_NO_ERROR);
     return result;
 }
 int main() {
-    using namespace xorg;
+    using namespace ludashi::x11;
     NativeRendererConfig config;
     config.backend = NativeRendererConfig::Backend::EGL;
     {
@@ -82,6 +82,15 @@ int main() {
         assert((Pixel(110, 60) == std::array<u8, 4>{0x11, 0x22, 0x33, 0xff}));
         assert((Pixel(10, 10) == std::array<u8, 4>{0, 0, 0, 0xff}));
         assert(renderer->PollCompleted(1) == 1);
+        GLint sampling{};
+        glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &sampling);
+        assert(sampling == GL_NEAREST);
+        options.filter = 0;
+        renderer->VisualOptions(options);
+        assert(renderer->Draw(frame));
+        glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &sampling);
+        assert(sampling == GL_LINEAR);
+        assert(renderer->Drain() == 1);
         image->FillRect(0, 0, 32, 32, 0xff445566);
         frame.entries[0].pixels = image->Pixels();
         frame.entries[0].revision = image->Revision();

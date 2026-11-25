@@ -93,6 +93,8 @@ import com.winlator.cmod.ui.settings.SettingMappedChoice
 import com.winlator.cmod.ui.settings.SettingText
 import com.winlator.cmod.ui.settings.SettingToggle
 import com.winlator.cmod.ui.settings.SettingWineRuntimeChoice
+import com.winlator.cmod.ui.settings.AudioDriverOptions
+import com.winlator.cmod.ui.settings.audioOutputKeys
 import com.winlator.cmod.ui.settings.SettingsCard
 import com.winlator.cmod.ui.settings.SettingsCatalog
 import com.winlator.cmod.ui.settings.SettingsDivider
@@ -147,6 +149,11 @@ private class ContainerEditorStateV2(
     var builtinDecoder by mutableStateOf(editing?.getBuiltinDecoder() ?: "gstreamer")
     var softwareDecoding by mutableStateOf(editing?.getSoftwareDecoding() ?: false)
     var audio by mutableStateOf(editing?.audioDriver ?: Container.DEFAULT_AUDIO_DRIVER)
+    val audioOptions = mutableStateMapOf<String, String>().apply {
+        for (key in audioOutputKeys) {
+            editing?.getExtra(key)?.takeIf { it.isNotEmpty() }?.let { put(key, it) }
+        }
+    }
     var hudMode by mutableIntStateOf(
         editing?.getExtra("hudMode", if (editing.isShowFPS) "2" else "0")?.toIntOrNull() ?: 0
     )
@@ -339,7 +346,7 @@ private class ContainerEditorStateV2(
     }
 
     fun fingerprint(): String = listOf(
-        name, screen, audio, builtinDecoder, softwareDecoding, hudMode, locale, soundFont,
+        name, screen, audio, audioOptions.toSortedMap(), builtinDecoder, softwareDecoding, hudMode, locale, soundFont,
         fullscreen, desktopTheme, desktopBackground, wallpaperStamp, mouseWarp, drives,
         displayServer, renderer, rendererPresentMode, rendererDriver, filterMode, surfaceFormat, trueDisplayX,
         displayXPerformanceMode, displayXPresentAtRefreshRate, displayXPresentMode, displayXDynamicRange,
@@ -506,6 +513,9 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
         container.setBuiltinDecoder(state.builtinDecoder)
         container.setSoftwareDecoding(state.softwareDecoding)
         container.setAudioDriver(state.audio)
+        for (key in audioOutputKeys) {
+            container.putExtra(key, state.audioOptions[key])
+        }
         container.setEmulator(if (arm64) if (state.emulator == "FEXCore") "FEXCore" else "Box64" else "Box64")
         container.setWinComponents(serializeContainerComponentsV2(state.components))
         container.setShowFPS(state.hudMode != 0)
@@ -585,7 +595,7 @@ internal fun ContainerEditorV2(editId: Int?, onBack: () -> Unit, onCreated: () -
                 put("wineVersion", state.runtime)
                 put("midiSoundFont", state.soundFont)
                 put("lc_all", state.locale)
-                put("extraData", JSONObject().put("freedrenoVersion", state.freedrenoVersion)
+                put("extraData", JSONObject(state.audioOptions.toMap()).put("freedrenoVersion", state.freedrenoVersion)
                     .put("builtinDecoder", state.builtinDecoder)
                     .put("softwareDecoding", if (state.softwareDecoding) "1" else "0")
                     .put("hudMode", state.hudMode.toString())
@@ -787,11 +797,13 @@ private fun ContainerCategoryV2(
                 SettingWineRuntimeChoice(uiStr(R.string.ui_wine_proton), s.runtime, runtimes, installing, installWine) { s.runtime = it }
             }
             SettingsCard {
-                SettingChoice(
-                    uiStr(R.string.audio_driver),
-                    audioEntries.firstOrNull { StringUtils.parseIdentifier(it).equals(s.audio, true) } ?: s.audio,
-                    audioEntries
-                ) { s.audio = StringUtils.parseIdentifier(it) }
+                AudioDriverOptions(
+                    s.audio,
+                    audioEntries,
+                    value = { s.audioOptions[it].orEmpty() },
+                    onDriverChanged = { s.audio = it },
+                    onOptionsConfirmed = { s.audioOptions.putAll(it) }
+                )
                 SettingsDivider()
                 val hudEntries = listOf("Off", "Classic", "Modern")
                 SettingChoice(uiStr(R.string.ui_winlator_hud), hudEntries.getOrElse(s.hudMode) { "Off" }, hudEntries) {

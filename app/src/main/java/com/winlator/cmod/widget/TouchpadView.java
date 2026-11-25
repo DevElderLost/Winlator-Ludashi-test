@@ -106,7 +106,8 @@ public class TouchpadView extends View {
 
     private void updateXform(int outerWidth, int outerHeight, int innerWidth, int innerHeight) {
         ViewTransformation viewTransformation = new ViewTransformation();
-        viewTransformation.update(outerWidth, outerHeight, innerWidth, innerHeight);
+        viewTransformation.update(outerWidth, outerHeight, innerWidth, innerHeight,
+                xServer.getXServerView().isIntegerScaling());
 
         float invAspect = 1.0f / viewTransformation.aspect;
         if (!xServer.getXServerView().isFullscreen()) {
@@ -169,7 +170,7 @@ public class TouchpadView extends View {
     public boolean onTouchEvent(MotionEvent event) {
         // If mouse is disabled, ignore all input
         if (!mouseEnabled) return true;
-        
+        requestFocus();
         boolean isTouchscreenMode = preferences.getBoolean("touchscreen_toggle", false);
 
         // Reset the timeout timer to keep controls visible

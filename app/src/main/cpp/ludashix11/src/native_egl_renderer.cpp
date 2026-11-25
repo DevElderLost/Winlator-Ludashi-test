@@ -8,7 +8,7 @@
 #include <GLES2/gl2ext.h>
 #include <unordered_set>
 
-namespace xorg {
+namespace ludashi::x11 {
 namespace {
 void Require(bool value, const char *message) {
     if (!value)
@@ -33,6 +33,7 @@ class EGLNativeRenderer final : public NativeRenderer {
         AHardwareBuffer *buffer{};
         u64 revision{}, used{};
         int width{}, height{};
+        GLint sampling{};
         std::weak_ptr<NativeDrawable> owner;
     };
     int width, height, outerW{}, outerH{}, filter{}, stretch{};
@@ -293,10 +294,15 @@ class EGLNativeRenderer final : public NativeRenderer {
                 texture = {};
                 throw;
             }
+        } else {
+            glBindTexture(GL_TEXTURE_2D, texture.name);
         }
-        glBindTexture(GL_TEXTURE_2D, texture.name);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter == 1 ? GL_NEAREST : GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter == 1 ? GL_NEAREST : GL_LINEAR);
+        const GLint sampling = filter == 1 ? GL_NEAREST : GL_LINEAR;
+        if (texture.sampling != sampling) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampling);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampling);
+            texture.sampling = sampling;
+        }
         if (!buffer && texture.revision != revision) {
             Require(bool(pixels), "Missing X++ EGL pixel snapshot");
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -517,4 +523,4 @@ class EGLNativeRenderer final : public NativeRenderer {
 std::unique_ptr<NativeRenderer> CreateNativeEGLRenderer(u16 w, u16 h, const NativeRendererConfig &config) {
     return std::make_unique<EGLNativeRenderer>(w, h, config);
 }
-} // namespace xorg
+} // namespace ludashi::x11
